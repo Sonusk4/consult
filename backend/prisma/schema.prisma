@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  firebase_uid String   @unique // [cite: 8]
+  email        String   @unique // [cite: 8]
+  phone        String?  // Phone number for OTP verification
+  role         String   @default("USER") // [cite: 8, 10]
+  is_verified  Boolean  @default(false) // Email verification status
+  otp_code     String?  // Current OTP code
+  otp_expiry   DateTime? // OTP expiration time
+  created_at   DateTime @default(now())
+  consultant   Consultant?
+  bookings     Booking[]
+  messages     Message[]
+}
+
+model Consultant {
+  id            Int            @id @default(autoincrement())
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        Int            @unique // 
+  type          String?
+  domain        String?
+  bio           String?
+  languages     String?
+  profile_pic   String?        // Cloudinary image URL
+  hourly_price  Float?
+  rating        Float          @default(0)
+  total_reviews Int            @default(0)
+  is_verified   Boolean        @default(false) // 
+  availability  Availability[]
+  bookings      Booking[]
+}
+
+model Availability {
+  id             Int        @id @default(autoincrement())
+  consultant     Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  consultantId   Int
+  available_date DateTime   // Use Date only 
+  available_time String     // e.g., "14:00" 
+  is_booked      Boolean    @default(false)
+
+  @@unique([consultantId, available_date, available_time]) // Prevents duplicates 
+}
+
+model Booking {
+  id            Int        @id @default(autoincrement())
+  user          User       @relation(fields: [userId], references: [id])
+  userId        Int
+  consultant    Consultant @relation(fields: [consultantId], references: [id])
+  consultantId  Int
+  date          DateTime
+  time_slot     String     // [cite: 17]
+  status        String     @default("CONFIRMED")
+  is_paid       Boolean    @default(false) // 
+  created_at    DateTime   @default(now())
+  messages      Message[]
+  payment       Payment?
+}
+
+model Message {
+  id         Int      @id @default(autoincrement())
+  booking    Booking  @relation(fields: [bookingId], references: [id])
+  bookingId  Int
+  sender     User     @relation(fields: [senderId], references: [id])
+  senderId   Int
+  content    String
+  created_at DateTime @default(now())
+}
+
+model Payment {
+  id         Int      @id @default(autoincrement())
+  booking    Booking  @relation(fields: [bookingId], references: [id])
+  bookingId  Int      @unique
+  amount     Float
+  status     String   // e.g., "SUCCESS" [cite: 52]
+  razorpay_id String?  // To track Razorpay transactions [cite: 46]
+  created_at DateTime @default(now())
+}

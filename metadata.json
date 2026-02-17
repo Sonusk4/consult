@@ -1,0 +1,9 @@
+
+{
+  "name": "ConsultaPro - Expert Consultations Simplified",
+  "description": "A comprehensive marketplace for professional consultations featuring specialized dashboards for clients, individual consultants, and enterprise teams.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
