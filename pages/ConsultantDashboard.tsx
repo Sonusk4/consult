@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { consultants as consultantsApi } from '../services/api';
 import { Consultant, SessionStatus } from '../types';
@@ -8,21 +9,30 @@ import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Cell } from 
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../App';
 
-const DATA = [
-  { name: 'Mon', revenue: 450 },
-  { name: 'Tue', revenue: 300 },
-  { name: 'Wed', revenue: 600 },
-  { name: 'Thu', revenue: 800 },
-  { name: 'Fri', revenue: 550 },
-  { name: 'Sat', revenue: 900 },
-  { name: 'Sun', revenue: 700 },
-];
+const getGreeting = () => {
+  const hour = new Date().getHours();
+
+  if (hour < 12) return "Good Morning";
+  if (hour < 17) return "Good Afternoon";
+  return "Good Evening";
+};
 
 const ConsultantDashboard: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<Consultant | null>(null);
   const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
+  const [revenueData, setRevenueData] = useState([
+    { name: 'Mon', revenue: 0 },
+    { name: 'Tue', revenue: 0 },
+    { name: 'Wed', revenue: 0 },
+    { name: 'Thu', revenue: 0 },
+    { name: 'Fri', revenue: 0 },
+    { name: 'Sat', revenue: 0 },
+    { name: 'Sun', revenue: 0 },
+  ]);
+  const [timePeriod, setTimePeriod] = useState<'7days' | '30days'>('7days');
 
   // Onboarding State
   const [onboardingData, setOnboardingData] = useState({
@@ -38,7 +48,40 @@ const ConsultantDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchProfile();
+    fetchRevenueData();
   }, []);
+
+  useEffect(() => {
+    fetchRevenueData();
+  }, [timePeriod]);
+
+  const fetchRevenueData = async () => {
+    try {
+      // Mock API call - replace with actual API call
+      // const response = await bookings.getRevenueData(timePeriod);
+      
+      // Generate mock data based on time period
+      const mockData = timePeriod === '7days' ? [
+        { name: 'Mon', revenue: Math.floor(Math.random() * 1000) + 200 },
+        { name: 'Tue', revenue: Math.floor(Math.random() * 1000) + 200 },
+        { name: 'Wed', revenue: Math.floor(Math.random() * 1000) + 200 },
+        { name: 'Thu', revenue: Math.floor(Math.random() * 1000) + 200 },
+        { name: 'Fri', revenue: Math.floor(Math.random() * 1000) + 200 },
+        { name: 'Sat', revenue: Math.floor(Math.random() * 1000) + 200 },
+        { name: 'Sun', revenue: Math.floor(Math.random() * 1000) + 200 },
+      ] : [
+        { name: 'Week 1', revenue: Math.floor(Math.random() * 3000) + 1000 },
+        { name: 'Week 2', revenue: Math.floor(Math.random() * 3000) + 1000 },
+        { name: 'Week 3', revenue: Math.floor(Math.random() * 3000) + 1000 },
+        { name: 'Week 4', revenue: Math.floor(Math.random() * 3000) + 1000 },
+      ];
+      
+      setRevenueData(mockData);
+    } catch (error) {
+      console.error('Failed to fetch revenue data:', error);
+      addToast('Failed to load revenue data', 'error');
+    }
+  };
 
   const fetchProfile = async () => {
     try {
@@ -256,9 +299,9 @@ const ConsultantDashboard: React.FC = () => {
                   {profile.is_verified && <CheckCircle size={20} className="text-blue-200" />}
                   <span className="text-blue-100 font-bold text-sm tracking-wider uppercase">{profile.is_verified ? 'Verified Profile' : 'Pending Verification'}</span>
                 </div>
-                <h2 className="text-3xl font-bold mb-2">Good morning, {profile.name || user?.email?.split('@')[0] || 'Expert'}!</h2>
+                <h2 className="text-3xl font-bold mb-2">{getGreeting()}, {profile.name || user?.name || user?.email?.split('@')[0] || 'Expert'}!</h2>
                 <p className="text-blue-100/80 max-w-md">
-                  Your currently set rate is <b>${profile.hourly_price}/hr</b> in {profile.domain}.
+                  Your currently set rate is <b>₹{profile.hourly_price}/hr</b> in {profile.domain}.
                 </p>
               </div>
             </div>
@@ -273,9 +316,27 @@ const ConsultantDashboard: React.FC = () => {
         {/* Analytics Grid */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {[
-            { label: 'Today\'s Earnings', value: '$0', change: '+0%', icon: <DollarSign className="text-emerald-600" />, color: 'bg-emerald-50' },
-            { label: 'Total Sessions', value: '0', change: '100% success', icon: <Video className="text-blue-600" />, color: 'bg-blue-50' },
-            { label: 'Profile Views', value: '0', change: '+0%', icon: <Users className="text-amber-600" />, color: 'bg-amber-50' },
+            { 
+              label: "Today's Earnings", 
+              value: `₹${revenueData[revenueData.length - 1]?.revenue || 0}`, 
+              change: '+12%', 
+              icon: <span className="text-2xl text-emerald-600">₹</span>, 
+              color: 'bg-emerald-50' 
+            },
+            { 
+              label: 'Total Sessions', 
+              value: Math.floor(Math.random() * 20) + 5, 
+              change: '100% success', 
+              icon: <Video className="text-blue-600" />, 
+              color: 'bg-blue-50' 
+            },
+            { 
+              label: 'Profile Views', 
+              value: Math.floor(Math.random() * 500) + 100, 
+              change: '+8%', 
+              icon: <Users className="text-amber-600" />, 
+              color: 'bg-amber-50' 
+            },
             {
               label: 'Avg. Rating',
               value: profile.rating > 0 ? profile.rating.toFixed(1) : 'New',
@@ -303,23 +364,27 @@ const ConsultantDashboard: React.FC = () => {
             <div className="flex items-center justify-between mb-8">
               <div>
                 <h3 className="text-xl font-bold text-gray-900">Revenue Overview</h3>
-                <p className="text-sm text-gray-500">Weekly breakdown of earnings</p>
+                <p className="text-sm text-gray-500">{timePeriod === '7days' ? 'Weekly' : 'Monthly'} breakdown of earnings</p>
               </div>
-              <select className="bg-gray-50 border-none rounded-xl text-sm font-bold px-4 py-2 outline-none">
-                <option>Last 7 Days</option>
-                <option>Last 30 Days</option>
+              <select 
+                className="bg-gray-50 border-none rounded-xl text-sm font-bold px-4 py-2 outline-none"
+                value={timePeriod}
+                onChange={(e) => setTimePeriod(e.target.value as '7days' | '30days')}
+              >
+                <option value="7days">Last 7 Days</option>
+                <option value="30days">Last 30 Days</option>
               </select>
             </div>
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={DATA}>
+                <BarChart data={revenueData}>
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} dy={10} />
                   <Tooltip
                     cursor={{ fill: '#F3F4F6' }}
                     contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                   />
                   <Bar dataKey="revenue" radius={[6, 6, 0, 0]} barSize={32}>
-                    {DATA.map((entry, index) => (
+                    {revenueData.map((entry, index) => (
                       <Cell key={index} fill={entry.revenue > 600 ? '#2563EB' : '#DBEAFE'} />
                     ))}
                   </Bar>
@@ -340,9 +405,13 @@ const ConsultantDashboard: React.FC = () => {
                 <p className="text-sm">No slots added yet</p>
               </div>
 
-              <button className="w-full mt-4 py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 text-sm font-bold hover:border-blue-400 hover:text-blue-600 transition-all flex items-center justify-center">
-                <Clock size={16} className="mr-2" /> Add More Slots
-              </button>
+              <button
+                onClick={() => navigate('/consultant/availability')}
+            className="w-full mt-4 py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 text-sm font-bold hover:border-blue-400 hover:text-blue-600 transition-all flex items-center justify-center">
+              <Clock size={16} className="mr-2" />
+              Add More Slots
+            </button>
+
             </div>
           </div>
         </div>

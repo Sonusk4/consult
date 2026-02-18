@@ -1,4 +1,3 @@
-
 import React, { useState, createContext, useContext, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { UserRole, User } from './types';
@@ -18,6 +17,7 @@ import WalletPage from './pages/WalletPage';
 import MessagesPage from './pages/MessagesPage';
 import AvailabilityPage from './pages/AvailabilityPage';
 import EarningsPage from './pages/EarningsPage';
+import ReviewsPage from './pages/ReviewsPage';
 
 interface AuthContextType {
   user: User | null;
@@ -36,14 +36,14 @@ export const useAuth = () => {
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true); // start true for restore phase
 
+  // ---------------- LOGIN ----------------
   const login = async (email: string, role?: UserRole) => {
     setLoading(true);
     try {
       const userData = await auth.login(email, role);
       setUser(userData);
-      // Persist to local storage for dev convenience
       localStorage.setItem('user', JSON.stringify(userData));
       return userData;
     } catch (error) {
@@ -54,85 +54,123 @@ const App: React.FC = () => {
     }
   };
 
+  // ---------------- LOGOUT ----------------
   const logout = () => {
     setUser(null);
     localStorage.removeItem('user');
   };
 
+  // ---------------- RESTORE USER ON REFRESH ----------------
   useEffect(() => {
-    // Check for persisted user
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
+    } catch (error) {
+      console.error("Error restoring user:", error);
+      localStorage.removeItem('user');
+    } finally {
+      setLoading(false); // allow routes to render
     }
   }, []);
+
+  // ---------------- ROLE CHECKS ----------------
+  const isUser = user?.role === UserRole.USER;
+
+  const isConsultant =
+    user?.role === UserRole.CONSULTANT ||
+    user?.role === UserRole.ENTERPRISE_ADMIN;
+
+  // ---------------- LOADING SCREEN ----------------
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Restoring session...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ToastProvider>
       <AuthContext.Provider value={{ user, login, logout, loading }}>
         <Router>
           <Routes>
+
+            {/* Public Routes */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/auth" element={<Navigate to="/login" />} />
             <Route path="/login" element={<AuthPage type="LOGIN" />} />
             <Route path="/signup" element={<AuthPage type="SIGNUP" />} />
 
-            {/* User Routes */}
+            {/* ---------------- USER ROUTES ---------------- */}
             <Route
               path="/user/dashboard"
-              element={user?.role === UserRole.USER ? <UserDashboard /> : <Navigate to="/auth" />}
+              element={isUser ? <UserDashboard /> : <Navigate to="/auth" />}
             />
             <Route
               path="/user/search"
-              element={user?.role === UserRole.USER ? <SearchPage /> : <Navigate to="/auth" />}
+              element={isUser ? <SearchPage /> : <Navigate to="/auth" />}
             />
             <Route
               path="/user/bookings"
-              element={user?.role === UserRole.USER ? <BookingsPage /> : <Navigate to="/auth" />}
+              element={isUser ? <BookingsPage /> : <Navigate to="/auth" />}
             />
             <Route
               path="/user/credits"
-              element={user?.role === UserRole.USER ? <CreditsPage /> : <Navigate to="/auth" />}
+              element={isUser ? <CreditsPage /> : <Navigate to="/auth" />}
             />
             <Route
               path="/user/wallet"
-              element={user?.role === UserRole.USER ? <WalletPage /> : <Navigate to="/auth" />}
+              element={isUser ? <WalletPage /> : <Navigate to="/auth" />}
             />
             <Route
               path="/user/messages"
-              element={user?.role === UserRole.USER ? <MessagesPage /> : <Navigate to="/auth" />}
+              element={isUser ? <MessagesPage /> : <Navigate to="/auth" />}
             />
 
-            {/* Consultant Routes */}
+            {/* ---------------- CONSULTANT ROUTES ---------------- */}
             <Route
               path="/consultant/dashboard"
-              element={(user?.role === UserRole.CONSULTANT || user?.role === UserRole.ENTERPRISE_ADMIN) ? <ConsultantDashboard /> : <Navigate to="/auth" />}
+              element={isConsultant ? <ConsultantDashboard /> : <Navigate to="/auth" />}
+            />
+            <Route
+              path="/consultant/bookings"
+              element={isConsultant ? <BookingsPage /> : <Navigate to="/auth" />}
+            />
+            <Route
+              path="/consultant/messages"
+              element={isConsultant ? <MessagesPage /> : <Navigate to="/auth" />}
             />
             <Route
               path="/consultant/slots"
-              element={user ? <AvailabilityPage /> : <Navigate to="/auth" />}
+              element={isConsultant ? <AvailabilityPage /> : <Navigate to="/auth" />}
             />
             <Route
               path="/consultant/earnings"
-              element={user ? <EarningsPage /> : <Navigate to="/auth" />}
+              element={isConsultant ? <EarningsPage /> : <Navigate to="/auth" />}
             />
             <Route
               path="/consultant/reviews"
-              element={user ? <EarningsPage /> : <Navigate to="/auth" />}
+              element={isConsultant ? <ReviewsPage /> : <Navigate to="/auth" />}
             />
             <Route
               path="/consultant/profile"
-              element={user ? <ProfilePage /> : <Navigate to="/auth" />}
+              element={isConsultant ? <ProfilePage /> : <Navigate to="/auth" />}
             />
 
-            {/* Shared Routes */}
+            {/* Shared Route */}
             <Route
               path="/profile"
               element={user ? <ProfilePage /> : <Navigate to="/auth" />}
             />
 
-            {/* Catch all */}
+            {/* Fallback */}
             <Route path="*" element={<Navigate to="/" />} />
+
           </Routes>
         </Router>
       </AuthContext.Provider>

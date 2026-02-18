@@ -124,3 +124,14 @@ model CreditPackage {
   is_active   Boolean @default(true)
   created_at  DateTime @default(now())
 }
+
+model Slot {
+  id           String   @id @default(uuid())
+  consultantId String
+  date         DateTime
+  startTime    String
+  endTime      String
+  createdAt    DateTime @default(now())
+
+  consultant   User     @relation(fields: [consultantId], references: [id])
+}
