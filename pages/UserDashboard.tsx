@@ -1,36 +1,117 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
-import { MOCK_USER, MOCK_SESSIONS, TOP_CONSULTANTS } from '../constants';
-import { SessionStatus } from '../types';
-import { Video, Calendar, CreditCard, ChevronRight, Play, Star, Plus } from 'lucide-react';
+import { bookings as bookingsApi, users } from '../services/api';
+import { MOCK_USER, TOP_CONSULTANTS } from '../constants';
+import { SessionStatus, Booking } from '../types';
+import { Video, Calendar, CreditCard, ChevronRight, Play, Star, Plus, Loader, Camera, User as UserIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useToast } from '../context/ToastContext';
+import { useAuth } from '../App';
 
 const UserDashboard: React.FC = () => {
-  const liveSession = MOCK_SESSIONS.find(s => s.status === SessionStatus.LIVE);
-  const upcomingSessions = MOCK_SESSIONS.filter(s => s.status === SessionStatus.UPCOMING);
+  const { user } = useAuth();
+  const [sessions, setSessions] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    fetchBookings();
+  }, []);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      console.log('Selected file:', file);
+      setUploadingImage(true);
+      try {
+        console.log('Starting upload for file:', file.name);
+        const result = await users.uploadProfilePic(file);
+        console.log('Upload result:', result);
+        
+        // Update user in local storage with new avatar
+        const updatedUser = { ...user, avatar: result.avatar };
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        
+        addToast("Profile picture updated!", 'success');
+        // Force re-render by updating user state if needed
+        window.location.reload();
+      } catch (err: any) {
+        console.error('Upload error:', err);
+        addToast("Failed to update profile picture", 'error');
+      } finally {
+        setUploadingImage(false);
+      }
+    }
+  };
+
+  const fetchBookings = async () => {
+    try {
+      const data = await bookingsApi.getAll();
+      setSessions(data);
+    } catch (err) {
+      console.error("Failed to load bookings", err);
+      // addToast("Failed to load bookings", 'error'); 
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const liveSession = sessions.find(s => s.status === 'LIVE'); // Adjust status string as per backend
+  // Assuming 'CONFIRMED' or 'PENDING' are upcoming. Backend uses 'CONFIRMED' by default.
+  const upcomingSessions = sessions.filter(s => s.status === 'CONFIRMED' || s.status === 'PENDING').slice(0, 3); // Limit to 3 for view
+
+  if (loading) {
+    return (
+      <Layout title="Dashboard">
+        <div className="flex justify-center items-center h-screen">
+          <Loader className="animate-spin text-blue-600" size={40} />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title="Dashboard">
       <div className="max-w-6xl mx-auto space-y-8">
         {/* Welcome Section */}
         <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm flex flex-col md:flex-row items-center justify-between">
-          <div className="mb-6 md:mb-0">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {MOCK_USER.name}! 👋</h2>
-            <p className="text-gray-500">You have {upcomingSessions.length} sessions scheduled for this week.</p>
-            <div className="mt-6 flex items-center space-x-4">
-              <div className="bg-blue-50 px-4 py-2 rounded-2xl flex items-center space-x-2">
-                <CreditCard className="text-blue-600" size={18} />
-                <span className="font-bold text-blue-900">{MOCK_USER.credits} Credits</span>
+          <div className="mb-6 md:mb-0 flex items-center space-x-6">
+            {/* Profile Picture with Upload */}
+            <div className="relative group shrink-0">
+              <div className="w-20 h-20 rounded-2xl bg-gray-100 border-4 border-white shadow-lg overflow-hidden">
+                {user?.avatar ? (
+                  <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-400">
+                    <UserIcon size={32} />
+                  </div>
+                )}
               </div>
-              <button className="text-blue-600 font-bold text-sm hover:underline flex items-center">
-                Buy More Credits <Plus size={16} className="ml-1" />
-              </button>
+              <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
+                {uploadingImage ? <Loader className="text-white animate-spin" /> : <Camera className="text-white" />}
+                <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={uploadingImage} />
+              </label>
+            </div>
+            
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {user?.email?.split('@')[0]}! 👋</h2>
+              <p className="text-gray-500">You have {upcomingSessions.length} sessions scheduled.</p>
+              <div className="mt-6 flex items-center space-x-4">
+                <div className="bg-blue-50 px-4 py-2 rounded-2xl flex items-center space-x-2">
+                  <CreditCard className="text-blue-600" size={18} />
+                  <span className="font-bold text-blue-900">{MOCK_USER.credits} Credits</span>
+                </div>
+                <button className="text-blue-600 font-bold text-sm hover:underline flex items-center">
+                  Buy More Credits <Plus size={16} className="ml-1" />
+                </button>
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-gray-50 p-6 rounded-2xl text-center">
-              <p className="text-2xl font-bold text-gray-900">12</p>
+              <p className="text-2xl font-bold text-gray-900">{sessions.length}</p>
               <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Total Sessions</p>
             </div>
             <div className="bg-gray-50 p-6 rounded-2xl text-center">
@@ -52,9 +133,9 @@ const UserDashboard: React.FC = () => {
                   <div>
                     <div className="flex items-center space-x-2 mb-1">
                       <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">Live Now</span>
-                      <h3 className="font-bold text-gray-900">Session with {liveSession.partnerName}</h3>
+                      <h3 className="font-bold text-gray-900">Session with {liveSession.consultant?.user?.email}</h3>
                     </div>
-                    <p className="text-sm text-red-600 font-medium">{liveSession.domain} • 45 mins remaining</p>
+                    <p className="text-sm text-red-600 font-medium">{liveSession.consultant?.domain} • Ongoing</p>
                   </div>
                 </div>
                 <button className="bg-red-500 text-white px-8 py-3 rounded-xl font-bold hover:bg-red-600 transition-all flex items-center">
@@ -77,8 +158,8 @@ const UserDashboard: React.FC = () => {
                         <Calendar size={20} />
                       </div>
                       <div>
-                        <p className="font-bold text-gray-900">{session.partnerName}</p>
-                        <p className="text-xs text-gray-500">{session.startTime} • {session.type} Call</p>
+                        <p className="font-bold text-gray-900">Consultant #{session.consultantId}</p>
+                        <p className="text-xs text-gray-500">{new Date(session.date).toLocaleDateString()} {session.time_slot} • {session.status}</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">

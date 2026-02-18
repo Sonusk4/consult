@@ -16,14 +16,41 @@ api.interceptors.response.use(
     (error) => {
         // Handle specific error cases here, e.g., 401 Unauthorized
         // We can dispatch actions or show notifications
-        console.error('API Error:', error.response?.data?.error || error.message);
+        const message = error.response?.data?.error || error.message || 'An unexpected error occurred';
+        console.error('API Error:', message);
+
+        // Dispatch toast event
+        const event = new CustomEvent('toast', { detail: { message, type: 'error' } });
+        window.dispatchEvent(event);
+
+        return Promise.reject(error);
+    }
+);
+
+// Add a request interceptor to inject user email in dev mode
+api.interceptors.request.use(
+    (config) => {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+            try {
+                const user = JSON.parse(userStr);
+                if (user.email) {
+                    config.headers['x-user-email'] = user.email;
+                }
+            } catch (e) {
+                console.error("Failed to parse user from local storage", e);
+            }
+        }
+        return config;
+    },
+    (error) => {
         return Promise.reject(error);
     }
 );
 
 export const auth = {
     // Login or Register (Dev Flow)
-    login: async (email: string, role: string, phone?: string) => {
+    login: async (email: string, role?: string, phone?: string) => {
         const response = await api.post('/auth/me', { email, role, phone });
         return response.data;
     },
@@ -85,11 +112,73 @@ export const consultants = {
     uploadProfilePic: async (file: File) => {
         const formData = new FormData();
         formData.append('file', file);
-        const response = await api.post('/consultant/upload-profile-pic', formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data',
-            },
+        
+        // Create a separate axios instance for file upload without Content-Type header
+        // Let the browser set the correct multipart/form-data boundary
+        const uploadApi = axios.create({
+            baseURL: '/',
         });
+        
+        // Add the same request interceptor
+        uploadApi.interceptors.request.use(
+            (config) => {
+                const userStr = localStorage.getItem('user');
+                if (userStr) {
+                    try {
+                        const user = JSON.parse(userStr);
+                        if (user.email) {
+                            config.headers['x-user-email'] = user.email;
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse user from local storage", e);
+                    }
+                }
+                return config;
+            },
+            (error) => {
+                return Promise.reject(error);
+            }
+        );
+        
+        const response = await uploadApi.post('/consultant/upload-profile-pic', formData);
+        return response.data;
+    }
+};
+
+export const users = {
+    // Upload profile picture
+    uploadProfilePic: async (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // Create a separate axios instance for file upload without Content-Type header
+        // Let browser set the correct multipart/form-data boundary
+        const uploadApi = axios.create({
+            baseURL: '/',
+        });
+        
+        // Add the same request interceptor
+        uploadApi.interceptors.request.use(
+            (config) => {
+                const userStr = localStorage.getItem('user');
+                if (userStr) {
+                    try {
+                        const user = JSON.parse(userStr);
+                        if (user.email) {
+                            config.headers['x-user-email'] = user.email;
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse user from local storage", e);
+                    }
+                }
+                return config;
+            },
+            (error) => {
+                return Promise.reject(error);
+            }
+        );
+        
+        const response = await uploadApi.post('/user/upload-profile-pic', formData);
         return response.data;
     }
 };

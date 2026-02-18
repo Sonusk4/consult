@@ -15,32 +15,33 @@ export enum SessionStatus {
 }
 
 export interface User {
-  id: string; // Prisma uses Int usually but let's check. Schema implies Int often but let's stick to string if unsure or handle both
+  id: string; // Keeping as string for frontend compatibility, backend handles Int conversion
   email: string;
   role: UserRole;
   firebase_uid?: string;
-  phone?: string;
+  phone?: string | null;
   is_verified?: boolean;
-  avatar?: string; // Derived from consultant profile if needed
+  avatar?: string;
 }
 
 export interface Consultant {
   id: number;
   userId: number;
-  type: string;
-  domain: string;
+  type: string | null;
+  domain: string | null;
   bio: string | null;
   languages: string | null;
-  hourly_price: number;
+  hourly_price: number | null;
   is_verified: boolean;
-  profile_pic?: string;
+  profile_pic?: string | null;
+  rating: number;
+  total_reviews: number;
   user?: {
     email: string;
   };
-  // UI helper props
-  name?: string; // Often derived from user email or profile
-  rating?: number; // Not yet in backend
-  image?: string; // Mapped from profile_pic
+  // UI helper props (can be derived)
+  name?: string;
+  image?: string;
 }
 
 export interface Booking {

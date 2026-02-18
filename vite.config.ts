@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
           '/auth': 'http://localhost:5000',
           '/consultant': 'http://localhost:5000',
           '/consultants': 'http://localhost:5000',
+          '/user': 'http://localhost:5000',
           '/bookings': 'http://localhost:5000',
         },
       },

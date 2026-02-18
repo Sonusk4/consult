@@ -82,6 +82,7 @@ export const TOP_CONSULTANTS: Consultant[] = [
     profile_pic: 'https://picsum.photos/seed/robert/300',
     is_verified: true,
     languages: 'English, French',
+    total_reviews: 127,
     user: { email: 'robert@example.com' }
   },
   {
@@ -97,6 +98,7 @@ export const TOP_CONSULTANTS: Consultant[] = [
     profile_pic: 'https://picsum.photos/seed/annette/300',
     is_verified: true,
     languages: 'English, Spanish',
+    total_reviews: 89,
     user: { email: 'annette@example.com' }
   },
   {
@@ -112,6 +114,7 @@ export const TOP_CONSULTANTS: Consultant[] = [
     profile_pic: 'https://picsum.photos/seed/jane/300',
     is_verified: true,
     languages: 'English',
+    total_reviews: 156,
     user: { email: 'jane@example.com' }
   }
 ];
@@ -126,6 +129,8 @@ export const SIDEBAR_LINKS = {
   ],
   [UserRole.CONSULTANT]: [
     { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/consultant/dashboard' },
+    { label: 'My Bookings', icon: <Calendar size={20} />, path: '/user/bookings' },
+    { label: 'Messages', icon: <MessageSquare size={20} />, path: '/user/messages' },
     { label: 'Availability', icon: <Calendar size={20} />, path: '/consultant/slots' },
     { label: 'Earnings', icon: <TrendingUp size={20} />, path: '/consultant/earnings' },
     { label: 'Profile', icon: <Briefcase size={20} />, path: '/consultant/profile' },

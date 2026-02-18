@@ -16,6 +16,7 @@ model User {
   is_verified  Boolean  @default(false) // Email verification status
   otp_code     String?  // Current OTP code
   otp_expiry   DateTime? // OTP expiration time
+  avatar       String?  // Cloudinary image URL for profile picture
   created_at   DateTime @default(now())
   consultant   Consultant?
   bookings     Booking[]

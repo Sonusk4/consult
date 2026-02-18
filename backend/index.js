@@ -92,12 +92,19 @@ app.post("/auth/me", verifyFirebaseToken, async (req, res) => {
 
     if (user) {
       // If they exist, update their Firebase UID to the current one
+      const dataToUpdate = {
+        firebase_uid: req.user.firebase_uid,
+        phone: phone || undefined
+      };
+
+      // Only update role if explicitly provided (e.g. during Signup/Upgrade)
+      if (role) {
+        dataToUpdate.role = role;
+      }
+
       user = await prisma.user.update({
         where: { email: req.user.email },
-        data: {
-          firebase_uid: req.user.firebase_uid,
-          phone: phone || undefined
-        },
+        data: dataToUpdate,
       });
     } else {
       // If they don't exist at all, create them
@@ -453,6 +460,58 @@ app.post('/consultant/upload-profile-pic', verifyFirebaseToken, upload.single('f
       message: 'Profile picture uploaded successfully',
       profile_pic: imageUrl,
       consultant: updatedConsultant
+    });
+  } catch (error) {
+    console.error('Upload Error:', error.message);
+    res.status(500).json({ error: 'Failed to upload profile picture: ' + error.message });
+  }
+});
+
+/**
+ * POST /user/upload-profile-pic
+ * Upload user profile picture to Cloudinary
+ */
+app.post('/user/upload-profile-pic', verifyFirebaseToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    // Upload to Cloudinary
+    const uploadPromise = new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { folder: 'consultancy-platform/user-profile-pics' },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      uploadStream.end(req.file.buffer);
+    });
+
+    const uploadResult = await uploadPromise;
+    const imageUrl = uploadResult.secure_url;
+
+    // Get user
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update user with new profile picture
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: { avatar: imageUrl }
+    });
+
+    console.log(`✓ User profile picture uploaded for ${user.email}`);
+    res.status(200).json({
+      message: 'Profile picture uploaded successfully',
+      avatar: imageUrl,
+      user: updatedUser
     });
   } catch (error) {
     console.error('Upload Error:', error.message);

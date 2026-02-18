@@ -8,17 +8,26 @@ import { auth } from '../services/api';
 
 type AuthStep = 'ROLE' | 'EMAIL' | 'OTP' | 'PASSWORD';
 
-const AuthPage: React.FC = () => {
-  const [step, setStep] = useState<AuthStep>('ROLE');
+interface AuthPageProps {
+  type: 'LOGIN' | 'SIGNUP';
+}
+
+const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
+  const [step, setStep] = useState<AuthStep>(type === 'LOGIN' ? 'EMAIL' : 'ROLE');
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.USER);
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  // Password removed as backend uses OTP/Firebase
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  // Reset step if type changes
+  React.useEffect(() => {
+    setStep(type === 'LOGIN' ? 'EMAIL' : 'ROLE');
+    setError('');
+  }, [type]);
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
@@ -60,11 +69,12 @@ const AuthPage: React.FC = () => {
       await auth.verifyOtp(email, otpString);
 
       // If verification successful, login (create/update user)
-      await login(email, selectedRole);
+      // Only send role if SIGNUP. If LOGIN, send undefined to preserve existing role.
+      const user = await login(email, type === 'SIGNUP' ? selectedRole : undefined);
 
-      // Redirect based on role
-      if (selectedRole === UserRole.USER) navigate('/user/dashboard');
-      else if (selectedRole === UserRole.CONSULTANT || selectedRole === UserRole.ENTERPRISE_ADMIN) navigate('/consultant/dashboard');
+      // Redirect based on ACTUAL role from backend
+      if (user.role === UserRole.USER) navigate('/user/dashboard');
+      else if (user.role === UserRole.CONSULTANT || user.role === UserRole.ENTERPRISE_ADMIN) navigate('/consultant/dashboard');
       else navigate('/');
 
     } catch (err: any) {
@@ -73,8 +83,6 @@ const AuthPage: React.FC = () => {
       setIsLoading(false);
     }
   };
-
-  // Password step removed
 
   const updateOtp = (index: number, value: string) => {
     if (isNaN(Number(value))) return;
@@ -90,9 +98,9 @@ const AuthPage: React.FC = () => {
 
   const stepPercentage = {
     'ROLE': 33,
-    'EMAIL': 66,
+    'EMAIL': type === 'LOGIN' ? 50 : 66,
     'OTP': 100,
-    'PASSWORD': 100 // Legacy
+    'PASSWORD': 100
   }[step];
 
   return (
@@ -104,9 +112,7 @@ const AuthPage: React.FC = () => {
           <div className="absolute top-0 left-0 h-1.5 bg-blue-400 transition-all duration-700" style={{ width: `${stepPercentage}%` }}></div>
           <h2 className="text-3xl font-black mb-1">ConsultaPro</h2>
           <p className="text-blue-100 font-medium text-sm">
-            {step === 'ROLE' && "Join our global community"}
-            {step === 'EMAIL' && "Let's verify your email"}
-            {step === 'OTP' && "Check your inbox"}
+            {type === 'LOGIN' ? "Welcome back!" : "Join our global community"}
           </p>
         </div>
 
@@ -135,12 +141,16 @@ const AuthPage: React.FC = () => {
                 subtitle="Managing teams and large-scale operations"
                 onClick={() => handleRoleSelect(UserRole.ENTERPRISE_ADMIN)}
               />
+
+              <div className="pt-4 text-center">
+                <p className="text-sm text-gray-500">Already have an account? <button onClick={() => navigate('/login')} className="text-blue-600 font-bold hover:underline">Login here</button></p>
+              </div>
             </div>
           ) : step === 'EMAIL' ? (
             <form onSubmit={handleEmailSubmit} className="space-y-6">
-              <BackButton onClick={() => setStep('ROLE')} />
+              {type === 'SIGNUP' && <BackButton onClick={() => setStep('ROLE')} />}
               <div>
-                <h3 className="text-xl font-bold text-gray-800 mb-2">Registration</h3>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">{type === 'LOGIN' ? 'Login' : 'Registration'}</h3>
                 <p className="text-gray-500 text-sm leading-relaxed">Enter your professional email to receive a verification code.</p>
               </div>
 
@@ -165,6 +175,12 @@ const AuthPage: React.FC = () => {
                   {isLoading ? "Sending..." : <>Send Verification Code <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" size={20} /></>}
                 </button>
               </div>
+
+              {type === 'LOGIN' && (
+                <div className="pt-2 text-center">
+                  <p className="text-sm text-gray-500">New here? <button type="button" onClick={() => navigate('/signup')} className="text-blue-600 font-bold hover:underline">Create an account</button></p>
+                </div>
+              )}
             </form>
           ) : step === 'OTP' ? (
             <div className="space-y-6">

@@ -4,6 +4,9 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Star, CheckCircle, Video, Globe, Users } from 'lucide-react';
 import { TOP_CONSULTANTS } from '../constants';
 
+// Force cache refresh
+console.log('LandingPage loaded at:', new Date().toISOString());
+
 const LandingPage: React.FC = () => {
   return (
     <div className="bg-white">
@@ -17,7 +20,7 @@ const LandingPage: React.FC = () => {
         </div>
         <div className="flex items-center space-x-4">
           <Link to="/auth" className="text-gray-600 font-medium px-4 py-2 hover:text-blue-600">Login</Link>
-          <Link to="/auth" className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-full hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
+          <Link to="/signup" className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-full hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
             Get Started
           </Link>
         </div>
@@ -37,10 +40,10 @@ const LandingPage: React.FC = () => {
             Whether it's legal advice, tech strategy, or business growth, find verified consultants ready to help you succeed.
           </p>
           <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-            <Link to="/auth" className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all flex items-center justify-center">
+            <Link to="/signup" className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all flex items-center justify-center">
               Find Consultants <ArrowRight className="ml-2" size={20} />
             </Link>
-            <Link to="/auth" className="border-2 border-gray-200 text-gray-700 px-8 py-4 rounded-xl font-bold text-lg hover:border-blue-600 hover:text-blue-600 transition-all flex items-center justify-center">
+            <Link to="/signup" className="border-2 border-gray-200 text-gray-700 px-8 py-4 rounded-xl font-bold text-lg hover:border-blue-600 hover:text-blue-600 transition-all flex items-center justify-center">
               Become a Consultant
             </Link>
           </div>
@@ -80,7 +83,7 @@ const LandingPage: React.FC = () => {
               <h2 className="text-3xl font-bold text-gray-900 mb-4">Meet our Top Consultants</h2>
               <p className="text-gray-600 max-w-md">Vetted professionals from diverse industries ready to provide high-impact advice.</p>
             </div>
-            <Link to="/auth" className="text-blue-600 font-bold flex items-center mt-4 md:mt-0 hover:underline">
+            <Link to="/signup" className="text-blue-600 font-bold flex items-center mt-4 md:mt-0 hover:underline">
               View all 200+ consultants <ArrowRight className="ml-1" size={18} />
             </Link>
           </div>
@@ -105,7 +108,7 @@ const LandingPage: React.FC = () => {
                     <span className="text-2xl font-bold text-gray-900">${c.hourly_price}</span>
                     <span className="text-gray-400 text-sm ml-1">/ session</span>
                   </div>
-                  <Link to="/auth" className="bg-gray-900 text-white px-6 py-2 rounded-xl font-bold group-hover:bg-blue-600 transition-all">Book Now</Link>
+                  <Link to="/signup" className="bg-gray-900 text-white px-6 py-2 rounded-xl font-bold group-hover:bg-blue-600 transition-all">Book Now</Link>
                 </div>
               </div>
             ))}

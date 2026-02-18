@@ -6,10 +6,11 @@ const verifyFirebaseToken = async (req, res, next) => {
     // For development, allow requests with or without token
     // Set a mock user if no token provided
     if (!req.user) {
-      const email = req.body?.email || 'test@example.com';
+      // Check for email in body (POST/PUT) or headers (GET/DELETE)
+      const email = req.body?.email || req.headers['x-user-email'] || 'test@example.com';
+      
       // Create a deterministic UID based on email for dev mode
-      // This prevents "Unique constraint failed" errors on email when upserting
-      const mockUid = `mock-uid-${email.replace(/[^a-zA-Z0-9]/g, '-')}`;
+      const mockUid = `mock-uid-${email.replace(/@/g, '-at-').replace(/\./g, '-dot-')}`;
 
       req.user = {
         firebase_uid: mockUid,

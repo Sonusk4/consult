@@ -3,9 +3,10 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { consultants as consultantsApi } from '../services/api';
 import { Consultant, SessionStatus } from '../types';
-import { MOCK_SESSIONS } from '../constants'; // Keep mock sessions for now as bookings API integration is complex
-import { TrendingUp, Users, Calendar, Clock, DollarSign, ArrowUpRight, CheckCircle, Video, Loader } from 'lucide-react';
+import { TrendingUp, Users, Calendar, Clock, DollarSign, ArrowUpRight, CheckCircle, Video, Loader, Save, Camera, Upload, User as UserIcon } from 'lucide-react';
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Cell } from 'recharts';
+import { useToast } from '../context/ToastContext';
+import { useAuth } from '../App';
 
 const DATA = [
   { name: 'Mon', revenue: 450 },
@@ -18,8 +19,22 @@ const DATA = [
 ];
 
 const ConsultantDashboard: React.FC = () => {
+  const { user } = useAuth();
   const [profile, setProfile] = useState<Consultant | null>(null);
   const [loading, setLoading] = useState(true);
+  const { addToast } = useToast();
+
+  // Onboarding State
+  const [onboardingData, setOnboardingData] = useState({
+    domain: '',
+    hourly_price: '',
+    bio: '',
+    languages: ''
+  });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -29,10 +44,77 @@ const ConsultantDashboard: React.FC = () => {
     try {
       const data = await consultantsApi.getProfile();
       setProfile(data);
-    } catch (err) {
-      console.error("Failed to load profile", err);
+    } catch (err: any) {
+      if (err.response?.status !== 404) {
+        console.error("Failed to load profile", err);
+        addToast("Failed to load profile data", 'error');
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onboardingData.domain || !onboardingData.hourly_price) {
+      addToast("Domain and Hourly Price are required", 'error');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      console.log('Creating profile with data:', onboardingData);
+      // 1. Create Profile
+      await consultantsApi.register(onboardingData);
+      console.log('Profile created successfully');
+
+      // 2. Upload Image if selected
+      if (selectedFile) {
+        console.log('Uploading selected file:', selectedFile.name);
+        try {
+          await consultantsApi.uploadProfilePic(selectedFile);
+          console.log('Image uploaded successfully');
+        } catch (uploadErr) {
+          console.error("Failed to upload image during registration", uploadErr);
+          addToast("Profile created, but image upload failed", 'warning');
+        }
+      }
+
+      addToast("Profile created successfully!", 'success');
+      fetchProfile();
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      addToast(err.response?.data?.error || "Failed to create profile", 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleImageUpdate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      console.log('Selected file:', file);
+      setUploadingImage(true);
+      try {
+        console.log('Starting upload for file:', file.name);
+        const result = await consultantsApi.uploadProfilePic(file);
+        console.log('Upload result:', result);
+        addToast("Profile picture updated!", 'success');
+        fetchProfile(); // Refresh to get new URL
+      } catch (err: any) {
+        console.error('Upload error:', err);
+        addToast("Failed to update profile picture", 'error');
+      } finally {
+        setUploadingImage(false);
+      }
     }
   };
 
@@ -46,6 +128,104 @@ const ConsultantDashboard: React.FC = () => {
     );
   }
 
+  // Onboarding View
+  if (!profile) {
+    return (
+      <Layout title="Expert Registration">
+        <div className="max-w-2xl mx-auto py-12">
+          <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-xl">
+            <div className="text-center mb-8">
+              <div className="bg-blue-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-blue-600">
+                <Users size={32} />
+              </div>
+              <h2 className="text-3xl font-bold text-gray-900">Complete Your Expert Profile</h2>
+              <p className="text-gray-500 mt-2">Start earning by sharing your expertise with the world.</p>
+            </div>
+
+            <form onSubmit={handleRegister} className="space-y-6">
+
+              {/* Image Upload for Onboarding */}
+              <div className="flex flex-col items-center justify-center mb-6">
+                <div className="relative w-32 h-32 rounded-full bg-gray-100 border-4 border-white shadow-lg overflow-hidden group">
+                  {previewUrl ? (
+                    <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                      <UserIcon size={48} />
+                    </div>
+                  )}
+                  <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                    <Camera className="text-white" size={24} />
+                    <input type="file" className="hidden" accept="image/*" onChange={handleFileSelect} />
+                  </label>
+                </div>
+                <p className="text-sm text-gray-400 mt-2">Tap to upload photo</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Area of Expertise (Domain)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Legal, Medical, Tech, Career Coaching"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  value={onboardingData.domain}
+                  onChange={(e) => setOnboardingData({ ...onboardingData, domain: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Hourly Rate ($)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                  <input
+                    type="number"
+                    placeholder="100"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    value={onboardingData.hourly_price}
+                    onChange={(e) => setOnboardingData({ ...onboardingData, hourly_price: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Bio / Introduction</label>
+                <textarea
+                  rows={4}
+                  placeholder="Tell clients about your experience..."
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none"
+                  value={onboardingData.bio}
+                  onChange={(e) => setOnboardingData({ ...onboardingData, bio: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Languages Spoken</label>
+                <input
+                  type="text"
+                  placeholder="e.g. English, Spanish"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  value={onboardingData.languages}
+                  onChange={(e) => setOnboardingData({ ...onboardingData, languages: e.target.value })}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center justify-center disabled:opacity-50"
+              >
+                {submitting ? <Loader className="animate-spin mr-2" /> : <Save className="mr-2" size={20} />}
+                Create Profile
+              </button>
+            </form>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout title="Expert Portal">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -53,13 +233,34 @@ const ConsultantDashboard: React.FC = () => {
         {/* Status Banner */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 text-white relative overflow-hidden">
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between">
-            <div>
-              <div className="flex items-center space-x-2 mb-2">
-                {profile?.is_verified && <CheckCircle size={20} className="text-blue-200" />}
-                <span className="text-blue-100 font-bold text-sm tracking-wider uppercase">{profile?.is_verified ? 'Verified Profile' : 'Pending Verification'}</span>
+            <div className="flex items-center space-x-6">
+              {/* Profile Image with Edit Overlay */}
+              <div className="relative group shrink-0">
+                <div className="w-24 h-24 rounded-2xl bg-white/10 backdrop-blur-sm border-2 border-white/20 overflow-hidden shadow-xl">
+                  {profile.profile_pic ? (
+                    <img src={profile.profile_pic} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-white/50">
+                      <UserIcon size={40} />
+                    </div>
+                  )}
+                </div>
+                <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
+                  {uploadingImage ? <Loader className="text-white animate-spin" /> : <Camera className="text-white" />}
+                  <input type="file" className="hidden" accept="image/*" onChange={handleImageUpdate} disabled={uploadingImage} />
+                </label>
               </div>
-              <h2 className="text-3xl font-bold mb-2">Good morning, {profile?.name || 'Expert'}!</h2>
-              <p className="text-blue-100/80 max-w-md">You have 4 sessions today and a potential payout of $1,250 scheduled for Friday.</p>
+
+              <div>
+                <div className="flex items-center space-x-2 mb-2">
+                  {profile.is_verified && <CheckCircle size={20} className="text-blue-200" />}
+                  <span className="text-blue-100 font-bold text-sm tracking-wider uppercase">{profile.is_verified ? 'Verified Profile' : 'Pending Verification'}</span>
+                </div>
+                <h2 className="text-3xl font-bold mb-2">Good morning, {profile.name || user?.email?.split('@')[0] || 'Expert'}!</h2>
+                <p className="text-blue-100/80 max-w-md">
+                  Your currently set rate is <b>${profile.hourly_price}/hr</b> in {profile.domain}.
+                </p>
+              </div>
             </div>
             <div className="mt-6 md:mt-0 flex space-x-3">
               <button className="bg-white/10 backdrop-blur-md border border-white/20 px-6 py-3 rounded-xl font-bold hover:bg-white/20 transition-all">Go Live</button>
@@ -72,10 +273,16 @@ const ConsultantDashboard: React.FC = () => {
         {/* Analytics Grid */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {[
-            { label: 'Today\'s Earnings', value: '$840', change: '+12%', icon: <DollarSign className="text-emerald-600" />, color: 'bg-emerald-50' },
-            { label: 'Active Sessions', value: '14', change: '85% success', icon: <Video className="text-blue-600" />, color: 'bg-blue-50' },
-            { label: 'Profile Views', value: '1,204', change: '+24%', icon: <Users className="text-amber-600" />, color: 'bg-amber-50' },
-            { label: 'Avg. Rating', value: profile?.rating || 'New', change: 'Excellent', icon: <Clock className="text-purple-600" />, color: 'bg-purple-50' },
+            { label: 'Today\'s Earnings', value: '$0', change: '+0%', icon: <DollarSign className="text-emerald-600" />, color: 'bg-emerald-50' },
+            { label: 'Total Sessions', value: '0', change: '100% success', icon: <Video className="text-blue-600" />, color: 'bg-blue-50' },
+            { label: 'Profile Views', value: '0', change: '+0%', icon: <Users className="text-amber-600" />, color: 'bg-amber-50' },
+            {
+              label: 'Avg. Rating',
+              value: profile.rating > 0 ? profile.rating.toFixed(1) : 'New',
+              change: profile.total_reviews > 0 ? `${profile.total_reviews} reviews` : 'No reviews',
+              icon: <Clock className="text-purple-600" />,
+              color: 'bg-purple-50'
+            },
           ].map((stat, i) => (
             <div key={i} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
               <div className="flex items-center justify-between mb-4">
@@ -128,87 +335,15 @@ const ConsultantDashboard: React.FC = () => {
               <button className="p-2 hover:bg-gray-50 rounded-xl transition-all"><TrendingUp size={20} className="text-gray-400" /></button>
             </div>
             <div className="space-y-3">
-              {[
-                { time: '10:00 AM', status: 'Booked', client: 'Alex Johnson' },
-                { time: '11:30 AM', status: 'Available' },
-                { time: '02:00 PM', status: 'Live', client: 'Sarah Connor' },
-                { time: '04:00 PM', status: 'Blocked' },
-                { time: '05:30 PM', status: 'Booked', client: 'Mark Verdon' },
-              ].map((slot, i) => (
-                <div key={i} className={`p-4 rounded-2xl flex items-center justify-between border ${slot.status === 'Live' ? 'border-red-100 bg-red-50/50' : 'border-gray-50 bg-gray-50/30'}`}>
-                  <div className="flex items-center space-x-4">
-                    <div className="font-bold text-gray-900 text-sm">{slot.time}</div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter ${slot.status === 'Booked' ? 'bg-blue-100 text-blue-600' :
-                            slot.status === 'Available' ? 'bg-emerald-100 text-emerald-600' :
-                              slot.status === 'Live' ? 'bg-red-500 text-white animate-pulse' :
-                                'bg-gray-200 text-gray-500'
-                          }`}>
-                          {slot.status}
-                        </span>
-                        {slot.client && <span className="text-xs font-bold text-gray-600">{slot.client}</span>}
-                      </div>
-                    </div>
-                  </div>
-                  {slot.status === 'Available' && <button className="text-xs font-bold text-blue-600 hover:underline">Edit</button>}
-                </div>
-              ))}
+              <div className="p-8 text-center text-gray-400">
+                <Calendar size={32} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No slots added yet</p>
+              </div>
+
               <button className="w-full mt-4 py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 text-sm font-bold hover:border-blue-400 hover:text-blue-600 transition-all flex items-center justify-center">
                 <Clock size={16} className="mr-2" /> Add More Slots
               </button>
             </div>
-          </div>
-        </div>
-
-        {/* Bookings Table */}
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="p-6 border-b flex items-center justify-between">
-            <h3 className="text-xl font-bold text-gray-900">Recent Sessions</h3>
-            <div className="flex space-x-2">
-              <button className="px-4 py-2 bg-gray-50 rounded-xl text-sm font-bold text-gray-600">All</button>
-              <button className="px-4 py-2 hover:bg-gray-50 rounded-xl text-sm font-bold text-gray-400">Pending</button>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50 text-gray-400 uppercase text-[10px] font-black tracking-widest">
-                  <th className="px-6 py-4">Client</th>
-                  <th className="px-6 py-4">Type</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Earnings</th>
-                  <th className="px-6 py-4">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {MOCK_SESSIONS.map((s, i) => (
-                  <tr key={i} className="hover:bg-gray-50/50 transition-all">
-                    <td className="px-6 py-5">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center font-bold text-blue-600">
-                          {s.partnerName.split(' ')[0][0]}
-                        </div>
-                        <div className="font-bold text-gray-900">{s.partnerName}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-5 text-sm text-gray-500 font-medium">{s.type} Call</td>
-                    <td className="px-6 py-5">
-                      <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter ${s.status === SessionStatus.LIVE ? 'bg-red-100 text-red-600' :
-                          s.status === SessionStatus.UPCOMING ? 'bg-amber-100 text-amber-600' :
-                            'bg-gray-100 text-gray-500'
-                        }`}>
-                        {s.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-5 font-bold text-gray-900">${s.price}</td>
-                    <td className="px-6 py-5">
-                      <button className="text-blue-600 font-bold text-sm hover:underline">Details</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         </div>
       </div>
