@@ -1,19 +1,69 @@
 
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import { consultants as consultantsApi } from '../services/api';
+import { consultants as consultantsApi, bookings } from '../services/api';
 import { Consultant } from '../types';
-import { Search, Filter, Star, ShieldCheck, MapPin, Globe, Loader } from 'lucide-react';
+import { Search, Filter, Star, ShieldCheck, MapPin, Globe, Loader, Calendar, Clock, Wallet } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
+import api from '../services/api';
 
 const SearchPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [consultantsData, setConsultantsData] = useState<Consultant[]>([]);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const [bookingLoading, setBookingLoading] = useState<number | null>(null);
   const [error, setError] = useState('');
+  const { addToast } = useToast();
 
   useEffect(() => {
     fetchConsultants();
+    fetchWalletBalance();
   }, []);
+
+  const fetchWalletBalance = async () => {
+    try {
+      const response = await api.get('/wallet');
+      setWalletBalance(response.data.balance);
+    } catch (error) {
+      console.error('Error fetching wallet balance:', error);
+    }
+  };
+
+  const handleBookSession = async (consultantId: number, hourlyPrice: number) => {
+    if (walletBalance < hourlyPrice) {
+      addToast(`Insufficient balance. You need ₹${hourlyPrice} but have ₹${walletBalance}`, 'error');
+      return;
+    }
+
+    setBookingLoading(consultantId);
+    try {
+      // Get tomorrow's date at 10:00 AM for demo
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dateStr = tomorrow.toISOString().split('T')[0];
+      
+      const bookingData = {
+        consultant_id: consultantId,
+        date: dateStr,
+        time_slot: "10:00 AM"
+      };
+
+      const response = await api.post('/bookings/create', bookingData);
+      
+      if (response.data) {
+        addToast('Booking confirmed successfully!', 'success');
+        setWalletBalance(response.data.remaining_balance);
+      } else {
+        addToast(response.data.error || 'Failed to create booking', 'error');
+      }
+    } catch (error) {
+      console.error('Booking error:', error);
+      addToast('Failed to create booking', 'error');
+    } finally {
+      setBookingLoading(null);
+    }
+  };
 
   const fetchConsultants = async (domain?: string) => {
     setLoading(true);
@@ -47,6 +97,22 @@ const SearchPage: React.FC = () => {
   return (
     <Layout title="Find Experts">
       <div className="max-w-6xl mx-auto space-y-8">
+        {/* Wallet Balance Display */}
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Wallet size={24} />
+              <div>
+                <p className="text-sm opacity-90">Available Balance</p>
+                <p className="text-3xl font-bold">₹{walletBalance.toFixed(2)}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm opacity-90">Need more credits?</p>
+              <a href="/user/wallet" className="text-white underline font-bold">Add Credits →</a>
+            </div>
+          </div>
+        </div>
 
         {/* Search & Filter Header */}
         <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
@@ -155,12 +221,40 @@ const SearchPage: React.FC = () => {
 
                   <div className="flex items-center justify-between pt-6 border-t border-gray-50">
                     <div>
-                      <p className="text-2xl font-black text-gray-900">${c.hourly_price || c.hourly_price}</p>
+                      <p className="text-2xl font-black text-gray-900">₹{c.hourly_price || 0}</p>
                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Hourly Rate</p>
+                      {walletBalance < (c.hourly_price || 0) && (
+                        <p className="text-xs text-red-600 font-semibold mt-1">Insufficient balance</p>
+                      )}
                     </div>
-                    <button className="bg-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-600 transition-all shadow-lg hover:shadow-blue-200">
-                      View Profile
-                    </button>
+                    <div className="flex space-x-2">
+                      <button className="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all">
+                        View Profile
+                      </button>
+                      <button 
+                        onClick={() => handleBookSession(c.id, c.hourly_price || 0)}
+                        disabled={walletBalance < (c.hourly_price || 0) || bookingLoading === c.id}
+                        className={`px-4 py-3 rounded-xl font-bold transition-all flex items-center space-x-2 ${
+                          walletBalance < (c.hourly_price || 0) 
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                            : bookingLoading === c.id
+                            ? 'bg-gray-300 text-gray-500 cursor-wait'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                      >
+                        {bookingLoading === c.id ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            Booking...
+                          </>
+                        ) : (
+                          <>
+                            <Calendar size={16} />
+                            Book Now
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

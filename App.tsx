@@ -14,6 +14,7 @@ import SearchPage from './pages/SearchPage';
 import ProfilePage from './pages/ProfilePage';
 import BookingsPage from './pages/BookingsPage';
 import CreditsPage from './pages/CreditsPage';
+import WalletPage from './pages/WalletPage';
 import MessagesPage from './pages/MessagesPage';
 import AvailabilityPage from './pages/AvailabilityPage';
 import EarningsPage from './pages/EarningsPage';
@@ -92,6 +93,10 @@ const App: React.FC = () => {
             <Route
               path="/user/credits"
               element={user?.role === UserRole.USER ? <CreditsPage /> : <Navigate to="/auth" />}
+            />
+            <Route
+              path="/user/wallet"
+              element={user?.role === UserRole.USER ? <WalletPage /> : <Navigate to="/auth" />}
             />
             <Route
               path="/user/messages"

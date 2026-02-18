@@ -4,26 +4,56 @@ const admin = require("firebase-admin");
 const { PrismaClient } = require("@prisma/client");
 const { PrismaPg } = require("@prisma/adapter-pg");
 const { Pool } = require("pg");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
 const verifyFirebaseToken = require("./middleware/authMiddleware");
-require("dotenv").config();
+const Razorpay = require("razorpay");
+require("dotenv").config({ path: '../.env' });
 const http = require("http");
 const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
+
 /**
- * Nodemailer configuration for Email OTP
- * Using Gmail or your preferred email service
+ * Razorpay Configuration
  */
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER || "your-email@gmail.com",
-    pass: process.env.EMAIL_PASS || "your-app-password",
-  },
-});
+console.log('🔍 Checking Razorpay environment variables:');
+console.log('RAZORPAY_KEY_ID:', process.env.RAZORPAY_KEY_ID ? 'SET' : 'NOT SET');
+console.log('RAZORPAY_KEY_SECRET:', process.env.RAZORPAY_KEY_SECRET ? 'SET' : 'NOT SET');
+
+let razorpay;
+if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET && 
+    process.env.RAZORPAY_KEY_ID !== 'rzp_test_XXXXXXXXXXXXXXXXXXXXXXX') {
+  razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET
+  });
+  console.log('✅ Razorpay initialized successfully');
+} else {
+  console.log('⚠️ Razorpay credentials not configured. Using test mode.');
+}
+/**
+ * Resend configuration for Email OTP
+ */
+console.log('🔍 Checking environment variables:');
+console.log('RESEND_API_KEY:', process.env.RESEND_API_KEY ? 'SET' : 'NOT SET');
+console.log('EMAIL_FROM:', process.env.EMAIL_FROM ? 'SET' : 'NOT SET');
+
+let resend;
+if (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== 'your_resend_api_key') {
+  resend = new Resend(process.env.RESEND_API_KEY);
+  console.log('✅ Resend initialized successfully');
+} else {
+  console.log('⚠️ Resend API key not configured. Using test mode.');
+}
+
+// Check if email is configured
+const isEmailConfigured = process.env.RESEND_API_KEY && 
+                        process.env.EMAIL_FROM &&
+                        process.env.RESEND_API_KEY !== 'your_resend_api_key';
+
+console.log('📧 Email configured:', isEmailConfigured);
 
 /**
  * Cloudinary configuration for image uploads
@@ -177,24 +207,35 @@ app.post("/auth/send-otp", async (req, res) => {
 
     // Send OTP via email
     try {
-      console.log(
-        `📧 Attempting to send OTP to ${email} using ${process.env.EMAIL_USER}`
-      );
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: email,
-        subject: "🔐 Your Email Verification OTP - Consultation Platform",
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
-            <h2>Email Verification</h2>
-            <p>Your One-Time Password (OTP) is:</p>
-            <h1 style="color: #4CAF50; letter-spacing: 5px;">${otp}</h1>
-            <p style="color: #999;">This OTP will expire in 10 minutes.</p>
-            <p style="color: #999;">Do not share this code with anyone.</p>
-          </div>
-        `,
-      });
-      console.log(`✓ OTP email sent to ${email}. OTP: ${otp}`);
+      if (!isEmailConfigured) {
+        console.log('📧 Email not configured. OTP for testing:', otp);
+        console.log(`📝 For testing, use OTP: ${otp} for email: ${email}`);
+      } else {
+        console.log(`📧 Sending OTP to ${email} using Resend`);
+        const { data, error } = await resend.emails.send({
+          from: process.env.EMAIL_FROM,
+          to: [email],
+          subject: "🔐 Your Email Verification OTP - Consultation Platform",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+              <h2 style="color: #333; text-align: center;">Email Verification</h2>
+              <p style="color: #666;">Your One-Time Password (OTP) is:</p>
+              <h1 style="color: #4CAF50; letter-spacing: 5px; text-align: center; font-size: 32px; margin: 20px 0;">${otp}</h1>
+              <p style="color: #999; text-align: center;">This OTP will expire in 10 minutes.</p>
+              <p style="color: #999; text-align: center;">Do not share this code with anyone.</p>
+              <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+              <p style="color: #999; font-size: 12px; text-align: center;">This is an automated message from Consultation Platform.</p>
+            </div>
+          `,
+        });
+        
+        if (error) {
+          console.error('❌ Resend error:', error);
+          throw new Error(error.message);
+        }
+        
+        console.log(`✓ OTP email sent to ${email}. OTP: ${otp}`);
+      }
     } catch (emailError) {
       console.error(`❌ Email send failed:`, emailError.message);
       console.error(`❌ Full error:`, emailError);
@@ -562,30 +603,346 @@ app.get("/consultants", async (req, res) => {
 });
 
 /**
- * GET /consultants/:id
- * Get single consultant details
+ * GET /consultants/online
+ * Get list of online consultants
  */
-app.get("/consultants/:id", async (req, res) => {
+app.get("/consultants/online", async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const consultant = await prisma.consultant.findUnique({
-      where: { id: parseInt(id) },
+    const onlineConsultantIds = Array.from(onlineConsultants.keys());
+    
+    const consultants = await prisma.consultant.findMany({
+      where: {
+        id: { in: onlineConsultantIds }
+      },
       include: {
         user: {
           select: { email: true },
-        },
-      },
+        }
+      }
     });
 
-    if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
+    res.status(200).json(consultants);
+  } catch (error) {
+    console.error("Get Online Consultants Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch online consultants" });
+  }
+});
+
+/**
+ * GET /wallet
+ * Get user's wallet balance
+ */
+app.get("/wallet", verifyFirebaseToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+      include: { wallet: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
     }
 
-    res.status(200).json(consultant);
+    // Create wallet if it doesn't exist
+    let wallet = user.wallet;
+    if (!wallet) {
+      wallet = await prisma.wallet.create({
+        data: {
+          userId: user.id,
+          balance: 0
+        }
+      });
+    }
+
+    res.status(200).json({
+      balance: wallet.balance,
+      user_id: user.id
+    });
   } catch (error) {
-    console.error("Get Consultant Error:", error.message);
-    res.status(500).json({ error: "Failed to fetch consultant" });
+    console.error("Get Wallet Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch wallet balance" });
+  }
+});
+
+/**
+ * GET /credit-packages
+ * Get available credit packages
+ */
+app.get("/credit-packages", async (req, res) => {
+  try {
+    const packages = await prisma.creditPackage.findMany({
+      where: { is_active: true },
+      orderBy: { amount: 'asc' }
+    });
+
+    res.status(200).json(packages);
+  } catch (error) {
+    console.error("Get Credit Packages Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch credit packages" });
+  }
+});
+
+/**
+ * POST /payment/create-order
+ * Create Razorpay order for payment
+ */
+app.post("/payment/create-order", verifyFirebaseToken, async (req, res) => {
+  const { amount, package_id } = req.body;
+
+  console.log('🧪 Create Order Request:', { amount, package_id, user: req.user });
+
+  try {
+    if (!amount || amount <= 0) {
+      console.log('❌ Invalid amount:', amount);
+      return res.status(400).json({ error: "Invalid amount" });
+    }
+
+    if (!razorpay) {
+      console.log('❌ Razorpay not initialized');
+      return res.status(503).json({ error: "Payment service not configured" });
+    }
+
+    // Calculate bonus if package is specified
+    let bonusAmount = 0;
+    if (package_id) {
+      console.log('🔍 Looking up package:', package_id);
+      const creditPackage = await prisma.creditPackage.findUnique({
+        where: { id: parseInt(package_id) }
+      });
+      console.log('📦 Found package:', creditPackage);
+      if (creditPackage) {
+        bonusAmount = creditPackage.bonus || 0;
+      }
+    }
+
+    const totalAmount = amount + bonusAmount;
+    const amountInPaise = totalAmount * 100; // Convert to paise
+
+    console.log('💰 Creating order:', { totalAmount, amountInPaise });
+
+    // Create Razorpay order
+    const options = {
+      amount: amountInPaise,
+      currency: "INR",
+      receipt: `receipt_${Date.now()}`,
+      payment_capture: 1
+    };
+
+    console.log('📞 Calling Razorpay API...');
+    const order = await razorpay.orders.create(options);
+    console.log('✅ Razorpay order created:', order);
+
+    res.status(200).json({
+      order_id: order.id,
+      amount: totalAmount,
+      currency: "INR",
+      key_id: process.env.RAZORPAY_KEY_ID,
+      bonus: bonusAmount
+    });
+  } catch (error) {
+    console.error("❌ Create Order Error:", error.message);
+    console.error("❌ Full error:", error);
+    res.status(500).json({ error: "Failed to create payment order: " + error.message });
+  }
+});
+
+/**
+ * POST /payment/verify
+ * Verify Razorpay payment and add credits to wallet
+ */
+app.post("/payment/verify", verifyFirebaseToken, async (req, res) => {
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount, package_id } = req.body;
+
+  try {
+    if (!razorpay) {
+      return res.status(503).json({ error: "Payment service not configured" });
+    }
+
+    // Verify payment signature
+    const crypto = require('crypto');
+    const generated_signature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    if (generated_signature !== razorpay_signature) {
+      return res.status(400).json({ error: "Invalid payment signature" });
+    }
+
+    // Get user
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Create or get wallet
+    let wallet = await prisma.wallet.findUnique({
+      where: { userId: user.id }
+    });
+
+    if (!wallet) {
+      wallet = await prisma.wallet.create({
+        data: {
+          userId: user.id,
+          balance: 0
+        }
+      });
+    }
+
+    // Calculate bonus if package is specified
+    let bonusAmount = 0;
+    if (package_id) {
+      const creditPackage = await prisma.creditPackage.findUnique({
+        where: { id: parseInt(package_id) }
+      });
+      if (creditPackage) {
+        bonusAmount = creditPackage.bonus || 0;
+      }
+    }
+
+    const totalCredits = amount + bonusAmount;
+
+    // Update wallet balance
+    const updatedWallet = await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: {
+        balance: wallet.balance + totalCredits
+      }
+    });
+
+    // Create transaction record
+    await prisma.transaction.create({
+      data: {
+        userId: user.id,
+        type: "CREDIT",
+        amount: totalCredits,
+        description: `Added ₹${amount} credits${bonusAmount > 0 ? ` with ₹${bonusAmount} bonus` : ''} via Razorpay`,
+        payment_method: "CREDIT_CARD",
+        status: "SUCCESS"
+      }
+    });
+
+    console.log(`✓ Payment verified and ₹${totalCredits} credits added to user ${user.email}`);
+    res.status(200).json({
+      message: "Payment successful and credits added",
+      amount_added: totalCredits,
+      bonus: bonusAmount,
+      new_balance: updatedWallet.balance,
+      payment_id: razorpay_payment_id
+    });
+  } catch (error) {
+    console.error("Payment Verification Error:", error.message);
+    res.status(500).json({ error: "Failed to verify payment" });
+  }
+});
+
+/**
+ * POST /wallet/add-credits
+ * Add credits to user wallet (simulate payment)
+ */
+app.post("/wallet/add-credits", verifyFirebaseToken, async (req, res) => {
+  const { amount, package_id } = req.body;
+
+  try {
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: "Invalid amount" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Create or get wallet
+    let wallet = await prisma.wallet.findUnique({
+      where: { userId: user.id }
+    });
+
+    if (!wallet) {
+      wallet = await prisma.wallet.create({
+        data: {
+          userId: user.id,
+          balance: 0
+        }
+      });
+    }
+
+    // Calculate bonus if package is specified
+    let bonusAmount = 0;
+    if (package_id) {
+      const creditPackage = await prisma.creditPackage.findUnique({
+        where: { id: parseInt(package_id) }
+      });
+      if (creditPackage) {
+        bonusAmount = creditPackage.bonus || 0;
+      }
+    }
+
+    const totalCredits = amount + bonusAmount;
+
+    // Update wallet balance
+    const updatedWallet = await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: {
+        balance: wallet.balance + totalCredits
+      }
+    });
+
+    // Create transaction record
+    await prisma.transaction.create({
+      data: {
+        userId: user.id,
+        type: "CREDIT",
+        amount: totalCredits,
+        description: `Added ₹${amount} credits${bonusAmount > 0 ? ` with ₹${bonusAmount} bonus` : ''}`,
+        payment_method: "CREDIT_CARD",
+        status: "SUCCESS"
+      }
+    });
+
+    console.log(`✓ Added ₹${totalCredits} credits to user ${user.email}`);
+    res.status(200).json({
+      message: "Credits added successfully",
+      amount_added: totalCredits,
+      bonus: bonusAmount,
+      new_balance: updatedWallet.balance
+    });
+  } catch (error) {
+    console.error("Add Credits Error:", error.message);
+    res.status(500).json({ error: "Failed to add credits: " + error.message });
+  }
+});
+
+/**
+ * GET /transactions
+ * Get user's transaction history
+ */
+app.get("/transactions", verifyFirebaseToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const transactions = await prisma.transaction.findMany({
+      where: { userId: user.id },
+      orderBy: { created_at: 'desc' },
+      take: 50 // Limit to last 50 transactions
+    });
+
+    res.status(200).json(transactions);
+  } catch (error) {
+    console.error("Get Transactions Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch transactions" });
   }
 });
 
@@ -605,31 +962,190 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { firebase_uid: req.user.firebase_uid },
+      include: { wallet: true }
     });
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
+    // Get consultant details to check fee
+    const consultant = await prisma.consultant.findUnique({
+      where: { id: parseInt(consultant_id) }
+    });
+
+    if (!consultant) {
+      return res.status(404).json({ error: "Consultant not found" });
+    }
+
+    if (!consultant.hourly_price) {
+      return res.status(400).json({ error: "Consultant fee not set" });
+    }
+
+    // Create or get wallet if it doesn't exist
+    let wallet = user.wallet;
+    if (!wallet) {
+      wallet = await prisma.wallet.create({
+        data: {
+          userId: user.id,
+          balance: 0
+        }
+      });
+    }
+
+    // Check if user has sufficient balance
+    if (wallet.balance < consultant.hourly_price) {
+      return res.status(400).json({ 
+        error: "Insufficient balance",
+        required: consultant.hourly_price,
+        current: wallet.balance
+      });
+    }
+
+    // Deduct amount from wallet
+    const updatedWallet = await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: {
+        balance: wallet.balance - consultant.hourly_price
+      }
+    });
+
+    // Create booking with payment details
     const booking = await prisma.booking.create({
       data: {
         userId: user.id,
         consultantId: parseInt(consultant_id),
         date: new Date(date),
         time_slot: time_slot || "10:00 AM",
-        status: "PENDING",
+        status: "CONFIRMED",
+        is_paid: true,
+        consultant_fee: consultant.hourly_price,
+        commission_fee: consultant.hourly_price * 0.10, // 10% commission
+        net_earning: consultant.hourly_price * 0.90 // 90% to consultant
       },
     });
 
+    // Create transaction record for wallet deduction
+    await prisma.transaction.create({
+      data: {
+        userId: user.id,
+        type: "DEBIT",
+        amount: consultant.hourly_price,
+        description: `Payment for consultation with ${consultant.domain} consultant`,
+        bookingId: booking.id,
+        consultantId: consultant.id,
+        payment_method: "WALLET",
+        status: "SUCCESS"
+      }
+    });
+
     console.log(
-      `✓ Booking created: User ${user.email} → Consultant ${consultant_id}`
+      `✓ Booking created: User ${user.email} → Consultant ${consultant_id}, Fee: ₹${consultant.hourly_price}`
     );
-    res.status(201).json(booking);
+    res.status(201).json({
+      ...booking,
+      message: "Booking confirmed and payment processed",
+      remaining_balance: updatedWallet.balance
+    });
   } catch (error) {
     console.error("Create Booking Error:", error.message);
     res
       .status(500)
       .json({ error: "Failed to create booking: " + error.message });
+  }
+});
+
+/**
+ * POST /bookings/:id/complete
+ * Mark a call as completed and process commission distribution
+ */
+app.post("/bookings/:id/complete", verifyFirebaseToken, async (req, res) => {
+  const { id } = req.params;
+  const { call_duration } = req.body; // Duration in minutes
+
+  try {
+    const bookingId = parseInt(id);
+    
+    // Get booking details
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        user: true,
+        consultant: {
+          include: { user: true }
+        }
+      }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    if (booking.call_completed) {
+      return res.status(400).json({ error: "Call already completed" });
+    }
+
+    // Verify that the requester is either the user or consultant involved
+    const requester = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid }
+    });
+
+    if (!requester || (requester.id !== booking.userId && requester.id !== booking.consultant.userId)) {
+      return res.status(403).json({ error: "Unauthorized to complete this booking" });
+    }
+
+    // Update booking as completed
+    const completedBooking = await prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        call_completed: true,
+        call_duration: call_duration || 60, // Default 60 minutes if not provided
+        completed_at: new Date(),
+        status: "COMPLETED"
+      }
+    });
+
+    // Create commission transaction for platform
+    await prisma.transaction.create({
+      data: {
+        userId: booking.consultant.userId,
+        type: "COMMISSION",
+        amount: booking.commission_fee,
+        description: `Platform commission from consultation (Booking #${bookingId})`,
+        bookingId: bookingId,
+        consultantId: booking.consultantId,
+        payment_method: "COMMISSION",
+        status: "SUCCESS"
+      }
+    });
+
+    // Create earning transaction for consultant
+    await prisma.transaction.create({
+      data: {
+        userId: booking.consultant.userId,
+        type: "EARNING",
+        amount: booking.net_earning,
+        description: `Earnings from consultation (Booking #${bookingId})`,
+        bookingId: bookingId,
+        consultantId: booking.consultantId,
+        payment_method: "WALLET",
+        status: "SUCCESS"
+      }
+    });
+
+    console.log(
+      `✓ Call completed: Booking #${bookingId}, Platform earned ₹${booking.commission_fee}, Consultant earned ₹${booking.net_earning}`
+    );
+
+    res.status(200).json({
+      message: "Call completed successfully",
+      booking: completedBooking,
+      commission_fee: booking.commission_fee,
+      consultant_earning: booking.net_earning
+    });
+  } catch (error) {
+    console.error("Complete Booking Error:", error.message);
+    res.status(500).json({ error: "Failed to complete booking: " + error.message });
   }
 });
 
@@ -674,19 +1190,50 @@ const io = new Server(server, {
   },
 });
 
+// Track online consultants
+const onlineConsultants = new Map();
+
 io.on("connection", (socket) => {
   console.log("🔌 User connected:", socket.id);
 
+  // Handle consultant going online
+  socket.on("consultant-online", async (consultantId) => {
+    console.log("👨‍⚕️ Consultant online:", consultantId);
+    onlineConsultants.set(consultantId, socket.id);
+    
+    // Broadcast to all clients that consultant is online
+    io.emit("consultant-status", {
+      consultantId,
+      status: "online",
+      timestamp: new Date()
+    });
+  });
+
+  // Handle consultant going offline
+  socket.on("consultant-offline", (consultantId) => {
+    console.log("👨‍⚕️ Consultant offline:", consultantId);
+    onlineConsultants.delete(consultantId);
+    
+    // Broadcast to all clients that consultant is offline
+    io.emit("consultant-status", {
+      consultantId,
+      status: "offline",
+      timestamp: new Date()
+    });
+  });
+
+  // Handle joining booking room for messaging
   socket.on("join-booking", (bookingId) => {
     socket.join(`booking_${bookingId}`);
     console.log("User joined booking room:", bookingId);
   });
 
+  // Handle sending messages
   socket.on("send-message", async (data) => {
     console.log("📩 Message received:", data);
 
     try {
-      const { bookingId, senderId, role, content } = data;
+      const { bookingId, senderId, role, content, type = "text" } = data;
 
       const bookingIdInt = parseInt(bookingId);
 
@@ -711,25 +1258,71 @@ io.on("connection", (socket) => {
         });
         return;
       }
+      
       const message = await prisma.message.create({
         data: {
           bookingId: bookingIdInt,
           senderId: parseInt(senderId),
           content,
+          type,
         },
       });
 
+      // Broadcast message to all users in the booking room
       io.to(`booking_${bookingId}`).emit("receive-message", {
         ...message,
         role,
+        timestamp: message.createdAt,
       });
     } catch (error) {
       console.error("Message Error:", error.message);
     }
   });
 
+  // Handle typing indicators
+  socket.on("typing", (data) => {
+    const { bookingId, userId, isTyping } = data;
+    socket.to(`booking_${bookingId}`).emit("user-typing", {
+      userId,
+      isTyping
+    });
+  });
+
+  // Handle read receipts
+  socket.on("mark-read", async (data) => {
+    const { messageId, userId } = data;
+    
+    try {
+      await prisma.message.update({
+        where: { id: messageId },
+        data: { read_at: new Date() }
+      });
+      
+      socket.to(`booking_${data.bookingId}`).emit("message-read", {
+        messageId,
+        userId,
+        timestamp: new Date()
+      });
+    } catch (error) {
+      console.error("Mark read error:", error.message);
+    }
+  });
+
   socket.on("disconnect", () => {
-    console.log("❌ User disconnected:", socket.id);
+    console.log("🔌 User disconnected:", socket.id);
+    
+    // Find and remove consultant from online list
+    for (const [consultantId, socketId] of onlineConsultants.entries()) {
+      if (socketId === socket.id) {
+        onlineConsultants.delete(consultantId);
+        io.emit("consultant-status", {
+          consultantId,
+          status: "offline",
+          timestamp: new Date()
+        });
+        break;
+      }
+    }
   });
 });
 server.listen(PORT, () => {

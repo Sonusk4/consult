@@ -4,21 +4,33 @@ import Layout from '../components/Layout';
 import { bookings as bookingsApi, users } from '../services/api';
 import { MOCK_USER, TOP_CONSULTANTS } from '../constants';
 import { SessionStatus, Booking } from '../types';
-import { Video, Calendar, CreditCard, ChevronRight, Play, Star, Plus, Loader, Camera, User as UserIcon } from 'lucide-react';
+import { Video, Calendar, CreditCard, ChevronRight, Play, Star, Plus, Loader, Camera, User as UserIcon, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../App';
+import api from '../services/api';
 
 const UserDashboard: React.FC = () => {
   const { user } = useAuth();
   const [sessions, setSessions] = useState<Booking[]>([]);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
   const { addToast } = useToast();
 
   useEffect(() => {
     fetchBookings();
+    fetchWalletBalance();
   }, []);
+
+  const fetchWalletBalance = async () => {
+    try {
+      const response = await api.get('/wallet');
+      setWalletBalance(response.data.balance);
+    } catch (error) {
+      console.error('Error fetching wallet balance:', error);
+    }
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -100,12 +112,12 @@ const UserDashboard: React.FC = () => {
               <p className="text-gray-500">You have {upcomingSessions.length} sessions scheduled.</p>
               <div className="mt-6 flex items-center space-x-4">
                 <div className="bg-blue-50 px-4 py-2 rounded-2xl flex items-center space-x-2">
-                  <CreditCard className="text-blue-600" size={18} />
-                  <span className="font-bold text-blue-900">{MOCK_USER.credits} Credits</span>
+                  <Wallet className="text-blue-600" size={18} />
+                  <span className="font-bold text-blue-900">₹{walletBalance.toFixed(2)}</span>
                 </div>
-                <button className="text-blue-600 font-bold text-sm hover:underline flex items-center">
-                  Buy More Credits <Plus size={16} className="ml-1" />
-                </button>
+                <Link to="/user/wallet" className="text-blue-600 font-bold text-sm hover:underline flex items-center">
+                  Manage Wallet <Plus size={16} className="ml-1" />
+                </Link>
               </div>
             </div>
           </div>

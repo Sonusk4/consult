@@ -21,6 +21,8 @@ model User {
   consultant   Consultant?
   bookings     Booking[]
   messages     Message[]
+  wallet       Wallet?
+  transactions Transaction[]
 }
 
 model Consultant {
@@ -59,9 +61,15 @@ model Booking {
   consultantId  Int
   date          DateTime
   time_slot     String     // [cite: 17]
-  status        String     @default("CONFIRMED")
+  status        String     @default("CONFIRMED") // "CONFIRMED", "COMPLETED", "CANCELLED"
   is_paid       Boolean    @default(false) // 
+  call_completed Boolean    @default(false) // Track if call is completed
+  call_duration  Int?       // Call duration in minutes
+  consultant_fee Float?     // Fee charged by consultant
+  commission_fee Float?     // Platform commission (10%)
+  net_earning   Float?     // Amount transferred to consultant (90%)
   created_at    DateTime   @default(now())
+  completed_at  DateTime?  // When call was completed
   messages      Message[]
   payment       Payment?
 }
@@ -84,4 +92,35 @@ model Payment {
   status     String   // e.g., "SUCCESS" [cite: 52]
   razorpay_id String?  // To track Razorpay transactions [cite: 46]
   created_at DateTime @default(now())
+}
+
+model Wallet {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance    Float    @default(0) // Current wallet balance in INR
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model Transaction {
+  id              Int      @id @default(autoincrement())
+  user            User     @relation(fields: [userId], references: [id])
+  userId          Int
+  type            String   // "CREDIT", "DEBIT", "COMMISSION", "EARNING"
+  amount          Float
+  description     String?
+  bookingId       Int?     // Reference to booking if transaction is related to a call
+  consultantId    Int?     // Reference to consultant for commission/earning transactions
+  payment_method  String?  // "CREDIT_CARD", "WALLET", "COMMISSION"
+  status          String   @default("SUCCESS") // "SUCCESS", "FAILED", "PENDING"
+  created_at      DateTime @default(now())
+}
+
+model CreditPackage {
+  id          Int     @id @default(autoincrement())
+  amount      Float   // Package amount (500, 1000, 2000, 5000)
+  bonus       Float   @default(0) // Bonus amount (e.g., 50 for 500 package)
+  is_active   Boolean @default(true)
+  created_at  DateTime @default(now())
 }
