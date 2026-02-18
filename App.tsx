@@ -124,13 +124,6 @@ const App: React.FC = () => {
               element={isUser ? <UserCredit /> : <Navigate to="/auth" />}
             />
             <Route
-<<<<<<< Updated upstream
-=======
-              path="/user/wallet"
-              element={isUser ? <WalletPage /> : <Navigate to="/auth" />}
-            />
-            <Route
->>>>>>> Stashed changes
               path="/user/messages"
               element={isUser ? <MessagesPage /> : <Navigate to="/auth" />}
             />

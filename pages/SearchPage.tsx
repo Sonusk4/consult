@@ -1,13 +1,4 @@
-import React, { useState, useEffect } from "react";
-import Layout from "../components/Layout";
-import { consultants as consultantsApi } from "../services/api";
-import api from "../services/api";
-import { Consultant } from "../types";
-import { useNavigate } from "react-router-dom";
-import { useToast } from "../context/ToastContext";
-import { Star, Calendar, Loader } from "lucide-react";
 
-<<<<<<< Updated upstream
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { consultants as consultantsApi } from '../services/api';
@@ -19,39 +10,9 @@ const SearchPage: React.FC = () => {
   const [consultantsData, setConsultantsData] = useState<Consultant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-=======
-const days = [
-  "Monday","Tuesday","Wednesday",
-  "Thursday","Friday","Saturday","Sunday"
-];
 
-const ratingOptions = [
-  { label: "All Ratings", value: "all" },
-  { label: "4★ & above", value: 4 },
-  { label: "3★ & above", value: 3 },
-  { label: "2★ & above", value: 2 },
-];
-
-const SearchPage: React.FC = () => {
-  const navigate = useNavigate();
-  const { addToast } = useToast();
->>>>>>> Stashed changes
-
-  const [consultantsData, setConsultantsData] = useState<Consultant[]>([]);
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [bookingLoading, setBookingLoading] = useState<number | null>(null);
-
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
-  const [selectedDays, setSelectedDays] = useState<string[]>([]);
-  const [selectedRating, setSelectedRating] = useState<any>("all");
-  const [maxPrice, setMaxPrice] = useState(5000);
-
-  /* ================= FETCH DATA ================= */
   useEffect(() => {
     fetchConsultants();
-<<<<<<< Updated upstream
   }, []);
 
   const fetchConsultants = async (domain?: string) => {
@@ -64,115 +25,71 @@ const SearchPage: React.FC = () => {
       setError("Failed to load consultants. Please try again.");
     } finally {
       setLoading(false);
-=======
-    fetchWallet();
-  }, []);
-
-  const fetchConsultants = async () => {
-    try {
-      const data = await consultantsApi.getAll();
-      console.log("Consultants:", data);
-      setConsultantsData(data || []);
-    } catch (err) {
-      console.error("Failed to fetch consultants");
-    } finally {
-      setLoading(false);
     }
   };
 
-  const fetchWallet = async () => {
-    try {
-      const res = await api.get("/wallet");
-      setWalletBalance(res.data.balance);
-    } catch (err) {
-      console.error("Failed to fetch wallet");
-    }
+  const handleSearch = () => {
+    // Simple client-side filter for now if backend fuzzy search isn't ready,
+    // or trigger backend search if implemented.
+    // The backend `getAll` accepts a `domain` param.
+    // For general text search, we might need a better endpoint or client-side filtering.
+    // Let's filter client-side for "query" on name/bio if fetching all.
+    // Or if query matches a domain, pass it.
   };
 
-  /* ================= BOOK SESSION ================= */
-  const handleBookSession = async (consultantId: number, price: number) => {
-    if (walletBalance < price) {
-      addToast("Insufficient balance", "error");
-      return;
-    }
-
-    setBookingLoading(consultantId);
-
-    try {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const dateStr = tomorrow.toISOString().split("T")[0];
-
-      const bookingData = {
-        consultant_id: consultantId,
-        date: dateStr,
-        time_slot: "10:00 AM"
-      };
-
-      const response = await api.post("/bookings/create", bookingData);
-      addToast("Booking confirmed!", "success");
-      setWalletBalance(response.data.remaining_balance);
-    } catch (err) {
-      addToast("Booking failed", "error");
-    } finally {
-      setBookingLoading(null);
-    }
-  };
-
-  /* ================= FILTER LOGIC ================= */
-
-  const uniqueDomains = [...new Set(consultantsData.map(c => c.domain))];
-
-  const toggleSelection = (value: string, state: string[], setter: any) => {
-    if (state.includes(value)) {
-      setter(state.filter(item => item !== value));
-    } else {
-      setter([...state, value]);
->>>>>>> Stashed changes
-    }
-  };
-
-  const clearFilters = () => {
-    setSelectedDomains([]);
-    setSelectedDays([]);
-    setSelectedRating("all");
-    setMaxPrice(5000);
-  };
-
-  const filteredConsultants = consultantsData.filter(c => {
-    return (
-      c.name?.toLowerCase().includes(searchTerm.toLowerCase()) &&
-      (selectedDomains.length ? selectedDomains.includes(c.domain) : true) &&
-      (selectedDays.length
-        ? c.availability_days?.some(day => selectedDays.includes(day))
-        : true) &&
-      (selectedRating !== "all" ? (c.rating || 0) >= selectedRating : true) &&
-      (c.hourly_price || 0) <= maxPrice
-    );
-  });
+  const filteredConsultants = consultantsData.filter(c =>
+    !query ||
+    c.name?.toLowerCase().includes(query.toLowerCase()) ||
+    c.domain.toLowerCase().includes(query.toLowerCase()) ||
+    c.bio?.toLowerCase().includes(query.toLowerCase())
+  );
 
   return (
     <Layout title="Find Experts">
-<<<<<<< Updated upstream
       <div className="max-w-6xl mx-auto space-y-8">
-=======
-      <div className="flex flex-col lg:flex-row gap-10">
->>>>>>> Stashed changes
 
-        {/* ================= FILTER SIDEBAR ================= */}
-        <div className="lg:w-1/4 bg-white p-8 rounded-3xl shadow-sm border border-gray-100 h-fit sticky top-6 space-y-8">
-
-          <div className="flex justify-between items-center">
-            <h3 className="text-xl font-bold">Filters</h3>
-            <button
-              onClick={clearFilters}
-              className="text-sm text-blue-600 hover:underline"
-            >
-              Clear
-            </button>
+        {/* Search & Filter Header */}
+        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder="Search by name, domain, or skills..."
+                className="w-full bg-gray-50 border-none rounded-2xl pl-12 pr-4 py-4 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button className="bg-gray-50 text-gray-600 font-bold px-6 py-4 rounded-2xl flex items-center hover:bg-gray-100 transition-all">
+                <Filter size={20} className="mr-2" /> Filters
+              </button>
+              <button className="bg-blue-600 text-white font-bold px-8 py-4 rounded-2xl hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all">
+                Search
+              </button>
+            </div>
           </div>
 
-<<<<<<< Updated upstream
+          <div className="flex flex-wrap gap-2 mt-6">
+            {['Tech Strategy', 'Legal Counsel', 'Health', 'Marketing', 'FinOps', 'Architecture'].map(tag => (
+              <button
+                key={tag}
+                onClick={() => fetchConsultants(tag)}
+                className="px-4 py-2 rounded-full border border-gray-100 text-sm font-bold text-gray-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 transition-all"
+              >
+                {tag}
+              </button>
+            ))}
+            <button
+              onClick={() => fetchConsultants()}
+              className="px-4 py-2 rounded-full border border-gray-100 text-sm font-bold text-gray-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 transition-all"
+            >
+              All
+            </button>
+          </div>
+        </div>
+
         {/* Results Info */}
         <div className="flex items-center justify-between">
           <p className="text-gray-500 font-medium">Found <span className="text-gray-900 font-bold">{filteredConsultants.length}</span> experts available for booking</p>
@@ -256,141 +173,9 @@ const SearchPage: React.FC = () => {
           <div className="flex justify-center pt-8">
             <div className="flex space-x-2">
               <button className="w-10 h-10 rounded-xl bg-blue-600 border border-blue-600 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-100">1</button>
-=======
-          {/* Domain */}
-          <div>
-            <h4 className="font-semibold mb-3 text-gray-700">Domain</h4>
-            <div className="space-y-2">
-              {uniqueDomains.map(domain => (
-                <label key={domain} className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedDomains.includes(domain)}
-                    onChange={() =>
-                      toggleSelection(domain, selectedDomains, setSelectedDomains)
-                    }
-                    className="accent-blue-600"
-                  />
-                  <span className="text-sm">{domain}</span>
-                </label>
-              ))}
->>>>>>> Stashed changes
             </div>
           </div>
-
-          {/* Availability */}
-          <div>
-            <h4 className="font-semibold mb-3 text-gray-700">Availability</h4>
-            <div className="grid grid-cols-2 gap-2">
-              {days.map(day => (
-                <button
-                  key={day}
-                  onClick={() =>
-                    toggleSelection(day, selectedDays, setSelectedDays)
-                  }
-                  className={`text-xs px-3 py-2 rounded-xl border transition ${
-                    selectedDays.includes(day)
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "border-gray-200 hover:bg-blue-50"
-                  }`}
-                >
-                  {day.slice(0,3)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Price */}
-          <div>
-            <h4 className="font-semibold mb-3 text-gray-700">
-              Max Price ₹{maxPrice}
-            </h4>
-            <input
-              type="range"
-              min="500"
-              max="5000"
-              step="500"
-              value={maxPrice}
-              onChange={(e) => setMaxPrice(Number(e.target.value))}
-              className="w-full accent-blue-600"
-            />
-          </div>
-
-          {/* Rating */}
-          <div>
-            <h4 className="font-semibold mb-3 text-gray-700">Rating</h4>
-            {ratingOptions.map(r => (
-              <label key={r.label} className="flex items-center gap-3 text-sm mb-2 cursor-pointer">
-                <input
-                  type="radio"
-                  checked={selectedRating === r.value}
-                  onChange={() => setSelectedRating(r.value)}
-                  className="accent-blue-600"
-                />
-                {r.label}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* ================= MAIN CONTENT ================= */}
-        <div className="lg:w-3/4 space-y-6">
-
-          {/* Search Bar */}
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-            <input
-              type="text"
-              placeholder="Search by name..."
-              className="w-full px-5 py-4 bg-gray-50 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-
-          {/* Results */}
-          {loading ? (
-            <div className="flex justify-center py-20">
-              <Loader className="animate-spin text-blue-600" size={40} />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-
-              {filteredConsultants.map(c => (
-                <div
-                  key={c.id}
-                  className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 text-center hover:shadow-lg transition"
-                >
-                  <img
-                    src={c.profile_pic || "https://via.placeholder.com/150"}
-                    alt={c.name}
-                    className="h-24 w-24 rounded-full mx-auto object-cover"
-                  />
-
-                  <h3 className="mt-4 font-bold text-lg">{c.name}</h3>
-                  <p className="text-blue-600 text-sm">{c.domain}</p>
-
-                  <div className="flex items-center justify-center mt-1 text-yellow-500 text-sm">
-                    <Star size={14} fill="currentColor" className="mr-1"/>
-                    {c.rating || 5}
-                  </div>
-
-                  <p className="mt-3 font-black text-xl">
-                    ₹{c.hourly_price}
-                  </p>
-
-                  <button
-                    onClick={() => handleBookSession(c.id, c.hourly_price || 0)}
-                    disabled={bookingLoading === c.id}
-                    className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-xl hover:bg-blue-700 transition"
-                  >
-                    {bookingLoading === c.id ? "Booking..." : "Book Now"}
-                  </button>
-                </div>
-              ))}
-
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </Layout>
   );
