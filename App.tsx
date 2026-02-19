@@ -10,7 +10,6 @@ import AuthPage from './pages/AuthPage';
 import UserDashboard from './pages/user/UserDashboard';
 import ConsultantDashboard from './pages/ConsultantDashboard';
 import UserProfilePage from './pages/user/UserProfilePage';
-import SearchPage from './pages/SearchPage';
 import ProfilePage from './pages/ProfilePage';
 import SearchConsultantPage from './pages/user/SearchConsultantPage';
 import UserBooking from './pages/user/UserBooking';
