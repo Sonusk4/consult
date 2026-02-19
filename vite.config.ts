@@ -19,12 +19,9 @@ export default defineConfig(({ mode }) => {
         '/payment': 'http://127.0.0.1:5000',
         '/credit-packages': 'http://127.0.0.1:5000',
         '/transactions': 'http://127.0.0.1:5000',
-<<<<<<< HEAD
         '/ConsultantSupportPage': 'http://127.0.0.1:5000',
-=======
         '/support': 'http://127.0.0.1:5000',
 
->>>>>>> manasa
       },
     },
     plugins: [react()],

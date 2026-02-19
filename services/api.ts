@@ -112,61 +112,6 @@ export const consultants = {
     return response.data;
   },
 
-<<<<<<< HEAD
-    // Upload profile picture
-    uploadProfilePic: async (file: File) => {
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        // Create a separate axios instance for file upload without Content-Type header
-        // Let the browser set the correct multipart/form-data boundary
-        const uploadApi = axios.create({
-            baseURL: '/',
-        });
-        
-        // Add the same request interceptor
-        uploadApi.interceptors.request.use(
-            (config) => {
-                const userStr = localStorage.getItem('user');
-                if (userStr) {
-                    try {
-                        const user = JSON.parse(userStr);
-                        if (user.email) {
-                            config.headers['x-user-email'] = user.email;
-                        }
-                    } catch (e) {
-                        console.error("Failed to parse user from local storage", e);
-                    }
-                }
-                return config;
-            },
-            (error) => {
-                return Promise.reject(error);
-            }
-        );
-        
-        const response = await uploadApi.post('/consultant/upload-profile-pic', formData);
-        return response.data;
-    },
-
-    // Get consultant availability
-    getConsultantAvailability: async () => {
-        const response = await api.get('/consultant/availability');
-        return response.data;
-    },
-
-    // Get consultant dashboard statistics
-    getDashboardStats: async () => {
-        const response = await api.get('/consultant/dashboard-stats');
-        return response.data;
-    },
-
-    // Get consultant earnings data
-    getConsultantEarnings: async (period: '7days' | '30days' = '7days') => {
-        const response = await api.get(`/consultant/earnings?period=${period}`);
-        return response.data;
-    }
-=======
   uploadProfilePic: async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -179,7 +124,6 @@ export const consultants = {
 
     return response.data;
   },
->>>>>>> manasa
 };
 
 /* ========================================================= */
@@ -205,19 +149,6 @@ export const users = {
 /* ========================= WALLET ========================= */
 /* ========================================================= */
 
-<<<<<<< HEAD
-    // Get my bookings (for users)
-    getAll: async () => {
-        const response = await api.get('/bookings');
-        return response.data;
-    },
-
-    // Get consultant bookings (for consultants)
-    getConsultantBookings: async () => {
-        const response = await api.get('/consultant/bookings');
-        return response.data;
-    }
-=======
 export const wallet = {
   getBalance: async () => {
     const response = await api.get("/wallet");
@@ -288,7 +219,6 @@ export const payments = {
     const response = await api.post("/payment/verify", data);
     return response.data;
   },
->>>>>>> manasa
 };
 
 export default api;
