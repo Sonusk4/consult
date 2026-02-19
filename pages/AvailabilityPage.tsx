@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import {
   Plus,
   ChevronLeft,
@@ -9,21 +11,56 @@ import {
 } from 'lucide-react';
 
 interface Slot {
+  id?: number; // Optional id from backend
   start: string; // 24h format (for logic)
   end: string;   // 24h format (for logic)
   display: string; // 12h formatted display
 }
 
 const AvailabilityPage: React.FC = () => {
+  const navigate = useNavigate();
   const today = new Date();
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [slotsByDate, setSlotsByDate] = useState<Record<string, Slot[]>>({});
-
   const [showForm, setShowForm] = useState(false);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Fetch availability from backend on component mount and when month changes
+  useEffect(() => {
+    fetchAvailability();
+  }, [currentMonth]);
+
+  const fetchAvailability = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/consultant/availability');
+      
+      // Group slots by date
+      const slotsByDateMap: Record<string, Slot[]> = {};
+      response.data.forEach((slot: any) => {
+        const dateKey = new Date(slot.date).toDateString();
+        if (!slotsByDateMap[dateKey]) {
+          slotsByDateMap[dateKey] = [];
+        }
+        slotsByDateMap[dateKey].push({
+          id: slot.id,
+          start: slot.time,
+          end: '', // Will calculate based on duration
+          display: slot.time
+        });
+      });
+      
+      setSlotsByDate(slotsByDateMap);
+    } catch (error) {
+      console.error('Failed to fetch availability:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const selectedKey = selectedDate.toDateString();
   const selectedSlots = slotsByDate[selectedKey] || [];
@@ -73,8 +110,7 @@ const AvailabilityPage: React.FC = () => {
   };
 
   /* ---------------- ADD SLOT ---------------- */
-
-  const handleAddSlot = () => {
+  const handleAddSlot = async () => {
     if (!startTime || !endTime) {
       alert('Please select start and end time');
       return;
@@ -90,40 +126,61 @@ const AvailabilityPage: React.FC = () => {
       return;
     }
 
-    const newSlot: Slot = {
-      start: startTime,
-      end: endTime,
-      display: `${convertTo12Hour(startTime)} - ${convertTo12Hour(endTime)}`,
-    };
+    try {
+      const selectedDateStr = selectedDate.toISOString().split('T')[0];
+      
+      // Save to backend
+      await axios.post('/consultant/availability', {
+        date: selectedDateStr,
+        time: startTime
+      });
 
-    const updatedSlots = [...selectedSlots, newSlot];
+      // Refresh availability data
+      await fetchAvailability();
 
-    // 🔥 Auto sort by start time
-    updatedSlots.sort(
-      (a, b) => timeToMinutes(a.start) - timeToMinutes(b.start)
-    );
-
-    setSlotsByDate(prev => ({
-      ...prev,
-      [selectedKey]: updatedSlots,
-    }));
-
-    setStartTime('');
-    setEndTime('');
-    setShowForm(false);
+      // Reset form
+      setStartTime('');
+      setEndTime('');
+      setShowForm(false);
+      
+      alert('Slot added successfully!');
+    } catch (error) {
+      console.error('Failed to add slot:', error);
+      alert('Failed to add slot. Please try again.');
+    }
   };
 
   /* ---------------- DELETE SLOT ---------------- */
 
-  const handleDeleteSlot = (index: number) => {
-    setSlotsByDate(prev => {
-      const updated = [...(prev[selectedKey] || [])];
-      updated.splice(index, 1);
-      return {
-        ...prev,
-        [selectedKey]: updated,
-      };
-    });
+  const handleDeleteSlot = async (index: number) => {
+    try {
+      const selectedDateStr = selectedDate.toISOString().split('T')[0];
+      const selectedSlots = slotsByDate[selectedDate.toDateString()] || [];
+      const slotToDelete = selectedSlots[index];
+      
+      if (slotToDelete?.id) {
+        // Delete from backend
+        await axios.delete(`/consultant/availability/${slotToDelete.id}`);
+        
+        // Refresh availability data
+        await fetchAvailability();
+        
+        alert('Slot deleted successfully!');
+      } else {
+        // Remove from local state (for unsaved slots)
+        setSlotsByDate(prev => {
+          const updated = [...(prev[selectedDateStr] || [])];
+          updated.splice(index, 1);
+          return {
+            ...prev,
+            [selectedDateStr]: updated,
+          };
+        });
+      }
+    } catch (error) {
+      console.error('Failed to delete slot:', error);
+      alert('Failed to delete slot. Please try again.');
+    }
   };
 
   /* ---------------- CALENDAR GENERATION ---------------- */
@@ -212,7 +269,18 @@ const AvailabilityPage: React.FC = () => {
 
         {/* Calendar */}
         <div className="grid grid-cols-7 gap-3">
-          {generateCalendarDays()}
+          {loading ? (
+            // Loading skeleton
+            Array.from({ length: 35 }, (_, i) => (
+              <div key={i} className="animate-pulse">
+                <div className="p-4 rounded-2xl border">
+                  <div className="h-6 bg-gray-200 rounded"></div>
+                </div>
+              </div>
+            ))
+          ) : (
+            generateCalendarDays()
+          )}
         </div>
 
         {/* Slots Section */}

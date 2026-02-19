@@ -9,6 +9,7 @@ import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
 import UserDashboard from './pages/UserDashboard';
 import ConsultantDashboard from './pages/ConsultantDashboard';
+import EnterpriseDashboard from './pages/EnterpriseDashboard';
 import SearchPage from './pages/SearchPage';
 import ProfilePage from './pages/ProfilePage';
 import BookingsPage from './pages/BookingsPage';
@@ -18,13 +19,16 @@ import MessagesPage from './pages/MessagesPage';
 import AvailabilityPage from './pages/AvailabilityPage';
 import EarningsPage from './pages/EarningsPage';
 import ReviewsPage from './pages/ReviewsPage';
+import ConsultantSupportPage from './pages/ConsultantSupportPage';
 
 interface AuthContextType {
   user: User | null;
+  setUser: React.Dispatch<React.SetStateAction<User | null>>;
   login: (email: string, role?: UserRole) => Promise<User>;
   logout: () => void;
   loading: boolean;
 }
+
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -96,7 +100,7 @@ const App: React.FC = () => {
 
   return (
     <ToastProvider>
-      <AuthContext.Provider value={{ user, login, logout, loading }}>
+      <AuthContext.Provider value={{ user, setUser,login, logout, loading }}>
         <Router>
           <Routes>
 
@@ -158,9 +162,18 @@ const App: React.FC = () => {
               element={isConsultant ? <ReviewsPage /> : <Navigate to="/auth" />}
             />
             <Route
+              path="/consultant/support"
+              element={isConsultant ? <ConsultantSupportPage /> : <Navigate to="/auth" />}
+            />
+            <Route
               path="/consultant/profile"
               element={isConsultant ? <ProfilePage /> : <Navigate to="/auth" />}
             />
+              {/* ---------------- Enterprise ROUTES ---------------- */}
+              <Route
+                path="/consultant/enterprise"
+                element={isConsultant ? <EnterpriseDashboard /> : <Navigate to="/auth" />}
+              />
 
             {/* Shared Route */}
             <Route

@@ -142,6 +142,24 @@ export const consultants = {
         
         const response = await uploadApi.post('/consultant/upload-profile-pic', formData);
         return response.data;
+    },
+
+    // Get consultant availability
+    getConsultantAvailability: async () => {
+        const response = await api.get('/consultant/availability');
+        return response.data;
+    },
+
+    // Get consultant dashboard statistics
+    getDashboardStats: async () => {
+        const response = await api.get('/consultant/dashboard-stats');
+        return response.data;
+    },
+
+    // Get consultant earnings data
+    getConsultantEarnings: async (period: '7days' | '30days' = '7days') => {
+        const response = await api.get(`/consultant/earnings?period=${period}`);
+        return response.data;
     }
 };
 
@@ -190,9 +208,15 @@ export const bookings = {
         return response.data;
     },
 
-    // Get my bookings
+    // Get my bookings (for users)
     getAll: async () => {
         const response = await api.get('/bookings');
+        return response.data;
+    },
+
+    // Get consultant bookings (for consultants)
+    getConsultantBookings: async () => {
+        const response = await api.get('/consultant/bookings');
         return response.data;
     }
 };

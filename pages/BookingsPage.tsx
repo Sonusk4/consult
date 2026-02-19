@@ -8,8 +8,7 @@ import {
   MessageSquare,
   Phone,
   MoreVertical,
-  Filter,
-  Plus
+  Filter
 } from 'lucide-react';
 
 interface Session {
@@ -45,7 +44,7 @@ const BookingsPage: React.FC = () => {
   useEffect(() => {
     const fetchBookings = async () => {
       try {
-        const res = await axios.get('/my-bookings');
+        const res = await axios.get('/consultant/bookings');
 
         // 🔥 Safe extraction from any backend structure
         let bookings: any[] = [];
@@ -105,15 +104,6 @@ const BookingsPage: React.FC = () => {
               </button>
             ))}
           </div>
-
-          {/* Add More Slots Button */}
-          <button
-            onClick={() => navigate('/consultant/availability')}
-            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700 transition-all"
-          >
-            <Plus size={16} />
-            <span>Add More Slots</span>
-          </button>
         </div>
 
         {/* Loading */}
@@ -201,18 +191,11 @@ const BookingsPage: React.FC = () => {
               <div className="text-center py-20 bg-white rounded-[40px] border border-dashed border-gray-200">
                 <Calendar className="mx-auto text-gray-200 mb-4" size={64} />
                 <h4 className="text-xl font-bold text-gray-900">
-                  No sessions found
+                  No bookings found
                 </h4>
                 <p className="text-gray-500 mt-1">
-                  You can create availability slots to receive bookings.
+                  When clients book sessions, they will appear here.
                 </p>
-
-                <button
-                  onClick={() => navigate('/consultant/availability')}
-                  className="mt-6 bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all"
-                >
-                  Add More Slots
-                </button>
               </div>
             )}
           </div>
