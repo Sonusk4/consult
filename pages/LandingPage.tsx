@@ -105,7 +105,7 @@ const LandingPage: React.FC = () => {
                 <p className="text-gray-500 mb-6 line-clamp-2">{c.bio}</p>
                 <div className="flex items-center justify-between pt-6 border-t border-gray-50">
                   <div>
-                    <span className="text-2xl font-bold text-gray-900">${c.hourly_price}</span>
+                    <span className="text-2xl font-bold text-gray-900">₹{c.hourly_price}</span>
                     <span className="text-gray-400 text-sm ml-1">/ session</span>
                   </div>
                   <Link to="/signup" className="bg-gray-900 text-white px-6 py-2 rounded-xl font-bold group-hover:bg-blue-600 transition-all">Book Now</Link>

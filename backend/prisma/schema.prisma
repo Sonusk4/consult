@@ -8,74 +8,79 @@ datasource db {
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
-  firebase_uid String   @unique // [cite: 8]
-  email        String   @unique // [cite: 8]
-  phone        String?  // Phone number for OTP verification
-  role         String   @default("USER") // [cite: 8, 10]
-  is_verified  Boolean  @default(false) // Email verification status
-  otp_code     String?  // Current OTP code
-  otp_expiry   DateTime? // OTP expiration time
-  avatar       String?  // Cloudinary image URL for profile picture
-  created_at   DateTime @default(now())
-  consultant   Consultant?
-  bookings     Booking[]
-  messages     Message[]
-  wallet       Wallet?
-  transactions Transaction[]
+  id             Int             @id @default(autoincrement())
+  firebase_uid   String          @unique
+  email          String          @unique
+  phone          String?
+  role           String          @default("USER")
+  is_verified    Boolean         @default(false)
+  otp_code       String?
+  otp_expiry     DateTime?
+  avatar         String?
+  created_at     DateTime        @default(now())
+  consultant     Consultant?
+  bookings       Booking[]
+  messages       Message[]
+  wallet         Wallet?
+  transactions   Transaction[]
+  paymentOrders  PaymentOrder[]
+  reviews        Review[]
   supportTickets SupportTicket[]
   enterprise Enterprise?
 
 }
 
 model Consultant {
-  id            Int            @id @default(autoincrement())
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId        Int            @unique // 
-  type          String?
-  domain        String?
-  bio           String?
-  languages     String?
-  profile_pic   String?        // Cloudinary image URL
-  hourly_price  Float?
-  rating        Float          @default(0)
-  total_reviews Int            @default(0)
-  is_verified   Boolean        @default(false) // 
-  availability  Availability[]
-  bookings      Booking[]
-  slots         Slot[]
+  id             Int             @id @default(autoincrement())
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         Int             @unique
+  type           String?
+  domain         String?
+  bio            String?
+  languages      String?
+  profile_pic    String?
+  hourly_price   Float?
+  rating         Float           @default(0)
+  total_reviews  Int             @default(0)
+  is_verified    Boolean         @default(false)
+  availability   Availability[]
+  bookings       Booking[]
+  slots          Slot[]
+  reviews        Review[]
+  supportTickets SupportTicket[]
 }
 
 model Availability {
   id             Int        @id @default(autoincrement())
   consultant     Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
   consultantId   Int
-  available_date DateTime   // Use Date only 
-  available_time String     // e.g., "14:00" 
+  available_date DateTime
+  available_time String
   is_booked      Boolean    @default(false)
 
-  @@unique([consultantId, available_date, available_time]) // Prevents duplicates 
+  @@unique([consultantId, available_date, available_time])
 }
 
 model Booking {
-  id            Int        @id @default(autoincrement())
-  user          User       @relation(fields: [userId], references: [id])
-  userId        Int
-  consultant    Consultant @relation(fields: [consultantId], references: [id])
-  consultantId  Int
-  date          DateTime
-  time_slot     String     // [cite: 17]
-  status        String     @default("CONFIRMED") // "CONFIRMED", "COMPLETED", "CANCELLED"
-  is_paid       Boolean    @default(false) // 
-  call_completed Boolean    @default(false) // Track if call is completed
-  call_duration  Int?       // Call duration in minutes
-  consultant_fee Float?     // Fee charged by consultant
-  commission_fee Float?     // Platform commission (10%)
-  net_earning   Float?     // Amount transferred to consultant (90%)
-  created_at    DateTime   @default(now())
-  completed_at  DateTime?  // When call was completed
-  messages      Message[]
-  payment       Payment?
+  id             Int        @id @default(autoincrement())
+  user           User       @relation(fields: [userId], references: [id])
+  userId         Int
+  consultant     Consultant @relation(fields: [consultantId], references: [id])
+  consultantId   Int
+  date           DateTime
+  time_slot      String
+  status         String     @default("CONFIRMED")
+  is_paid        Boolean    @default(false)
+  call_completed Boolean    @default(false)
+  call_duration  Int?
+  consultant_fee Float?
+  commission_fee Float?
+  net_earning    Float?
+  created_at     DateTime   @default(now())
+  completed_at   DateTime?
+  messages       Message[]
+  payment        Payment?
+  review         Review?
 }
 
 model Message {
@@ -89,57 +94,78 @@ model Message {
 }
 
 model Payment {
-  id         Int      @id @default(autoincrement())
-  booking    Booking  @relation(fields: [bookingId], references: [id])
-  bookingId  Int      @unique
-  amount     Float
-  status     String   // e.g., "SUCCESS" [cite: 52]
-  razorpay_id String?  // To track Razorpay transactions [cite: 46]
-  created_at DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  booking     Booking  @relation(fields: [bookingId], references: [id])
+  bookingId   Int      @unique
+  amount      Float
+  status      String
+  razorpay_id String?
+  created_at  DateTime @default(now())
 }
 
 model Wallet {
   id         Int      @id @default(autoincrement())
   userId     Int      @unique
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balance    Float    @default(0) // Current wallet balance in INR
+  balance    Float    @default(0)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 }
 
 model Transaction {
-  id              Int      @id @default(autoincrement())
-  user            User     @relation(fields: [userId], references: [id])
-  userId          Int
-  type            String   // "CREDIT", "DEBIT", "COMMISSION", "EARNING"
-  amount          Float
-  description     String?
-  bookingId       Int?     // Reference to booking if transaction is related to a call
-  consultantId    Int?     // Reference to consultant for commission/earning transactions
-  payment_method  String?  // "CREDIT_CARD", "WALLET", "COMMISSION"
-  status          String   @default("SUCCESS") // "SUCCESS", "FAILED", "PENDING"
-  created_at      DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  user           User     @relation(fields: [userId], references: [id])
+  userId         Int
+  type           String
+  amount         Float
+  description    String?
+  bookingId      Int?
+  consultantId   Int?
+  payment_method String?
+  status         String   @default("SUCCESS")
+  created_at     DateTime @default(now())
 }
 
 model CreditPackage {
-  id          Int     @id @default(autoincrement())
-  amount      Float   // Package amount (500, 1000, 2000, 5000)
-  bonus       Float   @default(0) // Bonus amount (e.g., 50 for 500 package)
-  is_active   Boolean @default(true)
-  created_at  DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  amount     Float
+  bonus      Float    @default(0)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
 }
 
 model Slot {
-  id           String   @id @default(uuid())
+  id           String     @id @default(uuid())
   consultantId Int
   date         DateTime
   startTime    String
   endTime      String
-  createdAt    DateTime @default(now())
-
+  createdAt    DateTime   @default(now())
   consultant   Consultant @relation(fields: [consultantId], references: [id])
 }
 
+model Review {
+  id           Int        @id @default(autoincrement())
+  booking      Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingId    Int        @unique
+  consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  consultantId Int
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       Int
+  rating       Int
+  comment      String?
+  created_at   DateTime   @default(now())
+}
+
+
+model SupportTicket {
+  id Int @id @default(autoincrement())
+
+  userId Int?
+  user   User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  consultantId Int?
+  consultant   Consultant? @relation(fields: [consultantId], references: [id], onDelete: Cascade)
 
 
 model Enterprise {
@@ -151,11 +177,33 @@ model Enterprise {
   website         String?
   description     String?
 
+
   ownerId         Int      @unique
   owner           User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   created_at      DateTime @default(now())
   supportTickets SupportTicket[]
+
+  status   String @default("OPEN")
+  priority String @default("MEDIUM")
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model PaymentOrder {
+  id                  Int      @id @default(autoincrement())
+  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_id             Int
+  razorpay_order_id   String   @unique
+  razorpay_payment_id String?
+  razorpay_signature  String?
+  amount              Float
+  credits             Float
+  bonus               Float    @default(0)
+  status              String   @default("PENDING")
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
 }
 
 model SupportTicket {

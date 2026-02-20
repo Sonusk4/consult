@@ -157,12 +157,13 @@ export const SIDEBAR_LINKS = {
   ],
   [UserRole.CONSULTANT]: [
     { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/consultant/dashboard' },
-    { label: 'My Bookings', icon: <Calendar size={20} />, path: '/user/bookings' },
-    { label: 'Messages', icon: <MessageSquare size={20} />, path: '/user/messages' },
+    { label: 'My Bookings', icon: <Calendar size={20} />, path: '/consultant/bookings' },
+    { label: 'Messages', icon: <MessageSquare size={20} />, path: '/consultant/messages' },
     { label: 'Availability', icon: <Calendar size={20} />, path: '/consultant/slots' },
     { label: 'Earnings', icon: <TrendingUp size={20} />, path: '/consultant/earnings' },
     { label: 'Profile', icon: <Briefcase size={20} />, path: '/consultant/profile' },
     { label: 'Reviews', icon: <TrendingUp size={20} />, path: '/consultant/reviews' },
+    { label: 'Support', icon: <HelpCircle size={20} />, path: '/consultant/support' },
   ],
   [UserRole.ENTERPRISE_ADMIN]: [
     { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/enterprise/dashboard' },

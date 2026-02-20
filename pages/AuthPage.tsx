@@ -16,6 +16,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
   const [step, setStep] = useState<AuthStep>(type === 'LOGIN' ? 'EMAIL' : 'ROLE');
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.USER);
   const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -69,8 +70,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       await auth.verifyOtp(email, otpString);
 
       // If verification successful, login (create/update user)
-      // Only send role if SIGNUP. If LOGIN, send undefined to preserve existing role.
-      const user = await login(email, type === 'SIGNUP' ? selectedRole : undefined);
+      // Only send role and name if SIGNUP. If LOGIN, send undefined to preserve existing role.
+      const user = await login(email, type === 'SIGNUP' ? selectedRole : undefined, type === 'SIGNUP' ? fullName : undefined);
 
       // Redirect based on ACTUAL role from backend
       // Redirect based on ACTUAL role from backend
@@ -179,6 +180,20 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
               </div>
 
               <div className="space-y-4">
+                {type === 'SIGNUP' && (
+                  <div>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">Full Name</label>
+                    <input
+                      type="text"
+                      required={type === 'SIGNUP'}
+                      placeholder="Enter your full name"
+                      className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      disabled={isLoading}
+                    />
+                  </div>
+                )}
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                   <input

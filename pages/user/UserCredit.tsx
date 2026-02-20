@@ -54,21 +54,26 @@ const UserCredit: React.FC = () => {
   };
 
   /* ================= ADD CREDITS ================= */
-  const handleBuyCredits = async (packAmount: number) => {
+  const handleBuyCredits = async (packAmount: number, packPrice: number) => {
     setBuying(packAmount);
 
     try {
-      const res = await api.post("/wallet/add-credits", {
-        amount: packAmount,
+      // Create order on backend and get payment URL
+      const orderResponse = await api.post('/payment/create-order', {
+        amount: packPrice,
       });
 
-      setWalletBalance(res.data.new_balance);
-      addToast("Credits added successfully!", "success");
+      if (!orderResponse.data?.order_id) {
+        throw new Error('Failed to create payment order');
+      }
 
-      fetchTransactions();
-    } catch (err) {
-      addToast("Failed to add credits", "error");
-    } finally {
+      // Redirect to backend payment page
+      // Backend will handle Razorpay and redirect back after payment
+      window.location.href = `http://localhost:5000/payment-page?order_id=${orderResponse.data.order_id}&amount=${packPrice}&credits=${packAmount}`;
+      
+    } catch (error) {
+      console.error('Payment error:', error);
+      addToast('Failed to initiate payment. Please try again.', "error");
       setBuying(null);
     }
   };
@@ -122,7 +127,7 @@ const UserCredit: React.FC = () => {
                 </div>
 
                 <button
-                  onClick={() => handleBuyCredits(pack.amount)}
+                  onClick={() => handleBuyCredits(pack.amount, pack.price)}
                   disabled={buying === pack.amount}
                   className="w-full bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition disabled:opacity-60"
                 >

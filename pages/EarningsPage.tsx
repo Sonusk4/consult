@@ -1,7 +1,7 @@
 
 import React from 'react';
 import Layout from '../components/Layout';
-import { DollarSign, TrendingUp, ArrowDownRight, ArrowUpRight, Calendar, Download, PieChart } from 'lucide-react';
+import { TrendingUp, ArrowDownRight, ArrowUpRight, Calendar, Download, PieChart } from 'lucide-react';
 
 const EarningsPage: React.FC = () => {
   return (
@@ -10,10 +10,10 @@ const EarningsPage: React.FC = () => {
         
         <div className="grid lg:grid-cols-4 gap-6">
           {[
-            { label: 'Total Revenue', value: '$45,200', change: '+24%', up: true, icon: <DollarSign size={24} />, color: 'bg-emerald-50 text-emerald-600' },
-            { label: 'Withdrawable', value: '$2,840', change: 'Ready', up: true, icon: <TrendingUp size={24} />, color: 'bg-blue-50 text-blue-600' },
-            { label: 'Avg. per Session', value: '$180', change: '-4%', up: false, icon: <PieChart size={24} />, color: 'bg-purple-50 text-purple-600' },
-            { label: 'Pending Payout', value: '$1,250', change: 'Friday', up: true, icon: <Calendar size={24} />, color: 'bg-amber-50 text-amber-600' },
+            { label: 'Total Revenue', value: '₹45,200', change: '+24%', up: true, icon: <span className="text-2xl">₹</span>, color: 'bg-emerald-50 text-emerald-600' },
+            { label: 'Withdrawable', value: ' ₹2,840', change: 'Ready', up: true, icon: <TrendingUp size={24} />, color: 'bg-blue-50 text-blue-600' },
+            { label: 'Avg. per Session', value: '₹180', change: '-4%', up: false, icon: <PieChart size={24} />, color: 'bg-purple-50 text-purple-600' },
+            { label: 'Pending Payout', value: '₹1,250', change: 'Friday', up: true, icon: <Calendar size={24} />, color: 'bg-amber-50 text-amber-600' },
           ].map((card, i) => (
             <div key={i} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm relative overflow-hidden group">
               <div className={`${card.color} w-14 h-14 rounded-2xl flex items-center justify-center mb-6 transition-transform group-hover:scale-110`}>
@@ -44,8 +44,8 @@ const EarningsPage: React.FC = () => {
                <div className="h-64 flex items-end justify-between space-x-2">
                  {[40, 70, 45, 90, 65, 80, 55, 75, 50, 85, 95, 60].map((h, i) => (
                    <div key={i} className="flex-1 group relative">
-                     <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-black px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">${h * 10}</div>
-                     <div className="bg-blue-100 rounded-t-lg transition-all group-hover:bg-blue-600" style={{ height: `${h}%` }}></div>
+                     <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-black px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">₹{h * 10}</div>
+                     <div className="bg-blue-100 rounded-t-lg transition-all group-hover:bg-blue-600" style={{ height: `₹{h}%` }}></div>
                    </div>
                  ))}
                </div>
@@ -70,7 +70,7 @@ const EarningsPage: React.FC = () => {
                     </div>
                  </div>
                  <button className="w-full bg-blue-600 py-4 rounded-2xl font-black text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/50">
-                    Withdraw $2,840.00
+                    Withdraw ₹2,840.00
                  </button>
                </div>
                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl"></div>

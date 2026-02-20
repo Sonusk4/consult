@@ -276,6 +276,7 @@ const UserDashboard: React.FC = () => {
             ⭐ {c.rating || 5}
           </div>
 
+
           {/* Price */}
           <p className="text-center font-semibold mt-3">
             ₹{c.hourly_price} / session
@@ -290,6 +291,21 @@ const UserDashboard: React.FC = () => {
               View Profile
             </button>
           </div>
+
+    <button
+      onClick={() => navigate("/user/credits")}
+      className="border border-white px-6 py-2 rounded-xl hover:bg-white hover:text-blue-900 transition"
+    >
+      Upgrade Plan
+    </button>
+
+    <button
+      onClick={() => navigate("/user/credits")}
+      className="border border-white px-6 py-2 rounded-xl hover:bg-white hover:text-blue-900 transition"
+    >
+      View Transactions
+    </button>
+
 
         </div>
       ))}
