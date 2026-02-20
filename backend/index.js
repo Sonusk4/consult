@@ -1002,8 +1002,10 @@ app.get("/payment-page", (req, res) => {
               .then(res => res.json())
               .then(data => {
                 if (data.success || data.new_balance !== undefined) {
-                  // Payment successful - redirect to app with success message
-                  window.location.href = 'http://localhost:3000?payment=success';
+                  // Payment successful - show success message and redirect
+                  alert('Payment successful! ' + data.amount_added + ' credits have been added to your wallet.');
+                  // Redirect back to credits page - preserves auth context
+                  window.location.href = 'http://localhost:3000/credits?payment=success&credits=' + encodeURIComponent(data.amount_added);
                 } else {
                   alert('Payment verification failed: ' + (data.error || 'Unknown error'));
                   document.getElementById('payBtn').disabled = false;
@@ -1135,7 +1137,111 @@ app.post("/payment/verify", async (req, res) => {
       }
     });
 
+    // Send invoice email
+    const invoiceHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center; }
+          .content { background: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }
+          .invoice-box { background: white; padding: 20px; margin: 20px 0; border-left: 4px solid #3b82f6; }
+          .label { color: #6b7280; font-size: 12px; text-transform: uppercase; margin-top: 15px; }
+          .value { font-size: 16px; font-weight: bold; color: #1f2937; margin-top: 5px; }
+          .divider { border-top: 1px solid #e5e7eb; margin: 20px 0; }
+          .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 20px; }
+          .success { color: #16a34a; font-weight: bold; }
+          .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+          .table th { background: #3b82f6; color: white; padding: 10px; text-align: left; }
+          .table td { padding: 10px; border-bottom: 1px solid #e5e7eb; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Payment Invoice</h1>
+            <p>ConsultaPro - Expert Consultations Simplified</p>
+          </div>
+          
+          <div class="content">
+            <div class="invoice-box">
+              <p>Dear ${user.email},</p>
+              <p>Thank you for your payment! Your transaction has been successfully completed.</p>
+            </div>
+
+            <div class="invoice-box">
+              <div class="label">Invoice Number</div>
+              <div class="value">${razorpay_order_id}</div>
+
+              <div class="label">Payment ID</div>
+              <div class="value">${razorpay_payment_id}</div>
+
+              <div class="label">Date</div>
+              <div class="value">${new Date().toLocaleDateString('en-IN')}</div>
+
+              <div class="divider"></div>
+
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th style="text-align: right;">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>${creditsToAdd} Credits</td>
+                    <td style="text-align: right;">₹${orderRecord.amount}</td>
+                  </tr>
+                  ${bonusAmount > 0 ? `<tr>
+                    <td>${bonusAmount} Bonus Credits</td>
+                    <td style="text-align: right; color: #16a34a;">FREE</td>
+                  </tr>` : ''}
+                </tbody>
+              </table>
+
+              <div class="divider"></div>
+
+              <div class="label">Total Amount Paid</div>
+              <div class="value">₹${orderRecord.amount}</div>
+
+              <div class="label">Total Credits Received</div>
+              <div class="value" style="color: #16a34a; font-size: 18px;">${totalCredits} Credits</div>
+
+              <div class="label">Current Wallet Balance</div>
+              <div class="value">${updatedWallet.balance} Credits</div>
+            </div>
+
+            <div class="invoice-box" style="border-left-color: #16a34a;">
+              <p class="success">✓ Payment Status: SUCCESS</p>
+              <p>Your credits have been automatically added to your wallet and are ready to use.</p>
+            </div>
+
+            <div class="footer">
+              <p>If you have any questions, please contact our support team.</p>
+              <p>© 2026 ConsultaPro. All rights reserved.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Send email asynchronously (don't wait for it)
+    transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: "Payment Invoice - ConsultaPro Credits Purchase",
+      html: invoiceHtml
+    }).catch(err => {
+      console.error(`Failed to send invoice email to ${user.email}:`, err.message);
+    });
+
     console.log(`✓ Payment verified and ${totalCredits} credits added to user ${user.email}`);
+    console.log(`📧 Invoice email sent to ${user.email}`);
     res.status(200).json({
       message: "Payment successful and credits added",
       amount_added: totalCredits,
