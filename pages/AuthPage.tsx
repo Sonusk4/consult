@@ -82,7 +82,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
         navigate('/consultant/dashboard');
 
       } else if (user.role === UserRole.ENTERPRISE_ADMIN) {
-        navigate('/enterprise/select-role');
+        navigate('/enterprise/dashboard');
 
       } else if (user.role === UserRole.ENTERPRISE_MEMBER) {
         navigate('/member/dashboard');

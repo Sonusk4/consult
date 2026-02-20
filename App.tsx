@@ -27,7 +27,6 @@ import ProfilePage from "./pages/ProfilePage";
 
 /* ENTERPRISE ADMIN */
 import EnterpriseDashboard from "./pages/enterprise/EnterpriseDashboard";
-import EnterpriseSelectMode from "./pages/enterprise/EnterpriseSelectMode";
 import EnterpriseSupport from "./pages/enterprise/EnterpriseSupport";
 import CompanyProfile from "./pages/enterprise/CompanyProfile";
 import TeamManagement from "./pages/enterprise/TeamManagement";
@@ -152,7 +151,7 @@ const App: React.FC = () => {
 
             {/* ================= ENTERPRISE ADMIN ================= */}
             <Route path="/enterprise/dashboard" element={isEnterpriseAdmin ? <EnterpriseDashboard /> : <Navigate to="/auth" />} />
-            <Route path="/enterprise/select-role" element={(isEnterpriseAdmin || isEnterpriseMember) ? <EnterpriseSelectMode /> : <Navigate to="/auth" />} />
+      
             <Route path="/enterprise/profile" element={isEnterpriseAdmin ? <CompanyProfile /> : <Navigate to="/auth" />} />
             <Route path="/enterprise/team" element={isEnterpriseAdmin ? <TeamManagement /> : <Navigate to="/auth" />} />
             <Route path="/enterprise/bookings" element={isEnterpriseAdmin ? <EnterpriseBookings /> : <Navigate to="/auth" />} />

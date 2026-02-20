@@ -175,7 +175,6 @@ export const SIDEBAR_LINKS = {
 { label: 'Enterprise Settings', icon: <Settings size={20} />, path: '/enterprise/settings' },
 { label: 'Messages', icon: <MessageSquare size={20} />, path: '/enterprise/messages' },
 { label: 'Support', icon: <LifeBuoy size={20} />, path: '/enterprise/support' },
-{ label: 'Logout', icon: <LogOut size={20} />, path: '/logout' },
   ],
 
   [UserRole.ENTERPRISE_MEMBER]: [
