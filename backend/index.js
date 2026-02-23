@@ -157,9 +157,7 @@ const corsOptions = {
 
 app.use(
   cors({
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-user-email"],
+    origin: true,
     credentials: true,
   })
 );
@@ -1443,75 +1441,35 @@ io.use(async (socket, next) => {
   }
 });
 
-io.use(async (socket, next) => {
-  try {
-    const token = socket.handshake.auth?.token;
-
-    if (!token) {
-      return next(new Error("No token"));
-    }
-
-    const decoded = await admin.auth().verifyIdToken(token);
-
-    const user = await prisma.user.findUnique({
-      where: { firebase_uid: decoded.uid },
-    });
-
-    if (!user) {
-      return next(new Error("User not found"));
-    }
-
-    socket.user = user; // 🔥 THIS ATTACHES DB USER TO SOCKET
-
-    next();
-  } catch (err) {
-    console.log("Socket Auth Error:", err);
-    next(new Error("Unauthorized"));
-  }
-});
-
-io.use(async (socket, next) => {
-  try {
-    const token = socket.handshake.auth.token;
-    if (!token) return next(new Error("No token"));
-
-    const decoded = await admin.auth().verifyIdToken(token);
-
-    const user = await prisma.user.findUnique({
-      where: { email: decoded.email },
-    });
-
-    if (!user) return next(new Error("User not found"));
-
-    socket.user = user;
-
-    next();
-  } catch (err) {
-    console.log("Socket Auth Error:", err);
-    next(new Error("Auth error"));
-  }
-});
-
 io.on("connection", (socket) => {
   const user = socket.user;
   console.log("🔌 Connected:", user.email);
   /* ================= JOIN BOOKING ================= */
 
   socket.on("join-booking", async ({ bookingId }) => {
+    console.log("📨 join-booking event received from:", user.email);
     try {
       const booking = await prisma.booking.findUnique({
         where: { id: Number(bookingId) },
         include: { consultant: true },
       });
 
-      if (!booking) return;
+      if (!booking) {
+        console.log("❌ Booking not found");
+        return;
+      }
 
-      const isClient = booking.userId === user.id;
-      const isConsultant = booking.consultant?.userId === user.id;
+      const userId = Number(user.id);
+      const bookingUserId = Number(booking.userId);
+      const bookingConsultantUserId = Number(booking.consultant?.userId);
 
-      if (!isClient && !isConsultant) return;
+      if (userId !== bookingUserId && userId !== bookingConsultantUserId) {
+        console.log("❌ Unauthorized join attempt:", user.email);
+        return;
+      }
 
       socket.join(`booking_${Number(bookingId)}`);
+
       console.log(`${user.email} joined booking_${bookingId}`);
     } catch (err) {
       console.log("Join Booking Error:", err);
@@ -1619,6 +1577,6 @@ app.get("/dev-create-consultant", async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });

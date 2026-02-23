@@ -4,10 +4,10 @@ import { UserRole } from "../types";
 // Create axios instance with base URL
 // Since we have set up proxy in vite.config.ts, we can just use '/' as base
 const api = axios.create({
-  baseURL: "http://localhost:5000",
-  headers: {
-    "Content-Type": "application/json",
-  },
+  baseURL:
+    window.location.hostname === "localhost"
+      ? "http://localhost:5000"
+      : `http://${window.location.hostname}:5000`,
 });
 
 // Add a response interceptor to handle errors globally
