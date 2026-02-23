@@ -99,12 +99,23 @@ const MessagesPage: React.FC = () => {
       setCallerInfo(data);
     };
 
+    // ✅ NEW BLOCK HANDLER
+    const handleChatBlocked = (data: any) => {
+      alert(data.message);
+    };
+
     socket.on("receive-message", handleReceiveMessage);
     socket.on("video-call-started", handleIncomingCall);
+
+    // ✅ ADD THIS
+    socket.on("chat-blocked", handleChatBlocked);
 
     return () => {
       socket.off("receive-message", handleReceiveMessage);
       socket.off("video-call-started", handleIncomingCall);
+
+      // ✅ ADD THIS
+      socket.off("chat-blocked", handleChatBlocked);
     };
   }, [socket]);
 

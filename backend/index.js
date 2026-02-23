@@ -1479,20 +1479,47 @@ io.on("connection", (socket) => {
 
   socket.on("send-message", async ({ bookingId, content }) => {
     try {
+      const id = Number(bookingId);
+
+      // 1️⃣ Get booking
+      const booking = await prisma.booking.findUnique({
+        where: { id },
+      });
+
+      if (!booking) {
+        return socket.emit("chat-blocked", {
+          message: "Booking not found",
+        });
+      }
+
+      // 2️⃣ If not paid → allow only 5 messages
+      if (!booking.is_paid) {
+        const messageCount = await prisma.message.count({
+          where: { bookingId: id },
+        });
+
+        if (messageCount >= 5) {
+          return socket.emit("chat-blocked", {
+            message: "Free chat limit reached. Please complete payment.",
+          });
+        }
+      }
+
+      // 3️⃣ Save message
       const message = await prisma.message.create({
         data: {
-          bookingId: Number(bookingId),
+          bookingId: id,
           senderId: user.id,
           content,
         },
       });
 
-      io.to(`booking_${Number(bookingId)}`).emit("receive-message", message);
+      // 4️⃣ Emit to room
+      io.to(`booking_${id}`).emit("receive-message", message);
     } catch (err) {
       console.log("CHAT ERROR:", err);
     }
   });
-
   /* ================= VIDEO START ================= */
 
   socket.on("start-video-call", ({ bookingId }) => {
