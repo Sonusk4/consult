@@ -16,9 +16,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
   const [step, setStep] = useState<AuthStep>(type === 'LOGIN' ? 'EMAIL' : 'ROLE');
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.USER);
   const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showLoginRedirect, setShowLoginRedirect] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -45,10 +47,18 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
     try {
       // Send OTP via API
-      await auth.sendOtp(email);
+      await auth.sendOtp(email, type);
       setStep('OTP');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to send OTP. Please try again.');
+      const message =
+        err.response?.data?.error || "Failed to send OTP. Please try again.";
+
+      setError(message);
+
+      if (message.includes("already exists")) {
+        setShowLoginRedirect(true);
+      }
+
     } finally {
       setIsLoading(false);
     }
@@ -69,13 +79,31 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       await auth.verifyOtp(email, otpString);
 
       // If verification successful, login (create/update user)
-      // Only send role if SIGNUP. If LOGIN, send undefined to preserve existing role.
-      const user = await login(email, type === 'SIGNUP' ? selectedRole : undefined);
+      // Only send role and name if SIGNUP. If LOGIN, send undefined to preserve existing role.
+      const user = await login(email, type === 'SIGNUP' ? selectedRole : undefined, type === 'SIGNUP' ? fullName : undefined);
 
       // Redirect based on ACTUAL role from backend
-      if (user.role === UserRole.USER) navigate('/user/dashboard');
-      else if (user.role === UserRole.CONSULTANT || user.role === UserRole.ENTERPRISE_ADMIN) navigate('/consultant/dashboard');
-      else navigate('/');
+      // Redirect based on ACTUAL role from backend
+      if (user.role === UserRole.USER) {
+        navigate('/user/dashboard');
+
+      } else if (user.role === UserRole.CONSULTANT) {
+        navigate('/consultant/dashboard');
+
+      } else if (user.role === UserRole.ENTERPRISE_ADMIN) {
+        navigate('/enterprise/dashboard');
+
+      } else if (user.role === UserRole.ENTERPRISE_MEMBER) {
+        navigate('/member/dashboard');
+
+      } else if (user.role === UserRole.PLATFORM_ADMIN) {
+        navigate('/admin/dashboard');  // ✅ new
+
+      } else {
+        navigate('/');
+      }
+
+
 
     } catch (err: any) {
       setError(err.response?.data?.error || 'Invalid OTP or Login failed.');
@@ -118,8 +146,19 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
         <div className="p-8">
           {error && (
-            <div className="mb-6 p-3 bg-red-50 border border-red-100 text-red-600 text-sm font-bold rounded-xl animate-bounce">
-              {error}
+            <div className="mb-6 space-y-3">
+              <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm font-bold rounded-xl">
+                {error}
+              </div>
+
+              {showLoginRedirect && (
+                <button
+                  onClick={() => navigate("/login")}
+                  className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition"
+                >
+                  Go to Login
+                </button>
+              )}
             </div>
           )}
 
@@ -142,6 +181,12 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                 onClick={() => handleRoleSelect(UserRole.ENTERPRISE_ADMIN)}
               />
 
+              <RoleButton
+                title="Enterprise Team Member"
+                subtitle="I am part of an enterprise organization"
+                onClick={() => handleRoleSelect(UserRole.ENTERPRISE_MEMBER)}
+              />
+
               <div className="pt-4 text-center">
                 <p className="text-sm text-gray-500">Already have an account? <button onClick={() => navigate('/login')} className="text-blue-600 font-bold hover:underline">Login here</button></p>
               </div>
@@ -155,6 +200,20 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
               </div>
 
               <div className="space-y-4">
+                {type === 'SIGNUP' && (
+                  <div>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">Full Name</label>
+                    <input
+                      type="text"
+                      required={type === 'SIGNUP'}
+                      placeholder="Enter your full name"
+                      className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      disabled={isLoading}
+                    />
+                  </div>
+                )}
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                   <input

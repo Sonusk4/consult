@@ -1,14 +1,7 @@
-import { useAuth } from "../App";
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  Menu,
-  X,
-  Bell,
-  User as UserIcon,
-  LogOut,
-  ChevronRight,
-} from "lucide-react";
+import { Menu, X, Bell, LogOut } from "lucide-react";
+import { useAuth } from "../App";
 import { SIDEBAR_LINKS } from "../constants";
 import { UserRole } from "../types";
 
@@ -30,15 +23,31 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
 
   const links = user ? SIDEBAR_LINKS[user.role as UserRole] || [] : [];
 
+  // ✅ Role-based profile routing
+  const profileRoute = (() => {
+    switch (user?.role) {
+      case UserRole.USER:
+        return "/user/profile";
+      case UserRole.CONSULTANT:
+        return "/consultant/profile";
+      case UserRole.ENTERPRISE_ADMIN:
+      case UserRole.ENTERPRISE_MEMBER:
+        return "/enterprise/profile";
+      default:
+        return "/";
+    }
+  })();
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
+      {/* ================= SIDEBAR ================= */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transition-transform duration-300 transform ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         } lg:translate-x-0 lg:static`}
       >
         <div className="h-full flex flex-col">
+          {/* Logo */}
           <div className="p-6 flex items-center justify-between">
             <Link
               to="/"
@@ -54,6 +63,7 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
             </button>
           </div>
 
+          {/* Sidebar Links */}
           <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
             {links.map((link) => (
               <Link
@@ -71,6 +81,7 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
             ))}
           </nav>
 
+          {/* Logout */}
           <div className="p-4 border-t">
             <button
               onClick={handleLogout}
@@ -83,8 +94,9 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
         </div>
       </aside>
 
-      {/* Main Content */}
+      {/* ================= MAIN CONTENT ================= */}
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
         <header className="h-16 bg-white border-b flex items-center justify-between px-6 sticky top-0 z-40">
           <div className="flex items-center">
             <button
@@ -95,34 +107,40 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
             </button>
             <h1 className="text-xl font-bold text-gray-800">{title}</h1>
           </div>
+
           <div className="flex items-center space-x-4">
+            {/* Notification Icon */}
             <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-full relative">
               <Bell size={20} />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
             </button>
 
-            {/* Clickable Profile Navigation */}
-            <Link
-              to="/profile"
-              className="flex items-center space-x-3 pl-4 border-l hover:bg-gray-50 p-1 px-2 rounded-xl transition-colors"
-            >
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-semibold text-gray-800 leading-none">
-                  {user?.name}
-                </p>
-                <p className="text-[10px] text-gray-400 font-black uppercase tracking-tighter mt-1">
-                  {user?.role.toLowerCase().replace("_", " ")}
-                </p>
-              </div>
-              <img
-                src={user?.avatar || "https://ui-avatars.com/api/?name=User"}
-                alt="Avatar"
-                className="w-9 h-9 rounded-full ring-2 ring-blue-50 object-cover shadow-sm"
-              />
-            </Link>
+            {/* ✅ Profile Navigation (Dynamic) */}
+            {user && (
+              <Link
+                to={profileRoute}
+                className="flex items-center space-x-3 pl-4 border-l hover:bg-gray-50 p-1 px-2 rounded-xl transition-colors"
+              >
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-semibold text-gray-800 leading-none">
+                    {user?.name || user?.email}
+                  </p>
+                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-tighter mt-1">
+                    {user?.role?.toLowerCase().replace("_", " ")}
+                  </p>
+                </div>
+
+                <img
+                  src={user?.avatar || "https://via.placeholder.com/40"}
+                  alt="Avatar"
+                  className="w-9 h-9 rounded-full ring-2 ring-blue-50 object-cover shadow-sm"
+                />
+              </Link>
+            )}
           </div>
         </header>
 
+        {/* Page Content */}
         <main className="flex-1 p-6 overflow-y-auto">{children}</main>
       </div>
     </div>

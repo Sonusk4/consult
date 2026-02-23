@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
-import { consultants as consultantsApi } from "../services/api";
-import { Consultant, SessionStatus } from "../types";
+import { consultants as consultantsApi, bookings } from "../services/api";
+import { Consultant, SessionStatus, Booking } from "../types";
 import {
   TrendingUp,
   Users,
@@ -30,22 +30,42 @@ import {
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../App";
 
-const DATA = [
-  { name: "Mon", revenue: 450 },
-  { name: "Tue", revenue: 300 },
-  { name: "Wed", revenue: 600 },
-  { name: "Thu", revenue: 800 },
-  { name: "Fri", revenue: 550 },
-  { name: "Sat", revenue: 900 },
-  { name: "Sun", revenue: 700 },
-];
+const getGreeting = () => {
+  const hour = new Date().getHours();
+
+  if (hour < 12) return "Good Morning";
+  if (hour < 17) return "Good Afternoon";
+  return "Good Evening";
+};
 
 const ConsultantDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [profile, setProfile] = useState<Consultant | null>(null);
   const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
   const { addToast } = useToast();
+  const [revenueData, setRevenueData] = useState([
+    { name: "Mon", revenue: 0 },
+    { name: "Tue", revenue: 0 },
+    { name: "Wed", revenue: 0 },
+    { name: "Thu", revenue: 0 },
+    { name: "Fri", revenue: 0 },
+    { name: "Sat", revenue: 0 },
+    { name: "Sun", revenue: 0 },
+  ]);
+  const [timePeriod, setTimePeriod] = useState<"7days" | "30days">("7days");
+
+  // Dynamic state for dashboard data
+  const [dashboardStats, setDashboardStats] = useState({
+    totalSessions: 0,
+    totalRevenue: 0,
+    averageRating: 0,
+    activeClients: 0,
+  });
+  const [upcomingSessions, setUpcomingSessions] = useState<Booking[]>([]);
+  const [todaySlots, setTodaySlots] = useState<any[]>([]);
 
   // Onboarding State
   const [onboardingData, setOnboardingData] = useState({
@@ -61,7 +81,147 @@ const ConsultantDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchProfile();
+    fetchRevenueData();
+    fetchDashboardStats();
+    fetchUpcomingSessions();
+    fetchTodaySlots();
   }, []);
+
+  useEffect(() => {
+    fetchRevenueData();
+  }, [timePeriod]);
+
+  const fetchRevenueData = async () => {
+    try {
+      // Check if user is logged in
+      if (!user) {
+        console.log("No user logged in, skipping revenue fetch");
+        setRevenueData([
+          { name: "Mon", revenue: 0 },
+          { name: "Tue", revenue: 0 },
+          { name: "Wed", revenue: 0 },
+          { name: "Thu", revenue: 0 },
+          { name: "Fri", revenue: 0 },
+          { name: "Sat", revenue: 0 },
+          { name: "Sun", revenue: 0 },
+        ]);
+        return;
+      }
+
+      // Fetch real earnings data from API
+      const earnings = await consultantsApi.getConsultantEarnings(timePeriod);
+
+      // If no earnings data, return empty data structure
+      if (!earnings || earnings.length === 0) {
+        const emptyData =
+          timePeriod === "7days"
+            ? [
+                { name: "Mon", revenue: 0 },
+                { name: "Tue", revenue: 0 },
+                { name: "Wed", revenue: 0 },
+                { name: "Thu", revenue: 0 },
+                { name: "Fri", revenue: 0 },
+                { name: "Sat", revenue: 0 },
+                { name: "Sun", revenue: 0 },
+              ]
+            : [
+                { name: "Week 1", revenue: 0 },
+                { name: "Week 2", revenue: 0 },
+                { name: "Week 3", revenue: 0 },
+                { name: "Week 4", revenue: 0 },
+              ];
+        setRevenueData(emptyData);
+        return;
+      }
+
+      setRevenueData(earnings);
+    } catch (error) {
+      console.error("Failed to fetch revenue data:", error);
+      addToast("Failed to load revenue data", "error");
+    }
+  };
+
+  const fetchDashboardStats = async () => {
+    setStatsLoading(true);
+    try {
+      // Check if user is logged in
+      if (!user) {
+        console.log("No user logged in, skipping stats fetch");
+        setDashboardStats({
+          totalSessions: 0,
+          totalRevenue: 0,
+          averageRating: 0,
+          activeClients: 0,
+        });
+        return;
+      }
+
+      // Fetch real dashboard statistics from API
+      const stats = await consultantsApi.getDashboardStats();
+
+      setDashboardStats({
+        totalSessions: stats.totalSessions,
+        totalRevenue: stats.totalRevenue,
+        averageRating: stats.averageRating,
+        activeClients: stats.activeClients,
+      });
+    } catch (error) {
+      console.error("Failed to fetch dashboard stats:", error);
+      addToast("Failed to load dashboard statistics", "error");
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const fetchUpcomingSessions = async () => {
+    setSessionsLoading(true);
+    try {
+      // Check if user is logged in
+      if (!user) {
+        console.log("No user logged in, skipping session fetch");
+        setUpcomingSessions([]);
+        return;
+      }
+
+      const response = await bookings.getConsultantBookings();
+      const upcomingBookings = response.filter(
+        (booking: Booking) =>
+          booking.status === "UPCOMING" && new Date(booking.date) >= new Date()
+      );
+      setUpcomingSessions(upcomingBookings.slice(0, 5)); // Show next 5 sessions
+    } catch (error) {
+      console.error("Failed to fetch upcoming sessions:", error);
+      addToast("Failed to load upcoming sessions", "error");
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const fetchTodaySlots = async () => {
+    try {
+      // Check if user is logged in
+      if (!user) {
+        console.log("No user logged in, skipping slots fetch");
+        setTodaySlots([]);
+        return;
+      }
+
+      // Fetch real availability data from API
+      const response = await consultantsApi.getConsultantAvailability();
+
+      // Transform API response to match expected format
+      const formattedSlots = response.map((slot: any) => ({
+        id: slot.id,
+        time: slot.time,
+        status: slot.status,
+      }));
+
+      setTodaySlots(formattedSlots);
+    } catch (error) {
+      console.error("Failed to fetch today slots:", error);
+      addToast("Failed to load today slots", "error");
+    }
+  };
 
   const fetchProfile = async () => {
     try {
@@ -312,12 +472,12 @@ const ConsultantDashboard: React.FC = () => {
             <div className="flex items-center space-x-6">
               {/* Profile Image with Edit Overlay */}
               <div className="relative group shrink-0">
-                <div className="w-24 h-24 rounded-2xl bg-white/10 backdrop-blur-sm border-2 border-white/20 overflow-hidden shadow-xl">
-                  {profile.profile_pic ? (
+                <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden bg-white/10 backdrop-blur-sm border-2 border-white/20 shadow-xl">
+                  {profile.profile_pic || user?.avatar ? (
                     <img
-                      src={profile.profile_pic}
+                      src={profile.profile_pic || user?.avatar}
                       alt="Profile"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover object-center"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-white/50">
@@ -325,6 +485,7 @@ const ConsultantDashboard: React.FC = () => {
                     </div>
                   )}
                 </div>
+
                 <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
                   {uploadingImage ? (
                     <Loader className="text-white animate-spin" />
@@ -353,30 +514,18 @@ const ConsultantDashboard: React.FC = () => {
                   </span>
                 </div>
                 <h2 className="text-3xl font-bold mb-2">
-                  Good morning,{" "}
-                  {profile.name || user?.email?.split("@")[0] || "Expert"}!
+                  {getGreeting()},{" "}
+                  {profile.name ||
+                    user?.name ||
+                    user?.email?.split("@")[0] ||
+                    "Expert"}
+                  !
                 </h2>
                 <p className="text-blue-100/80 max-w-md">
-                  Your currently set rate is <b>${profile.hourly_price}/hr</b>{" "}
+                  Your currently set rate is <b>₹{profile.hourly_price}/hr</b>{" "}
                   in {profile.domain}.
                 </p>
               </div>
-            </div>
-            <div className="mt-6 md:mt-0 flex space-x-3">
-              <button
-                onClick={() => navigate("/consultant/messages")}
-                className="bg-white text-blue-600 px-6 py-3 rounded-xl font-bold shadow-lg shadow-blue-900/20 hover:bg-gray-50 transition-all"
-              >
-                Messages
-              </button>
-
-              <button className="bg-white/10 backdrop-blur-md border border-white/20 px-6 py-3 rounded-xl font-bold hover:bg-white/20 transition-all">
-                Go Live
-              </button>
-
-              <button className="bg-white text-blue-600 px-6 py-3 rounded-xl font-bold shadow-lg shadow-blue-900/20 hover:bg-gray-50 transition-all">
-                Withdraw Earnings
-              </button>
             </div>
           </div>
           <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
@@ -384,57 +533,82 @@ const ConsultantDashboard: React.FC = () => {
 
         {/* Analytics Grid */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[
-            {
-              label: "Today's Earnings",
-              value: "$0",
-              change: "+0%",
-              icon: <DollarSign className="text-emerald-600" />,
-              color: "bg-emerald-50",
-            },
-            {
-              label: "Total Sessions",
-              value: "0",
-              change: "100% success",
-              icon: <Video className="text-blue-600" />,
-              color: "bg-blue-50",
-            },
-            {
-              label: "Profile Views",
-              value: "0",
-              change: "+0%",
-              icon: <Users className="text-amber-600" />,
-              color: "bg-amber-50",
-            },
-            {
-              label: "Avg. Rating",
-              value: profile.rating > 0 ? profile.rating.toFixed(1) : "New",
-              change:
-                profile.total_reviews > 0
-                  ? `${profile.total_reviews} reviews`
-                  : "No reviews",
-              icon: <Clock className="text-purple-600" />,
-              color: "bg-purple-50",
-            },
-          ].map((stat, i) => (
-            <div
-              key={i}
-              className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className={`${stat.color} p-3 rounded-2xl`}>
-                  {stat.icon}
+          {statsLoading
+            ? // Loading skeleton for stats
+              Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"
+                >
+                  <div className="animate-pulse">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="bg-gray-200 p-3 rounded-2xl w-12 h-12"></div>
+                      <div className="bg-gray-200 px-3 py-1 rounded-full w-16 h-6"></div>
+                    </div>
+                    <div className="bg-gray-200 h-8 w-20 rounded mb-2"></div>
+                    <div className="bg-gray-200 h-4 w-24 rounded"></div>
+                  </div>
                 </div>
-                <div className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
-                  <ArrowUpRight size={14} className="mr-0.5" /> {stat.change}
+              ))
+            : [
+                {
+                  label: "Today's Earnings",
+                  value: `₹${
+                    revenueData[revenueData.length - 1]?.revenue || 0
+                  }`,
+                  change: "+12%",
+                  icon: <span className="text-2xl text-emerald-600">₹</span>,
+                  color: "bg-emerald-50",
+                },
+                {
+                  label: "Total Sessions",
+                  value: dashboardStats.totalSessions,
+                  change: "100% success",
+                  icon: <Video className="text-blue-600" />,
+                  color: "bg-blue-50",
+                },
+                {
+                  label: "Active Clients",
+                  value: dashboardStats.activeClients,
+                  change: "+8%",
+                  icon: <Users className="text-amber-600" />,
+                  color: "bg-amber-50",
+                },
+                {
+                  label: "Avg. Rating",
+                  value:
+                    profile.rating > 0
+                      ? profile.rating.toFixed(1)
+                      : dashboardStats.averageRating,
+                  change:
+                    profile.total_reviews > 0
+                      ? `${profile.total_reviews} reviews`
+                      : "No reviews",
+                  icon: <Clock className="text-purple-600" />,
+                  color: "bg-purple-50",
+                },
+              ].map((stat, i) => (
+                <div
+                  key={i}
+                  className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={`${stat.color} p-3 rounded-2xl`}>
+                      {stat.icon}
+                    </div>
+                    <div className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
+                      <ArrowUpRight size={14} className="mr-0.5" />{" "}
+                      {stat.change}
+                    </div>
+                  </div>
+                  <p className="text-2xl font-black text-gray-900">
+                    {stat.value}
+                  </p>
+                  <p className="text-sm text-gray-500 font-medium uppercase tracking-wider mt-1">
+                    {stat.label}
+                  </p>
                 </div>
-              </div>
-              <p className="text-2xl font-black text-gray-900">{stat.value}</p>
-              <p className="text-sm text-gray-500 font-medium uppercase tracking-wider mt-1">
-                {stat.label}
-              </p>
-            </div>
-          ))}
+              ))}
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
@@ -446,17 +620,24 @@ const ConsultantDashboard: React.FC = () => {
                   Revenue Overview
                 </h3>
                 <p className="text-sm text-gray-500">
-                  Weekly breakdown of earnings
+                  {timePeriod === "7days" ? "Weekly" : "Monthly"} breakdown of
+                  earnings
                 </p>
               </div>
-              <select className="bg-gray-50 border-none rounded-xl text-sm font-bold px-4 py-2 outline-none">
-                <option>Last 7 Days</option>
-                <option>Last 30 Days</option>
+              <select
+                className="bg-gray-50 border-none rounded-xl text-sm font-bold px-4 py-2 outline-none"
+                value={timePeriod}
+                onChange={(e) =>
+                  setTimePeriod(e.target.value as "7days" | "30days")
+                }
+              >
+                <option value="7days">Last 7 Days</option>
+                <option value="30days">Last 30 Days</option>
               </select>
             </div>
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={DATA}>
+                <BarChart data={revenueData}>
                   <XAxis
                     dataKey="name"
                     axisLine={false}
@@ -473,7 +654,7 @@ const ConsultantDashboard: React.FC = () => {
                     }}
                   />
                   <Bar dataKey="revenue" radius={[6, 6, 0, 0]} barSize={32}>
-                    {DATA.map((entry, index) => (
+                    {revenueData.map((entry, index) => (
                       <Cell
                         key={index}
                         fill={entry.revenue > 600 ? "#2563EB" : "#DBEAFE"}
@@ -485,23 +666,114 @@ const ConsultantDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Availability Calendar (Simplified) */}
-          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-gray-900">Slots Today</h3>
-              <button className="p-2 hover:bg-gray-50 rounded-xl transition-all">
-                <TrendingUp size={20} className="text-gray-400" />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div className="p-8 text-center text-gray-400">
-                <Calendar size={32} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No slots added yet</p>
+          {/* Right Column - Slots and Sessions */}
+          <div className="space-y-8">
+            {/* Availability Calendar (Simplified) */}
+            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-gray-900">Slots Today</h3>
+                <button className="p-2 hover:bg-gray-50 rounded-xl transition-all">
+                  <TrendingUp size={20} className="text-gray-400" />
+                </button>
               </div>
+              <div className="space-y-3">
+                {todaySlots.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400">
+                    <Calendar size={32} className="mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No slots added yet</p>
+                  </div>
+                ) : (
+                  todaySlots.slice(0, 3).map((slot) => (
+                    <div
+                      key={slot.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-xl"
+                    >
+                      <span className="text-sm font-medium text-gray-700">
+                        {slot.time}
+                      </span>
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${
+                          slot.status === "available"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-blue-100 text-blue-700"
+                        }`}
+                      >
+                        {slot.status === "available" ? "Available" : "Booked"}
+                      </span>
+                    </div>
+                  ))
+                )}
 
-              <button className="w-full mt-4 py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 text-sm font-bold hover:border-blue-400 hover:text-blue-600 transition-all flex items-center justify-center">
-                <Clock size={16} className="mr-2" /> Add More Slots
-              </button>
+                <button
+                  onClick={() => navigate("/consultant/slots")}
+                  className="w-full mt-4 py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 text-sm font-bold hover:border-blue-400 hover:text-blue-600 transition-all flex items-center justify-center"
+                >
+                  <Clock size={16} className="mr-2" />
+                  Add More Slots
+                </button>
+              </div>
+            </div>
+
+            {/* Upcoming Sessions */}
+            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-gray-900">
+                  Upcoming Sessions
+                </h3>
+                <button className="p-2 hover:bg-gray-50 rounded-xl transition-all">
+                  <Video size={20} className="text-gray-400" />
+                </button>
+              </div>
+              <div className="space-y-3">
+                {sessionsLoading ? (
+                  // Loading skeleton for sessions
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="animate-pulse">
+                      <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl">
+                        <div className="bg-gray-200 w-10 h-10 rounded-full"></div>
+                        <div className="flex-1">
+                          <div className="bg-gray-200 h-4 w-24 rounded mb-1"></div>
+                          <div className="bg-gray-200 h-3 w-16 rounded"></div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : upcomingSessions.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400">
+                    <Video size={32} className="mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No upcoming sessions</p>
+                  </div>
+                ) : (
+                  upcomingSessions.slice(0, 3).map((session) => (
+                    <div
+                      key={session.id}
+                      className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-all cursor-pointer"
+                    >
+                      <div className="bg-blue-100 p-2 rounded-xl">
+                        <Video className="text-blue-600" size={16} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">
+                          {new Date(session.date).toLocaleDateString()} at{" "}
+                          {session.time_slot}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Session with Client
+                        </p>
+                      </div>
+                      <div
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${
+                          session.status === "UPCOMING"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {session.status}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>

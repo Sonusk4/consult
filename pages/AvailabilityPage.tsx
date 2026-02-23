@@ -1,99 +1,367 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import { Clock, Plus, Trash2, Edit3, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import {
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  Trash2,
+} from 'lucide-react';
+
+interface Slot {
+  id?: number; // Optional id from backend
+  start: string; // 24h format (for logic)
+  end: string;   // 24h format (for logic)
+  display: string; // 12h formatted display
+}
 
 const AvailabilityPage: React.FC = () => {
+  const navigate = useNavigate();
+  const today = new Date();
+
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(today);
+  const [slotsByDate, setSlotsByDate] = useState<Record<string, Slot[]>>({});
+  const [showForm, setShowForm] = useState(false);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Fetch availability from backend on component mount and when month changes
+  useEffect(() => {
+    fetchAvailability();
+  }, [currentMonth]);
+
+  const fetchAvailability = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/consultant/availability');
+      
+      // Group slots by date
+      const slotsByDateMap: Record<string, Slot[]> = {};
+      response.data.forEach((slot: any) => {
+        const dateKey = new Date(slot.date).toDateString();
+        if (!slotsByDateMap[dateKey]) {
+          slotsByDateMap[dateKey] = [];
+        }
+        slotsByDateMap[dateKey].push({
+          id: slot.id,
+          start: slot.time,
+          end: '', // Will calculate based on duration
+          display: slot.time
+        });
+      });
+      
+      setSlotsByDate(slotsByDateMap);
+    } catch (error) {
+      console.error('Failed to fetch availability:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectedKey = selectedDate.toDateString();
+  const selectedSlots = slotsByDate[selectedKey] || [];
+
+  /* ---------------- TIME HELPERS ---------------- */
+
+  const convertTo12Hour = (time: string) => {
+    const [hour, minute] = time.split(':');
+    let h = parseInt(hour);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+
+    h = h % 12;
+    if (h === 0) h = 12;
+
+    return `${h}:${minute} ${ampm}`;
+  };
+
+  const timeToMinutes = (time: string) => {
+    const [h, m] = time.split(':').map(Number);
+    return h * 60 + m;
+  };
+
+  const isOverlapping = (newStart: string, newEnd: string) => {
+    const newStartMin = timeToMinutes(newStart);
+    const newEndMin = timeToMinutes(newEnd);
+
+    return selectedSlots.some(slot => {
+      const existingStart = timeToMinutes(slot.start);
+      const existingEnd = timeToMinutes(slot.end);
+
+      return newStartMin < existingEnd && newEndMin > existingStart;
+    });
+  };
+
+  /* ---------------- MONTH NAVIGATION ---------------- */
+
+  const handlePrevMonth = () => {
+    const newMonth = new Date(currentMonth);
+    newMonth.setMonth(newMonth.getMonth() - 1);
+    setCurrentMonth(newMonth);
+  };
+
+  const handleNextMonth = () => {
+    const newMonth = new Date(currentMonth);
+    newMonth.setMonth(newMonth.getMonth() + 1);
+    setCurrentMonth(newMonth);
+  };
+
+  /* ---------------- ADD SLOT ---------------- */
+  const handleAddSlot = async () => {
+    if (!startTime || !endTime) {
+      alert('Please select start and end time');
+      return;
+    }
+
+    if (startTime >= endTime) {
+      alert('End time must be after start time');
+      return;
+    }
+
+    if (isOverlapping(startTime, endTime)) {
+      alert('This time overlaps with an existing slot');
+      return;
+    }
+
+    try {
+      const selectedDateStr = selectedDate.toISOString().split('T')[0];
+      
+      // Save to backend
+      await axios.post('/consultant/availability', {
+        date: selectedDateStr,
+        time: startTime
+      });
+
+      // Refresh availability data
+      await fetchAvailability();
+
+      // Reset form
+      setStartTime('');
+      setEndTime('');
+      setShowForm(false);
+      
+      alert('Slot added successfully!');
+    } catch (error) {
+      console.error('Failed to add slot:', error);
+      alert('Failed to add slot. Please try again.');
+    }
+  };
+
+  /* ---------------- DELETE SLOT ---------------- */
+
+  const handleDeleteSlot = async (index: number) => {
+    try {
+      const selectedDateStr = selectedDate.toISOString().split('T')[0];
+      const selectedSlots = slotsByDate[selectedDate.toDateString()] || [];
+      const slotToDelete = selectedSlots[index];
+      
+      if (slotToDelete?.id) {
+        // Delete from backend
+        await axios.delete(`/consultant/availability/${slotToDelete.id}`);
+        
+        // Refresh availability data
+        await fetchAvailability();
+        
+        alert('Slot deleted successfully!');
+      } else {
+        // Remove from local state (for unsaved slots)
+        setSlotsByDate(prev => {
+          const updated = [...(prev[selectedDateStr] || [])];
+          updated.splice(index, 1);
+          return {
+            ...prev,
+            [selectedDateStr]: updated,
+          };
+        });
+      }
+    } catch (error) {
+      console.error('Failed to delete slot:', error);
+      alert('Failed to delete slot. Please try again.');
+    }
+  };
+
+  /* ---------------- CALENDAR GENERATION ---------------- */
+
+  const daysInMonth = new Date(
+    currentMonth.getFullYear(),
+    currentMonth.getMonth() + 1,
+    0
+  ).getDate();
+
+  const firstDayOfMonth = new Date(
+    currentMonth.getFullYear(),
+    currentMonth.getMonth(),
+    1
+  ).getDay();
+
+  const monthName = currentMonth.toLocaleString('default', {
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const generateCalendarDays = () => {
+    const days = [];
+
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push(<div key={`empty-${i}`} />);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(
+        currentMonth.getFullYear(),
+        currentMonth.getMonth(),
+        day
+      );
+
+      const key = date.toDateString();
+      const isSelected = key === selectedKey;
+
+      days.push(
+        <div
+          key={day}
+          onClick={() => setSelectedDate(date)}
+          className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+            isSelected
+              ? 'bg-blue-600 text-white border-blue-600'
+              : 'bg-white border-gray-100 hover:border-gray-300'
+          }`}
+        >
+          <p className="text-xs font-bold">
+            {date.toLocaleString('default', { weekday: 'short' })}
+          </p>
+          <h3 className="text-lg font-black">{day}</h3>
+
+          {(slotsByDate[key] || []).length > 0 && (
+            <div className="mt-2 h-1 bg-blue-300 rounded-full" />
+          )}
+        </div>
+      );
+    }
+
+    return days;
+  };
+
+  /* ---------------- UI ---------------- */
+
   return (
     <Layout title="Work Schedule">
       <div className="max-w-5xl mx-auto space-y-8">
-        
-        {/* Calendar Header */}
-        <div className="bg-white rounded-[40px] p-8 border border-gray-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center space-x-6">
-            <div className="w-16 h-16 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600">
-              <Calendar size={32} />
-            </div>
-            <div>
-              <h2 className="text-3xl font-black text-gray-900">October 2023</h2>
-              <div className="flex items-center space-x-4 mt-1">
-                <button className="p-2 hover:bg-gray-100 rounded-xl transition-all"><ChevronLeft size={18} /></button>
-                <span className="text-sm font-black text-blue-600 uppercase tracking-widest">Today</span>
-                <button className="p-2 hover:bg-gray-100 rounded-xl transition-all"><ChevronRight size={18} /></button>
-              </div>
-            </div>
-          </div>
-          <button className="bg-gray-900 text-white px-8 py-4 rounded-2xl font-bold flex items-center shadow-xl shadow-gray-200 hover:bg-gray-800 transition-all">
-            <Plus size={20} className="mr-2" /> Bulk Add Slots
-          </button>
-        </div>
 
-        {/* Days Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, i) => (
-            <div key={day} className={`p-6 rounded-[32px] border transition-all ${
-              day === 'Tue' ? 'bg-blue-600 text-white border-blue-600 shadow-xl shadow-blue-100' : 'bg-white border-gray-100'
-            }`}>
-              <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${day === 'Tue' ? 'text-blue-100' : 'text-gray-400'}`}>{day}</p>
-              <h3 className="text-2xl font-black">{22 + i}</h3>
-              <div className="mt-4 space-y-2">
-                {[1, 2].map(s => (
-                  <div key={s} className={`h-1.5 rounded-full ${day === 'Tue' ? 'bg-white/30' : 'bg-blue-100'}`}></div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Selected Day Slots */}
-        <div className="bg-white rounded-[40px] p-8 border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight">Slots for Tuesday, Oct 24</h3>
-            <div className="flex items-center space-x-2 text-xs font-bold text-gray-500">
-              <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-              <span>3 Slots Available</span>
-            </div>
+        {/* Header */}
+        <div className="bg-white rounded-3xl p-6 border shadow-sm flex justify-between items-center">
+          <div className="flex items-center space-x-4">
+            <Calendar size={28} />
+            <h2 className="text-2xl font-black">{monthName}</h2>
           </div>
 
-          <div className="space-y-4">
-            {[
-              { time: '09:00 AM - 10:00 AM', type: 'Morning Session', status: 'Booked', client: 'Alex J.' },
-              { time: '11:30 AM - 12:30 PM', type: 'Consultation', status: 'Available' },
-              { time: '02:00 PM - 03:00 PM', type: 'Strategy Call', status: 'Available' },
-              { time: '04:30 PM - 05:30 PM', type: 'Review', status: 'Blocked' },
-            ].map((slot, i) => (
-              <div key={i} className={`p-6 rounded-[28px] border flex flex-col md:flex-row items-center justify-between gap-4 transition-all ${
-                slot.status === 'Booked' ? 'bg-blue-50/50 border-blue-100' : 'bg-gray-50 border-transparent hover:border-gray-200'
-              }`}>
-                <div className="flex items-center space-x-6">
-                  <div className={`p-4 rounded-2xl ${slot.status === 'Booked' ? 'bg-white text-blue-600' : 'bg-white text-gray-400'}`}>
-                    <Clock size={20} />
-                  </div>
-                  <div>
-                    <p className="font-black text-gray-900 text-lg leading-none mb-1">{slot.time}</p>
-                    <div className="flex items-center space-x-3">
-                      <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">{slot.type}</span>
-                      {slot.client && <span className="bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full">CLIENT: {slot.client}</span>}
-                    </div>
-                  </div>
-                </div>
+          <div className="flex space-x-2">
+            <button onClick={handlePrevMonth}>
+              <ChevronLeft />
+            </button>
+            <button onClick={handleNextMonth}>
+              <ChevronRight />
+            </button>
+          </div>
+        </div>
 
-                <div className="flex items-center space-x-3">
-                  {slot.status === 'Available' ? (
-                    <button className="text-xs font-black text-gray-400 hover:text-red-500 uppercase tracking-widest px-4 py-2">Delete</button>
-                  ) : (
-                    <button className="text-xs font-black text-blue-600 uppercase tracking-widest px-4 py-2 bg-white rounded-xl shadow-sm border border-blue-50">View Details</button>
-                  )}
-                  {slot.status === 'Available' && (
-                    <button className="bg-white border border-gray-100 text-gray-900 px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all">Edit Slot</button>
-                  )}
+        {/* Calendar */}
+        <div className="grid grid-cols-7 gap-3">
+          {loading ? (
+            // Loading skeleton
+            Array.from({ length: 35 }, (_, i) => (
+              <div key={i} className="animate-pulse">
+                <div className="p-4 rounded-2xl border">
+                  <div className="h-6 bg-gray-200 rounded"></div>
                 </div>
+              </div>
+            ))
+          ) : (
+            generateCalendarDays()
+          )}
+        </div>
+
+        {/* Slots Section */}
+        <div className="bg-white rounded-3xl p-6 border shadow-sm">
+          <div className="flex justify-between mb-4">
+            <h3 className="font-black">
+              Slots for {selectedDate.toDateString()}
+            </h3>
+            <span className="text-sm font-bold text-gray-500">
+              {selectedSlots.length} Slots
+            </span>
+          </div>
+
+          <div className="space-y-3">
+
+            {selectedSlots.length === 0 && (
+              <p className="text-gray-400">No slots added yet.</p>
+            )}
+
+            {selectedSlots.map((slot, index) => (
+              <div
+                key={index}
+                className="flex justify-between items-center p-4 rounded-xl bg-gray-50 border"
+              >
+                <p className="font-bold">{slot.display}</p>
+
+                <button
+                  onClick={() => handleDeleteSlot(index)}
+                  className="text-red-500"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             ))}
-            
-            <button className="w-full py-6 border-4 border-dashed border-gray-50 rounded-[28px] text-gray-300 font-black text-lg hover:border-blue-200 hover:text-blue-400 transition-all flex items-center justify-center">
-              <Plus size={24} className="mr-3" /> Click to add a new slot for this day
-            </button>
+
+            {/* Add Slot */}
+            {!showForm ? (
+              <button
+                onClick={() => setShowForm(true)}
+                className="w-full py-3 border-2 border-dashed rounded-xl text-gray-400 font-bold flex justify-center items-center hover:border-blue-300 hover:text-blue-500"
+              >
+                <Plus size={18} className="mr-2" />
+                Add New Slot
+              </button>
+            ) : (
+              <div className="p-4 border rounded-xl bg-gray-50 space-y-4">
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={e => setStartTime(e.target.value)}
+                    className="p-2 border rounded-lg"
+                  />
+
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={e => setEndTime(e.target.value)}
+                    className="p-2 border rounded-lg"
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={() => setShowForm(false)}
+                    className="px-4 py-2 text-sm font-bold text-gray-500"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    onClick={handleAddSlot}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold"
+                  >
+                    Save Slot
+                  </button>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       </div>

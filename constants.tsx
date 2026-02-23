@@ -1,16 +1,27 @@
 import React from "react";
 import {
   LayoutDashboard,
-  Search,
-  Calendar,
-  CreditCard,
-  MessageSquare,
-  ShieldCheck,
+  Building2,
   Users,
   TrendingUp,
   Settings,
+  MessageSquare,
+  Search,
+  Calendar,
+  CreditCard,
+  ShieldCheck,
   Briefcase,
+  HelpCircle,
+  LogOut,
+  CalendarDays,
+  Wallet,
+  LifeBuoy,
+  Star,
+  User,
+  Video,
+  DollarSign,
 } from "lucide-react";
+
 import { UserRole, SessionStatus, Session, Consultant } from "./types";
 
 export const MOCK_USER = {
@@ -152,6 +163,8 @@ export const SIDEBAR_LINKS = {
       icon: <MessageSquare size={20} />,
       path: "/user/messages",
     },
+    { label: "Profile", icon: <Settings size={20} />, path: "/user/profile" },
+    { label: "Support", icon: <HelpCircle size={20} />, path: "/user/support" },
   ],
   [UserRole.CONSULTANT]: [
     {
@@ -189,25 +202,90 @@ export const SIDEBAR_LINKS = {
       icon: <TrendingUp size={20} />,
       path: "/consultant/reviews",
     },
+    {
+      label: "Support",
+      icon: <HelpCircle size={20} />,
+      path: "/consultant/support",
+    },
   ],
   [UserRole.ENTERPRISE_ADMIN]: [
     {
       label: "Dashboard",
       icon: <LayoutDashboard size={20} />,
-      path: "/consultant/dashboard",
-    }, // Reusing for demo
-    { label: "Team", icon: <Users size={20} />, path: "/enterprise/team" },
+      path: "/enterprise/dashboard",
+    },
+    {
+      label: "Company Profile",
+      icon: <Building2 size={20} />,
+      path: "/enterprise/profile",
+    },
+    {
+      label: "Team Management",
+      icon: <Users size={20} />,
+      path: "/enterprise/team",
+    },
+    {
+      label: "Bookings",
+      icon: <CalendarDays size={20} />,
+      path: "/enterprise/bookings",
+    },
+    {
+      label: "Earnings",
+      icon: <Wallet size={20} />,
+      path: "/enterprise/earnings",
+    },
     {
       label: "Analytics",
       icon: <TrendingUp size={20} />,
       path: "/enterprise/analytics",
     },
     {
-      label: "Settings",
+      label: "Enterprise Settings",
       icon: <Settings size={20} />,
       path: "/enterprise/settings",
     },
+    {
+      label: "Messages",
+      icon: <MessageSquare size={20} />,
+      path: "/enterprise/messages",
+    },
+    {
+      label: "Support",
+      icon: <LifeBuoy size={20} />,
+      path: "/enterprise/support",
+    },
   ],
+
+  [UserRole.ENTERPRISE_MEMBER]: [
+    {
+      label: "Dashboard",
+      icon: <LayoutDashboard size={18} />,
+      path: "/member/dashboard",
+    },
+    { label: "My Profile", icon: <User size={18} />, path: "/member/profile" },
+    {
+      label: "My Availability",
+      icon: <CalendarDays size={18} />,
+      path: "/member/availability",
+    },
+    {
+      label: "My Bookings",
+      icon: <Video size={18} />,
+      path: "/member/bookings",
+    },
+    {
+      label: "My Earnings",
+      icon: <DollarSign size={18} />,
+      path: "/member/earnings",
+    },
+    { label: "Reviews", icon: <Star size={18} />, path: "/member/reviews" },
+    {
+      label: "Messages",
+      icon: <MessageSquare size={18} />,
+      path: "/member/messages",
+    },
+  ],
+
   [UserRole.PLATFORM_ADMIN]: [
     {
       label: "Global Stats",
