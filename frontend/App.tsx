@@ -17,6 +17,7 @@ import AuthPage from "./pages/AuthPage";
 /* USER */
 import UserDashboard from "./pages/user/UserDashboard";
 import SearchConsultantPage from "./pages/user/SearchConsultantPage";
+import ConsultantDetailsPage from "./pages/user/ConsultantDetailsPage";
 import UserBooking from "./pages/user/UserBooking";
 import UserCredit from "./pages/user/UserCredit";
 import UserProfilePage from "./pages/user/UserProfilePage";
@@ -25,6 +26,7 @@ import MessagesPage from "./pages/MessagesPage";
 
 /* CONSULTANT */
 import ConsultantDashboard from "./pages/ConsultantDashboard";
+import ConsultantBookingsPage from "./pages/ConsultantBookingsPage";
 import BookingsPage from "./pages/BookingsPage";
 import AvailabilityPage from "./pages/AvailabilityPage";
 import EarningsPage from "./pages/EarningsPage";
@@ -78,7 +80,16 @@ const App: React.FC = () => {
     try {
       const userData = await auth.login(email, role, name);
       setUser(userData);
-      localStorage.setItem("user", JSON.stringify(userData));
+      
+      // Store user data with session timestamp
+      const sessionData = {
+        ...userData,
+        loginTime: Date.now(),
+        sessionDuration: 3600000, // 1 hour in milliseconds
+      };
+      
+      localStorage.setItem("user", JSON.stringify(sessionData));
+      console.log("✅ User session stored:", userData.email);
       return userData;
     } finally {
       setLoading(false);
@@ -89,17 +100,37 @@ const App: React.FC = () => {
   const logout = () => {
     setUser(null);
     localStorage.removeItem("user");
+    localStorage.removeItem("devToken"); // Clear dev JWT token
   };
 
   /* ================= RESTORE SESSION ================= */
   useEffect(() => {
     try {
-      const storedUser = localStorage.getItem("user");
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
+      const storedUserStr = localStorage.getItem("user");
+      if (storedUserStr) {
+        const storedSession = JSON.parse(storedUserStr);
+        
+        // Check if session is still valid (not expired)
+        const currentTime = Date.now();
+        const loginTime = storedSession.loginTime || currentTime;
+        const sessionDuration = storedSession.sessionDuration || 3600000; // Default 1 hour
+        const sessionAge = currentTime - loginTime;
+        
+        if (sessionAge < sessionDuration) {
+          // Session is still valid
+          setUser(storedSession);
+          console.log("✅ Session restored for:", storedSession.email);
+        } else {
+          // Session has expired
+          console.log("⏰ Session expired, clearing stored user");
+          localStorage.removeItem("user");
+          localStorage.removeItem("devToken");
+        }
       }
-    } catch {
+    } catch (error) {
+      console.error("Error restoring session:", error);
       localStorage.removeItem("user");
+      localStorage.removeItem("devToken");
     } finally {
       setLoading(false);
     }
@@ -147,6 +178,12 @@ const App: React.FC = () => {
               }
             />
             <Route
+              path="/user/consultant/:id"
+              element={
+                isUser ? <ConsultantDetailsPage /> : <Navigate to="/auth" />
+              }
+            />
+            <Route
               path="/user/bookings"
               element={isUser ? <UserBooking /> : <Navigate to="/auth" />}
             />
@@ -180,6 +217,12 @@ const App: React.FC = () => {
             />
             <Route
               path="/consultant/bookings"
+              element={
+                isConsultant ? <ConsultantBookingsPage /> : <Navigate to="/auth" />
+              }
+            />
+            <Route
+              path="/consultant/bookings-management"
               element={
                 isConsultant ? <BookingsPage /> : <Navigate to="/auth" />
               }

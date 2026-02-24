@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Layout from '../../components/Layout';
+import { useNavigate } from 'react-router-dom';
 import { consultants as consultantsApi } from '../../services/api';
 import { Consultant } from '../../types';
 import { Search, Loader, Star } from 'lucide-react';
@@ -10,6 +11,7 @@ const weekdays = [
 ];
 
 const SearchConsultantPage: React.FC = () => {
+  const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [consultantsData, setConsultantsData] = useState<Consultant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -298,7 +300,10 @@ const SearchConsultantPage: React.FC = () => {
                     ₹{c.hourly_price} / session
                   </p>
 
-                  <button className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-xl hover:bg-blue-700">
+                  <button 
+                    onClick={() => navigate(`/user/consultant/${c.id}`)}
+                    className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-xl hover:bg-blue-700"
+                  >
                     View Details
                   </button>
                 </div>

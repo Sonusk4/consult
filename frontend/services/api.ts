@@ -22,6 +22,18 @@ api.interceptors.response.use(
 
     console.error("API Error:", message);
 
+    // Only auto-logout on 401 if it's not during OTP verification
+    // This prevents accidental logouts from other 401 errors
+    if (error.response?.status === 401) {
+      const isOtpEndpoint = error.config?.url?.includes("/auth/verify-otp");
+      const isLoginEndpoint = error.config?.url?.includes("/auth/me");
+      
+      // Don't auto-logout during these operations
+      if (!isOtpEndpoint && !isLoginEndpoint) {
+        console.warn("⚠️ Authentication failed - user may need to re-login");
+      }
+    }
+
     const event = new CustomEvent("toast", {
       detail: { message, type: "error" },
     });
@@ -39,6 +51,15 @@ api.interceptors.response.use(
 /* ================= REQUEST INTERCEPTOR ================= */
 api.interceptors.request.use(
   async (config) => {
+    // Check for dev mode token first (stored in localStorage)
+    const devToken = localStorage.getItem("devToken");
+    
+    if (devToken) {
+      config.headers.Authorization = `Bearer ${devToken}`;
+      console.log("✅ Added dev token to request");
+      return config;
+    }
+
     // Get current Firebase user
     const user = firebaseAuth.currentUser;
 
@@ -52,7 +73,7 @@ api.interceptors.request.use(
         console.error("Failed to get Firebase token:", error);
       }
     } else {
-      console.log("⚠️ No Firebase user, request without auth");
+      console.log("⚠️ No Firebase user or dev token, request without auth");
       // If no user, maybe wait for auth state?
       // For now, we'll let it fail with 401
     }
@@ -231,10 +252,25 @@ export const bookings = {
     return response.data;
   },
 
+  updateStatus: async (bookingId: number, status: 'ACCEPTED' | 'REJECTED' | 'CANCELLED') => {
+    const response = await api.put(`/bookings/${bookingId}/status`, { status });
+    return response.data;
+  },
+
   complete: async (bookingId: number, duration: number) => {
     const response = await api.post(`/bookings/${bookingId}/complete`, {
       call_duration: duration,
     });
+    return response.data;
+  },
+
+  getMessages: async (bookingId: number) => {
+    const response = await api.get(`/bookings/${bookingId}/messages`);
+    return response.data;
+  },
+
+  sendMessage: async (bookingId: number, content: string) => {
+    const response = await api.post(`/bookings/${bookingId}/messages`, { content });
     return response.data;
   },
 };

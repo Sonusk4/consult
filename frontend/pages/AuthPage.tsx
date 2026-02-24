@@ -70,28 +70,37 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
     setError("");
     setIsLoading(true);
 
-    const otpString = otp.join("");
+    const otpString = otp.map(d => d.trim()).join("");
 
     try {
       // Step 1: Verify OTP with backend
       console.log("Verifying OTP for:", email);
+      console.log("OTP String:", otpString);
       const verifyRes = await auth.verifyOtp(email, otpString);
 
       if (!verifyRes.customToken) {
         throw new Error("No custom token received from server");
       }
 
-      console.log("OTP verified, signing in with custom token");
+      console.log("OTP verified, token received");
 
-      // Step 2: Sign in with Firebase using custom token
-      const { signInWithCustomToken } = await import("firebase/auth");
-      const { auth: firebaseAuth } = await import("../src/services/firebase");
+      // Check if in dev mode (Firebase not initialized)
+      if (verifyRes.devMode) {
+        console.log("Dev mode detected - storing JWT token");
+        // Store dev JWT token for API requests
+        localStorage.setItem("devToken", verifyRes.customToken);
+      } else {
+        // Step 2: Sign in with Firebase using custom token (production mode)
+        console.log("Production mode - signing in with Firebase custom token");
+        const { signInWithCustomToken } = await import("firebase/auth");
+        const { auth: firebaseAuth } = await import("../src/services/firebase");
 
-      const userCredential = await signInWithCustomToken(
-        firebaseAuth,
-        verifyRes.customToken
-      );
-      console.log("Firebase sign in successful:", userCredential.user.uid);
+        const userCredential = await signInWithCustomToken(
+          firebaseAuth,
+          verifyRes.customToken
+        );
+        console.log("Firebase sign in successful:", userCredential.user.uid);
+      }
 
       // Step 3: Sync user with backend
       console.log("Syncing user with backend...");

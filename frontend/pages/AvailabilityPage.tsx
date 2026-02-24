@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { consultants as consultantsApi } from '../services/api';
 import {
   Plus,
   ChevronLeft,
@@ -37,20 +37,20 @@ const AvailabilityPage: React.FC = () => {
   const fetchAvailability = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('/consultant/availability');
+      const data = await consultantsApi.getConsultantAvailability();
       
       // Group slots by date
       const slotsByDateMap: Record<string, Slot[]> = {};
-      response.data.forEach((slot: any) => {
-        const dateKey = new Date(slot.date).toDateString();
+      data.forEach((slot: any) => {
+        const dateKey = new Date(slot.available_date).toDateString();
         if (!slotsByDateMap[dateKey]) {
           slotsByDateMap[dateKey] = [];
         }
         slotsByDateMap[dateKey].push({
           id: slot.id,
-          start: slot.time,
+          start: slot.available_time,
           end: '', // Will calculate based on duration
-          display: slot.time
+          display: slot.available_time
         });
       });
       
@@ -129,8 +129,9 @@ const AvailabilityPage: React.FC = () => {
     try {
       const selectedDateStr = selectedDate.toISOString().split('T')[0];
       
-      // Save to backend
-      await axios.post('/consultant/availability', {
+      // Save to backend using the api instance
+      const api = (await import('../services/api')).default;
+      await api.post('/consultant/availability', {
         date: selectedDateStr,
         time: startTime
       });
@@ -159,8 +160,9 @@ const AvailabilityPage: React.FC = () => {
       const slotToDelete = selectedSlots[index];
       
       if (slotToDelete?.id) {
-        // Delete from backend
-        await axios.delete(`/consultant/availability/${slotToDelete.id}`);
+        // Delete from backend using the api instance
+        const api = (await import('../services/api')).default;
+        await api.delete(`/consultant/availability/${slotToDelete.id}`);
         
         // Refresh availability data
         await fetchAvailability();

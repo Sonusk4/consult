@@ -1,33 +1,20 @@
 {
-  "name": "consultapro---expert-consultations-simplified",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "name": "consultancy-platform",
+  "version": "1.0.0",
+  "description": "Full-stack consultancy platform connecting users with verified consultants",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend-new && npm run dev",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend-new && npm install",
+    "build:frontend": "cd frontend && npm run build",
+    "start:backend": "cd backend-new && npm start"
   },
-  "dependencies": {
-    "agora-rtc-sdk-ng": "^4.24.2",
-    "axios": "^1.13.5",
-    "firebase": "^12.9.0",
-    "lucide-react": "^0.564.0",
-    "razorpay": "^2.9.6",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "react-router-dom": "^7.13.0",
-    "recharts": "^3.7.0",
-    "socket.io-client": "^4.8.3"
-  },
+  "keywords": ["consultancy", "platform", "react", "nodejs", "video-calls", "booking"],
+  "author": "ConsultaPro Team",
+  "license": "MIT",
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.18",
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "autoprefixer": "^10.4.24",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.18",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
-  }
+    "concurrently": "^8.2.2"
+  },
+  "workspaces": ["frontend", "backend-new"]
 }
