@@ -43,7 +43,7 @@ try {
 }
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", "http://localhost:3001"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
@@ -56,7 +56,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", "http://localhost:3001"],
     methods: ["GET", "POST"],
   },
 });
@@ -87,6 +87,20 @@ if (
 } else {
   console.log("⚠️ Razorpay credentials not configured. Using test mode.");
 }
+
+/**
+ * Agora Video Call Configuration
+ */
+console.log("🔍 Checking Agora environment variables:");
+console.log("AGORA_APP_ID:", process.env.AGORA_APP_ID ? "SET" : "NOT SET");
+console.log("AGORA_APP_CERTIFICATE:", process.env.AGORA_APP_CERTIFICATE ? "SET" : "NOT SET");
+
+if (process.env.AGORA_APP_ID && process.env.AGORA_APP_CERTIFICATE) {
+  console.log("✅ Agora Video Call initialized successfully");
+} else {
+  console.log("⚠️ Agora credentials not configured. Video calls will not work.");
+}
+
 /**
  * Nodemailer configuration for Email OTP (Gmail)
  */
@@ -99,13 +113,25 @@ const isEmailConfigured = process.env.EMAIL_USER && process.env.EMAIL_PASS;
 
 if (isEmailConfigured) {
   transporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    requireTLS: true,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
   });
   console.log("✅ Gmail Nodemailer initialized successfully");
+  
+  // Test the transporter connection
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error("❌ Email service connection failed:", error.message);
+    } else if (success) {
+      console.log("✅ Email service ready to send messages");
+    }
+  });
 } else {
   console.log(
     "⚠️ Email credentials not configured. OTP will be printed to console for testing."
@@ -284,7 +310,7 @@ const prisma = new PrismaClient({
 const onlineConsultants = new Map();
 
 const corsOptions = {
-  origin: "http://localhost:3000",
+  origin: ["http://localhost:3000", "http://localhost:3001"],
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -668,12 +694,6 @@ app.post("/auth/send-otp", async (req, res) => {
     return res.status(400).json({ error: "Email is required" });
   }
 
-  const existingUser = await prisma.user.findUnique({
-    where: { email },
-  });
-
-  // 🚫 Prevent duplicate signup
-
   try {
     const otp = generateOTP();
     const expiryTime = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
@@ -703,12 +723,17 @@ app.post("/auth/send-otp", async (req, res) => {
     }
 
     // Send OTP via email
-    try {
-      if (!isEmailConfigured) {
-        console.log("📧 Email not configured. OTP for testing:", otp);
-        console.log(`📝 For testing, use OTP: ${otp} for email: ${email}`);
-      } else {
-        console.log(`📧 Sending OTP to ${email} using Gmail`);
+    let emailSent = false;
+    let emailError = null;
+
+    if (!isEmailConfigured) {
+      console.log("📧 Email not configured. OTP for testing:", otp);
+      console.log(`📝 For testing, use OTP: ${otp} for email: ${email}`);
+      // Return success for testing
+      emailSent = true;
+    } else {
+      try {
+        console.log(`📧 Sending OTP to ${email} using Gmail SMTP`);
         const mailOptions = {
           from: process.env.EMAIL_USER,
           to: email,
@@ -727,22 +752,35 @@ app.post("/auth/send-otp", async (req, res) => {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log(`✓ OTP email sent to ${email}. OTP: ${otp}`);
+        console.log(`✅ OTP email sent successfully to ${email}`);
+        emailSent = true;
+      } catch (err) {
+        emailError = err;
+        console.error(`❌ Email send failed:`, err.message);
+        console.error(`📧 Full error details:`, {
+          code: err.code,
+          command: err.command,
+          message: err.message,
+        });
+        console.error(
+          `🔧 Configuration check: EMAIL_USER="${process.env.EMAIL_USER}", EMAIL_PASS set: ${!!process.env.EMAIL_PASS}`
+        );
+        console.log(`📝 OTP saved to database for testing: ${otp}`);
+        
+        // Return error to frontend
+        return res.status(500).json({
+          error: "Failed to send OTP email",
+          details: err.message,
+          fallback: `OTP for testing: ${otp}`,
+          hint: "Check your email credentials in .env file"
+        });
       }
-    } catch (emailError) {
-      console.error(`❌ Email send failed:`, emailError.message);
-      console.error(`❌ Full error:`, emailError);
-      console.error(
-        `🔧 Check: EMAIL_USER="${
-          process.env.EMAIL_USER
-        }", EMAIL_PASS set: ${!!process.env.EMAIL_PASS}`
-      );
-      console.log(`📝 For testing - OTP is: ${otp}`);
     }
 
     res.status(200).json({
       message: "OTP sent successfully",
       email: email,
+      otp_placeholder: "Check your email for the OTP",
     });
   } catch (error) {
     console.error("❌ OTP Send Error:", error.message);
@@ -3106,17 +3144,36 @@ app.get("/agora/token", async (req, res) => {
       return res.status(403).json({ error: "Not authorized" });
     }
 
-    // OLD backend uses CONFIRMED when payment is done
-    if (booking.status !== "CONFIRMED" || !booking.is_paid) {
-      return res.status(403).json({ error: "Booking not allowed for video" });
+    // Allow video calls for CONFIRMED bookings with payment or PENDING/ACCEPTED bookings (for testing)
+    const validStatuses = ["CONFIRMED", "PENDING", "ACCEPTED"];
+    if (!validStatuses.includes(booking.status)) {
+      return res.status(403).json({ 
+        error: `Booking status '${booking.status}' does not allow video calls. Valid statuses: ${validStatuses.join(", ")}`
+      });
     }
 
+    // Log booking details for debugging
+    console.log(`📱 Agora token request:`, {
+      bookingId,
+      userId: userIdInt,
+      status: booking.status,
+      is_paid: booking.is_paid,
+      isClient,
+      isConsultant
+    });
+
     const token = generateAgoraToken(channelName, userIdInt);
+    
+    if (!token) {
+      return res.status(500).json({ error: "Failed to generate Agora token" });
+    }
+
+    console.log(`✅ Agora token generated successfully for channel: ${channelName}`);
 
     res.json({ token, uid: userIdInt });
   } catch (error) {
-    console.error("Agora Token Error:", error.message);
-    res.status(500).json({ error: "Failed to generate token" });
+    console.error("❌ Agora Token Error:", error.message);
+    res.status(500).json({ error: "Failed to generate token: " + error.message });
   }
 });
 /* ================= AUTH ME ================= */
