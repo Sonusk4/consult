@@ -8,13 +8,15 @@
     "dev:backend": "cd backend-new && npm run dev",
     "install:all": "npm install && cd frontend && npm install && cd ../backend-new && npm install",
     "build:frontend": "cd frontend && npm run build",
+    "start": "cd backend-new && npm start",
     "start:backend": "cd backend-new && npm start"
   },
   "keywords": ["consultancy", "platform", "react", "nodejs", "video-calls", "booking"],
   "author": "ConsultaPro Team",
   "license": "MIT",
-  "devDependencies": {
+  "dependencies": {
     "concurrently": "^8.2.2"
   },
+  "devDependencies": {},
   "workspaces": ["frontend", "backend-new"]
 }
