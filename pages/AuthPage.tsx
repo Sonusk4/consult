@@ -1,24 +1,25 @@
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../App";
+import { UserRole } from "../types";
+import { ArrowRight, Mail, Shield, ChevronLeft, Info } from "lucide-react";
+import { auth } from "../services/api";
 
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../App';
-import { UserRole } from '../types';
-import { ArrowRight, Mail, Shield, ChevronLeft, Info } from 'lucide-react';
-import { auth } from '../services/api';
-
-type AuthStep = 'ROLE' | 'EMAIL' | 'OTP' | 'PASSWORD';
+type AuthStep = "ROLE" | "EMAIL" | "OTP" | "PASSWORD";
 
 interface AuthPageProps {
-  type: 'LOGIN' | 'SIGNUP';
+  type: "LOGIN" | "SIGNUP";
 }
 
 const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
-  const [step, setStep] = useState<AuthStep>(type === 'LOGIN' ? 'EMAIL' : 'ROLE');
+  const [step, setStep] = useState<AuthStep>(
+    type === "LOGIN" ? "EMAIL" : "ROLE"
+  );
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.USER);
-  const [email, setEmail] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showLoginRedirect, setShowLoginRedirect] = useState(false);
 
@@ -27,86 +28,111 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
   // Reset step if type changes
   React.useEffect(() => {
-    setStep(type === 'LOGIN' ? 'EMAIL' : 'ROLE');
-    setError('');
+    setStep(type === "LOGIN" ? "EMAIL" : "ROLE");
+    setError("");
   }, [type]);
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
-    setStep('EMAIL');
+    setStep("EMAIL");
   };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.includes('@')) {
-      setError('Please enter a valid email address');
+    if (!email.includes("@")) {
+      setError("Please enter a valid email address");
       return;
     }
-    setError('');
+    setError("");
     setIsLoading(true);
 
     try {
+      console.log("📧 Sending OTP to:", email, "Type:", type);
       // Send OTP via API
-      await auth.sendOtp(email, type);
-      setStep('OTP');
+      const response = await auth.sendOtp(email, type);
+      console.log("✅ OTP send response:", response);
+      setStep("OTP");
     } catch (err: any) {
+      console.error("❌ OTP send error:", err);
       const message =
         err.response?.data?.error || "Failed to send OTP. Please try again.";
-
       setError(message);
-
-      if (message.includes("already exists")) {
-        setShowLoginRedirect(true);
-      }
-
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleOtpSubmit = async () => {
-    if (otp.some(digit => digit === '')) {
-      setError('Please enter the full 6-digit code');
+    if (otp.some((digit) => digit === "")) {
+      setError("Please enter the full 6-digit code");
       return;
     }
-    setError('');
+    setError("");
     setIsLoading(true);
 
-    const otpString = otp.join('');
+    const otpString = otp.join("");
 
     try {
-      // Verify OTP
-      await auth.verifyOtp(email, otpString);
+      // Step 1: Verify OTP with backend
+      console.log("Verifying OTP for:", email);
+      const verifyRes = await auth.verifyOtp(email, otpString);
 
-      // If verification successful, login (create/update user)
-      // Only send role and name if SIGNUP. If LOGIN, send undefined to preserve existing role.
-      const user = await login(email, type === 'SIGNUP' ? selectedRole : undefined, type === 'SIGNUP' ? fullName : undefined);
-
-      // Redirect based on ACTUAL role from backend
-      // Redirect based on ACTUAL role from backend
-      if (user.role === UserRole.USER) {
-        navigate('/user/dashboard');
-
-      } else if (user.role === UserRole.CONSULTANT) {
-        navigate('/consultant/dashboard');
-
-      } else if (user.role === UserRole.ENTERPRISE_ADMIN) {
-        navigate('/enterprise/dashboard');
-
-      } else if (user.role === UserRole.ENTERPRISE_MEMBER) {
-        navigate('/member/dashboard');
-
-      } else if (user.role === UserRole.PLATFORM_ADMIN) {
-        navigate('/admin/dashboard');  // ✅ new
-
-      } else {
-        navigate('/');
+      if (!verifyRes.customToken) {
+        throw new Error("No custom token received from server");
       }
 
+      console.log("OTP verified, signing in with custom token");
 
+      // Step 2: Sign in with Firebase using custom token
+      const { signInWithCustomToken } = await import("firebase/auth");
+      const { auth: firebaseAuth } = await import("../src/services/firebase");
 
+      const userCredential = await signInWithCustomToken(
+        firebaseAuth,
+        verifyRes.customToken
+      );
+      console.log("Firebase sign in successful:", userCredential.user.uid);
+
+      // Step 3: Sync user with backend
+      console.log("Syncing user with backend...");
+      const user = await login(
+        email,
+        type === "SIGNUP" ? selectedRole : undefined,
+        type === "SIGNUP" ? fullName : undefined
+      );
+
+      console.log("User synced successfully:", user);
+
+      // Step 4: Redirect based on user role
+      if (user.role === "USER") {
+        navigate("/user/dashboard");
+      } else if (user.role === "CONSULTANT") {
+        navigate("/consultant/dashboard");
+      } else if (user.role === "ENTERPRISE_ADMIN") {
+        navigate("/enterprise/dashboard");
+      } else if (user.role === "ENTERPRISE_MEMBER") {
+        navigate("/member/dashboard");
+      } else if (user.role === "PLATFORM_ADMIN") {
+        navigate("/admin/dashboard");
+      } else {
+        navigate("/");
+      }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Invalid OTP or Login failed.');
+      console.error("OTP verification failed:", err);
+
+      // Handle specific error messages
+      const errorMessage =
+        err.response?.data?.error ||
+        err.message ||
+        "Invalid OTP or Login failed.";
+
+      if (errorMessage.includes("expired")) {
+        setError("OTP has expired. Please request a new one.");
+      } else if (errorMessage.includes("Invalid")) {
+        setError("Invalid OTP. Please check and try again.");
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -118,29 +144,31 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
     newOtp[index] = value.slice(-1);
     setOtp(newOtp);
     // Auto-focus next
-    if (value !== '' && index < 5) {
+    if (value !== "" && index < 5) {
       const nextInput = document.getElementById(`otp-${index + 1}`);
       nextInput?.focus();
     }
   };
 
   const stepPercentage = {
-    'ROLE': 33,
-    'EMAIL': type === 'LOGIN' ? 50 : 66,
-    'OTP': 100,
-    'PASSWORD': 100
+    ROLE: 33,
+    EMAIL: type === "LOGIN" ? 50 : 66,
+    OTP: 100,
+    PASSWORD: 100,
   }[step];
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6 py-12">
       <div className="max-w-md w-full bg-white rounded-[32px] shadow-2xl overflow-hidden border border-gray-100 transition-all duration-500">
-
         {/* Progress Header */}
         <div className="bg-blue-600 px-8 py-10 text-white relative">
-          <div className="absolute top-0 left-0 h-1.5 bg-blue-400 transition-all duration-700" style={{ width: `${stepPercentage}%` }}></div>
+          <div
+            className="absolute top-0 left-0 h-1.5 bg-blue-400 transition-all duration-700"
+            style={{ width: `${stepPercentage}%` }}
+          ></div>
           <h2 className="text-3xl font-black mb-1">ConsultaPro</h2>
           <p className="text-blue-100 font-medium text-sm">
-            {type === 'LOGIN' ? "Welcome back!" : "Join our global community"}
+            {type === "LOGIN" ? "Welcome back!" : "Join our global community"}
           </p>
         </div>
 
@@ -162,9 +190,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
             </div>
           )}
 
-          {step === 'ROLE' ? (
+          {step === "ROLE" ? (
             <div className="space-y-4">
-              <h3 className="text-xl font-bold text-gray-800 mb-6">Choose your path</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-6">
+                Choose your path
+              </h3>
               <RoleButton
                 title="Client / User"
                 subtitle="I want to find and book consultants"
@@ -188,24 +218,40 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
               />
 
               <div className="pt-4 text-center">
-                <p className="text-sm text-gray-500">Already have an account? <button onClick={() => navigate('/login')} className="text-blue-600 font-bold hover:underline">Login here</button></p>
+                <p className="text-sm text-gray-500">
+                  Already have an account?{" "}
+                  <button
+                    onClick={() => navigate("/login")}
+                    className="text-blue-600 font-bold hover:underline"
+                  >
+                    Login here
+                  </button>
+                </p>
               </div>
             </div>
-          ) : step === 'EMAIL' ? (
+          ) : step === "EMAIL" ? (
             <form onSubmit={handleEmailSubmit} className="space-y-6">
-              {type === 'SIGNUP' && <BackButton onClick={() => setStep('ROLE')} />}
+              {type === "SIGNUP" && (
+                <BackButton onClick={() => setStep("ROLE")} />
+              )}
               <div>
-                <h3 className="text-xl font-bold text-gray-800 mb-2">{type === 'LOGIN' ? 'Login' : 'Registration'}</h3>
-                <p className="text-gray-500 text-sm leading-relaxed">Enter your professional email to receive a verification code.</p>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">
+                  {type === "LOGIN" ? "Login" : "Registration"}
+                </h3>
+                <p className="text-gray-500 text-sm leading-relaxed">
+                  Enter your professional email to receive a verification code.
+                </p>
               </div>
 
               <div className="space-y-4">
-                {type === 'SIGNUP' && (
+                {type === "SIGNUP" && (
                   <div>
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">Full Name</label>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                      Full Name
+                    </label>
                     <input
                       type="text"
-                      required={type === 'SIGNUP'}
+                      required={type === "SIGNUP"}
                       placeholder="Enter your full name"
                       className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
                       value={fullName}
@@ -215,7 +261,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                   </div>
                 )}
                 <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                  <Mail
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                    size={20}
+                  />
                   <input
                     type="email"
                     required
@@ -231,22 +280,46 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                   disabled={isLoading}
                   className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center group disabled:opacity-50"
                 >
-                  {isLoading ? "Sending..." : <>Send Verification Code <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" size={20} /></>}
+                  {isLoading ? (
+                    "Sending..."
+                  ) : (
+                    <>
+                      Send Verification Code{" "}
+                      <ArrowRight
+                        className="ml-2 group-hover:translate-x-1 transition-transform"
+                        size={20}
+                      />
+                    </>
+                  )}
                 </button>
               </div>
 
-              {type === 'LOGIN' && (
+              {type === "LOGIN" && (
                 <div className="pt-2 text-center">
-                  <p className="text-sm text-gray-500">New here? <button type="button" onClick={() => navigate('/signup')} className="text-blue-600 font-bold hover:underline">Create an account</button></p>
+                  <p className="text-sm text-gray-500">
+                    New here?{" "}
+                    <button
+                      type="button"
+                      onClick={() => navigate("/signup")}
+                      className="text-blue-600 font-bold hover:underline"
+                    >
+                      Create an account
+                    </button>
+                  </p>
                 </div>
               )}
             </form>
-          ) : step === 'OTP' ? (
+          ) : step === "OTP" ? (
             <div className="space-y-6">
-              <BackButton onClick={() => setStep('EMAIL')} />
+              <BackButton onClick={() => setStep("EMAIL")} />
               <div>
-                <h3 className="text-xl font-bold text-gray-800 mb-2">Verify it's you</h3>
-                <p className="text-gray-500 text-sm">We've sent a 6-digit code to <span className="text-gray-900 font-bold">{email}</span></p>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">
+                  Verify it's you
+                </h3>
+                <p className="text-gray-500 text-sm">
+                  We've sent a 6-digit code to{" "}
+                  <span className="text-gray-900 font-bold">{email}</span>
+                </p>
               </div>
 
               <div className="space-y-6">
@@ -261,7 +334,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                       value={digit}
                       onChange={(e) => updateOtp(i, e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Backspace' && !otp[i] && i > 0) {
+                        if (e.key === "Backspace" && !otp[i] && i > 0) {
                           document.getElementById(`otp-${i - 1}`)?.focus();
                         }
                       }}
@@ -279,14 +352,25 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
               </div>
 
               <div className="text-center">
-                <p className="text-sm text-gray-500">Didn't receive code? <button type="button" onClick={handleEmailSubmit} className="text-blue-600 font-bold hover:underline">Resend OTP</button></p>
+                <p className="text-sm text-gray-500">
+                  Didn't receive code?{" "}
+                  <button
+                    type="button"
+                    onClick={handleEmailSubmit}
+                    className="text-blue-600 font-bold hover:underline"
+                  >
+                    Resend OTP
+                  </button>
+                </p>
               </div>
             </div>
           ) : null}
 
           <div className="mt-8 pt-8 border-t border-gray-100 flex items-center justify-center space-x-2 text-gray-400">
             <Shield size={16} />
-            <span className="text-[10px] font-black uppercase tracking-widest">End-to-End Encrypted Access</span>
+            <span className="text-[10px] font-black uppercase tracking-widest">
+              End-to-End Encrypted Access
+            </span>
           </div>
         </div>
       </div>
@@ -297,10 +381,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
           <Info size={18} />
         </div>
         <div>
-          <h4 className="text-sm font-bold text-blue-900 mb-1">Testing Information</h4>
+          <h4 className="text-sm font-bold text-blue-900 mb-1">
+            Testing Information
+          </h4>
           <p className="text-xs text-blue-700 leading-relaxed">
             Backend Integration Active.
-            <br />• Enter a valid email found in backend (or any new email to register).
+            <br />• Enter a valid email found in backend (or any new email to
+            register).
             <br />• Check backend logs for OTP if email sending fails locally.
           </p>
         </div>
@@ -310,13 +397,23 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 };
 
 // Helper Components
-const RoleButton = ({ title, subtitle, onClick }: { title: string, subtitle: string, onClick: () => void }) => (
+const RoleButton = ({
+  title,
+  subtitle,
+  onClick,
+}: {
+  title: string;
+  subtitle: string;
+  onClick: () => void;
+}) => (
   <button
     onClick={onClick}
     className="w-full flex items-center justify-between p-5 rounded-2xl border-2 border-gray-100 hover:border-blue-500 hover:bg-blue-50 transition-all group"
   >
     <div className="text-left">
-      <p className="font-bold text-gray-900 group-hover:text-blue-900">{title}</p>
+      <p className="font-bold text-gray-900 group-hover:text-blue-900">
+        {title}
+      </p>
       <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
     </div>
     <ArrowRight className="text-gray-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
@@ -324,7 +421,10 @@ const RoleButton = ({ title, subtitle, onClick }: { title: string, subtitle: str
 );
 
 const BackButton = ({ onClick }: { onClick: () => void }) => (
-  <button onClick={onClick} className="text-gray-400 font-bold text-sm hover:text-blue-600 flex items-center mb-6 transition-colors">
+  <button
+    onClick={onClick}
+    className="text-gray-400 font-bold text-sm hover:text-blue-600 flex items-center mb-6 transition-colors"
+  >
     <ChevronLeft size={16} className="mr-1" /> Back
   </button>
 );

@@ -10,15 +10,49 @@ const multer = require("multer");
 const verifyFirebaseToken = require("./middleware/authMiddleware");
 const Razorpay = require("razorpay");
 const generateAgoraToken = require("./agora");
+const bcrypt = require("bcrypt");
 
 require("dotenv").config();
 const http = require("http");
 const { Server } = require("socket.io");
+const nodemailer = require("nodemailer");
 const app = express();
+// Initialize Firebase Admin SDK
+let firebaseAdminInitialized = false;
+try {
+  if (
+    process.env.FIREBASE_PROJECT_ID &&
+    process.env.FIREBASE_CLIENT_EMAIL &&
+    process.env.FIREBASE_PRIVATE_KEY
+  ) {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      }),
+    });
+    firebaseAdminInitialized = true;
+    console.log("✅ Firebase Admin initialized successfully");
+  } else {
+    console.log("⚠️ Firebase Admin credentials missing");
+  }
+} catch (error) {
+  console.error("❌ Firebase Admin initialization failed:", error.message);
+}
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  })
+);
+
+app.use(express.json());
 
 const server = http.createServer(app);
 
-const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: {
     origin: "http://localhost:3000",
@@ -79,76 +113,138 @@ if (isEmailConfigured) {
 
 console.log("📧 Email configured:", isEmailConfigured);
 
-global.is_firebase_enabled = false;
 // DEV AUTH MIDDLEWARE (FOR SOCKET + BOOKINGS)
 // DEV AUTH MIDDLEWARE (FOR LOGIN + BOOKINGS + SOCKET)
-app.use((req, res, next) => {
-  const emailFromHeader = req.headers["x-user-email"];
-  const emailFromBody = req.body?.email;
-
-  const email = emailFromHeader || emailFromBody;
-
-  if (email) {
-    req.user = {
-      email: email,
-    };
-  }
-
-  next();
-});
 
 //const agoraRoute = require("./routes/agoraToken");
 //app.use("/agora", agoraRoute);
 /* ================= DEV AUTH MIDDLEWARE ================= */
 
-app.get("/auth/me", verifyFirebaseToken, async (req, res) => {
+/**
+ * GET /auth/debug
+ * Debug endpoint to check authentication status
+ */
+app.get("/auth/debug", verifyFirebaseToken, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: {
+    res.json({
+      authenticated: true,
+      user: {
+        id: req.user.id,
+        email: req.user.email,
         firebase_uid: req.user.firebase_uid,
+        role: req.user.role,
+        is_verified: req.user.is_verified,
       },
     });
-
-    if (!user) {
-      return res.status(401).json({ error: "User not found in DB" });
-    }
-
-    res.json(user);
-  } catch (err) {
-    console.log("AUTH ME ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
+app.post("/auth/me", verifyFirebaseToken, async (req, res) => {
+  try {
+    const firebase_uid = req.user.firebase_uid;
+    const email = req.user.email;
+    const { role, name } = req.body;
 
-/**
- * Razorpay Configuration
- */
-console.log("🔍 Checking Razorpay environment variables:");
-console.log(
-  "RAZORPAY_KEY_ID:",
-  process.env.RAZORPAY_KEY_ID ? "SET" : "NOT SET"
-);
-console.log(
-  "RAZORPAY_KEY_SECRET:",
-  process.env.RAZORPAY_KEY_SECRET ? "SET" : "NOT SET"
-);
+    if (!firebase_uid || !email) {
+      return res.status(400).json({ error: "Invalid user data from token" });
+    }
 
-if (
-  process.env.RAZORPAY_KEY_ID &&
-  process.env.RAZORPAY_KEY_SECRET &&
-  process.env.RAZORPAY_KEY_ID !== "rzp_test_XXXXXXXXXXXXXXXXXXXXXXX"
-) {
-  razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET,
-  });
-  console.log("✅ Razorpay initialized successfully");
-} else {
-  console.log("⚠️ Razorpay credentials not configured. Using test mode.");
-}
-/**
- * Resend configuration for Email OTP
- */
+    console.log(
+      `📝 Syncing user: ${email} with role: ${role || "existing role"}`
+    );
+
+    let user = await prisma.user.findUnique({
+      where: { firebase_uid },
+      include: {
+        consultant: true,
+        profile: true,
+        wallet: true,
+      },
+    });
+    const userEmail = req.user.email;
+
+    if (!user) {
+      // Check if user exists by email
+      const existingUser = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (existingUser) {
+        // Link existing user to Firebase
+        console.log(`🔄 Linking existing user ${email} to Firebase UID`);
+        user = await prisma.user.update({
+          where: { email },
+          data: {
+            firebase_uid,
+            name: name || existingUser.name,
+            role: role || existingUser.role,
+            is_verified: true,
+          },
+          include: {
+            consultant: true,
+            profile: true,
+            wallet: true,
+          },
+        });
+      } else {
+        // Create new user
+        console.log(`🆕 Creating new user ${email}`);
+        user = await prisma.user.create({
+          data: {
+            firebase_uid,
+            email,
+            name: name || email.split("@")[0],
+            role: role || "USER",
+            is_verified: true,
+          },
+          include: {
+            consultant: true,
+            profile: true,
+            wallet: true,
+          },
+        });
+      }
+    } else {
+      // Update existing user if name or role provided
+      if (name || role) {
+        console.log(`🔄 Updating existing user ${email}`);
+        user = await prisma.user.update({
+          where: { firebase_uid },
+          data: {
+            name: name || user.name,
+            role: role || user.role,
+          },
+          include: {
+            consultant: true,
+            profile: true,
+            wallet: true,
+          },
+        });
+      }
+    }
+
+    // Ensure wallet exists
+    if (!user.wallet) {
+      user.wallet = await prisma.wallet.create({
+        data: {
+          userId: user.id,
+          balance: 0,
+        },
+      });
+    }
+
+    console.log(
+      `✅ User synced successfully: ${user.email} (Role: ${user.role})`
+    );
+    return res.json(user);
+  } catch (error) {
+    console.error("❌ Auth/me Error:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to sync user: " + error.message });
+  }
+});
 console.log("🔍 Checking environment variables:");
 console.log("RESEND_API_KEY:", process.env.RESEND_API_KEY ? "SET" : "NOT SET");
 console.log("EMAIL_FROM:", process.env.EMAIL_FROM ? "SET" : "NOT SET");
@@ -163,14 +259,6 @@ if (
 } else {
   console.log("⚠️ Resend API key not configured. Using test mode.");
 }
-
-// Check if email is configured
-
-console.log("📧 Email configured:", isEmailConfigured);
-
-/**
- * Cloudinary configuration for image uploads
- */
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -196,6 +284,7 @@ const prisma = new PrismaClient({
   adapter,
   errorFormat: "pretty",
 });
+const onlineConsultants = new Map();
 
 const corsOptions = {
   origin: "http://localhost:3000",
@@ -204,29 +293,7 @@ const corsOptions = {
   credentials: true,
 };
 
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-  })
-);
-
-app.use(express.json());
 // DEV AUTH MIDDLEWARE (FOR LOGIN + BOOKINGS + SOCKET)
-app.use((req, res, next) => {
-  const emailFromHeader = req.headers["x-user-email"];
-  const emailFromBody = req.body?.email;
-
-  const email = emailFromHeader || emailFromBody;
-
-  if (email) {
-    req.user = {
-      email: email,
-    };
-  }
-
-  next();
-});
 
 app.get("/", (req, res) => {
   res.send("Backend + Socket + Neon is running 🚀");
@@ -237,60 +304,13 @@ app.get("/", (req, res) => {
  * TODO: Update FIREBASE_PRIVATE_KEY in .env with valid credentials
  * and remove the is_firebase_enabled check
  */
-global.is_firebase_enabled = false;
 
 /**
- * POST /auth/me
  * Workflow:
  * 1. Verify Firebase token [cite: 9]
  * 2. Check if user exists in PostgreSQL [cite: 9]
  * 3. If not, create new record with the chosen role [cite: 10]
  */
-app.post("/auth/me", async (req, res) => {
-  const { email, role, phone, name } = req.body;
-
-  try {
-    if (!email) {
-      return res.status(400).json({ error: "Email is required" });
-    }
-
-    let user = await prisma.user.findUnique({
-      where: { email },
-      include: { profile: true },
-    });
-
-    if (user) {
-      user = await prisma.user.update({
-        where: { email },
-        data: {
-          phone: phone ?? user.phone,
-          name: name ?? user.name,
-          role: role ?? user.role,
-        },
-        include: { profile: true },
-      });
-    } else {
-      user = await prisma.user.create({
-        data: {
-          email,
-          firebase_uid: `temp_${Date.now()}`,
-          phone: phone || null,
-          role: role || "USER",
-          name: name || null,
-          profile: {
-            create: {},
-          },
-        },
-        include: { profile: true },
-      });
-    }
-
-    res.status(200).json(user);
-  } catch (error) {
-    console.error("Auth/me Error:", error);
-    res.status(500).json({ error: "Failed to sync user" });
-  }
-});
 
 /**
  * Helper function to generate random username
@@ -350,17 +370,6 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
         .catch(() => null);
 
       // If still not found and Firebase is disabled (dev mode), create a test admin
-      if (!admin && !global.is_firebase_enabled) {
-        admin = await prisma.user.create({
-          data: {
-            firebase_uid: req.user.firebase_uid,
-            email: req.user.email,
-            role: "ENTERPRISE_ADMIN",
-            is_verified: true,
-            name: "Test Admin",
-          },
-        });
-      }
     }
 
     if (!admin) {
@@ -372,6 +381,7 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
     // Generate credentials
     const username = generateUsername();
     const password = generatePassword();
+    const hashedPassword = await bcrypt.hash(password, 10);
     const inviteToken = generateInviteToken();
     const inviteTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
@@ -394,7 +404,7 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
           invite_token: inviteToken,
           invite_token_expiry: inviteTokenExpiry,
           temp_username: username,
-          temp_password: password,
+          temp_password: hashedPassword,
         },
       });
     } else {
@@ -747,11 +757,28 @@ app.post("/auth/send-otp", async (req, res) => {
  * POST /auth/verify-otp
  * Verify OTP code entered by user
  */
+/**
+ * POST /auth/verify-otp
+ * Verify OTP code entered by user
+ */
+/**
+ * POST /auth/verify-otp
+ * Verify OTP code entered by user
+ */
 app.post("/auth/verify-otp", async (req, res) => {
-  const { email } = req.body;
+  const { email, otp } = req.body;
 
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user || user.otp_code !== otp) {
+    return res.status(400).json({ error: "Invalid OTP" });
+  }
+
+  if (new Date() > user.otp_expiry) {
+    return res.status(400).json({ error: "OTP expired" });
+  }
   try {
-    // DEV MODE: Always verify OTP
+    // Mark user verified in DB
     const user = await prisma.user.update({
       where: { email },
       data: {
@@ -761,47 +788,90 @@ app.post("/auth/verify-otp", async (req, res) => {
       },
     });
 
-    console.log("DEV OTP VERIFIED FOR:", email);
+    console.log("OTP VERIFIED FOR:", email);
 
-    res.status(200).json({
-      message: "OTP verified (DEV MODE)",
-      user,
+    // CHECK IF FIREBASE IS INITIALIZED
+    if (!firebaseAdminInitialized) {
+      console.warn(
+        "⚠️ Firebase not initialized - returning mock token for development"
+      );
+
+      // Return a mock token for development
+      return res.status(200).json({
+        message: "OTP verified (DEV MODE - No Firebase)",
+        customToken: "dev-mode-mock-token-" + Date.now(),
+        devMode: true,
+      });
+    }
+
+    // 🔥 Create or get Firebase user
+    let firebaseUser;
+    try {
+      firebaseUser = await admin.auth().getUserByEmail(email);
+    } catch {
+      firebaseUser = await admin.auth().createUser({ email });
+    }
+
+    // 🔥 Generate custom token
+    const customToken = await admin.auth().createCustomToken(firebaseUser.uid);
+
+    // 🔥 RETURN TOKEN
+    return res.status(200).json({
+      message: "OTP verified",
+      customToken,
     });
   } catch (error) {
     console.error("OTP Verification Error:", error);
-    res.status(500).json({ error: "Failed to verify OTP" });
+    return res
+      .status(500)
+      .json({ error: "Failed to verify OTP: " + error.message });
   }
 });
-// LOGIN / CREATE USER AFTER OTP
-app.post("/auth/me", async (req, res) => {
-  const { email, role } = req.body;
-
-  if (!email) {
-    return res.status(400).json({ error: "Email is required" });
-  }
-
+app.get("/auth/debug-otp/:email", async (req, res) => {
   try {
-    let user = await prisma.user.findUnique({
+    const { email } = req.params;
+    const user = await prisma.user.findUnique({
       where: { email },
+      select: {
+        email: true,
+        is_verified: true,
+        otp_code: true,
+        otp_expiry: true,
+      },
     });
-
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          email: email,
-          firebase_uid: `dev-${email}`, // ✅ REQUIRED FOR PRISMA
-          role: role || "USER",
-          is_verified: true,
+    res.json(user || { error: "User not found" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.get("/auth/test-firebase", async (req, res) => {
+  try {
+    if (!firebaseAdminInitialized) {
+      return res.status(500).json({
+        error: "Firebase not initialized",
+        env: {
+          projectId: !!process.env.FIREBASE_PROJECT_ID,
+          clientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: !!process.env.FIREBASE_PRIVATE_KEY,
         },
       });
     }
 
-    return res.json(user);
+    // Try to list users (just one) to test
+    const listUsersResult = await admin.auth().listUsers(1);
+    res.json({
+      success: true,
+      message: "Firebase is working",
+      userCount: listUsersResult.users.length,
+    });
   } catch (error) {
-    console.error("Auth Me Error FULL:", error);
-    return res.status(400).json({ error: error.message });
+    res.status(500).json({
+      error: "Firebase test failed",
+      details: error.message,
+    });
   }
 });
+// LOGIN / CREATE USER AFTER OTP
 
 /**
  * POST /consultant/register
@@ -827,7 +897,7 @@ app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
       // Otherwise create a new user
       try {
         user = await prisma.user.findUnique({
-          where: { email },
+          where: { email: req.user.email },
         });
 
         if (user && !user.firebase_uid) {
@@ -1001,17 +1071,6 @@ app.get("/enterprise/team", verifyFirebaseToken, async (req, res) => {
         .catch(() => null);
 
       // If still not found and Firebase is disabled (dev mode), create a test admin
-      if (!admin && !global.is_firebase_enabled) {
-        admin = await prisma.user.create({
-          data: {
-            firebase_uid: req.user.firebase_uid,
-            email: req.user.email,
-            role: "ENTERPRISE_ADMIN",
-            is_verified: true,
-            name: "Test Admin",
-          },
-        });
-      }
     }
 
     if (!admin || admin.role !== "ENTERPRISE_ADMIN") {
@@ -1070,18 +1129,6 @@ app.get("/enterprise/settings", verifyFirebaseToken, async (req, res) => {
           where: { email: req.user.email },
         })
         .catch(() => null);
-
-      if (!admin && !global.is_firebase_enabled) {
-        admin = await prisma.user.create({
-          data: {
-            firebase_uid: req.user.firebase_uid,
-            email: req.user.email,
-            role: "ENTERPRISE_ADMIN",
-            is_verified: true,
-            name: "Test Admin",
-          },
-        });
-      }
     }
 
     if (!admin || admin.role !== "ENTERPRISE_ADMIN") {
@@ -1312,7 +1359,120 @@ app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
     res.status(500).json({ error: "Failed to update consultant profile" });
   }
 });
+app.get(
+  "/consultant/dashboard-stats",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      const consultant = await prisma.consultant.findFirst({
+        where: { userId: req.user.id },
+      });
 
+      if (!consultant) {
+        return res.status(404).json({ error: "Consultant not found" });
+      }
+
+      const totalSessions = await prisma.booking.count({
+        where: { consultantId: consultant.id },
+      });
+
+      const completedSessions = await prisma.booking.findMany({
+        where: {
+          consultantId: consultant.id,
+          status: "COMPLETED",
+        },
+      });
+
+      const totalRevenue = completedSessions.reduce(
+        (sum, b) => sum + (b.net_earning || 0),
+        0
+      );
+
+      res.json({
+        totalSessions,
+        totalRevenue,
+        averageRating: 0,
+        activeClients: 0,
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  }
+);
+app.get("/consultant/bookings", verifyFirebaseToken, async (req, res) => {
+  try {
+    const consultant = await prisma.consultant.findFirst({
+      where: { userId: req.user.id },
+    });
+
+    if (!consultant) {
+      return res.status(404).json({ error: "Consultant not found" });
+    }
+
+    const bookings = await prisma.booking.findMany({
+      where: { consultantId: consultant.id },
+      orderBy: { date: "desc" },
+    });
+
+    res.json(bookings);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+});
+app.get("/consultant/availability", verifyFirebaseToken, async (req, res) => {
+  try {
+    res.json([
+      { id: 1, time: "10:00 AM", status: "available" },
+      { id: 2, time: "12:00 PM", status: "booked" },
+      { id: 3, time: "3:00 PM", status: "available" },
+    ]);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch availability" });
+  }
+});
+app.get("/consultant/earnings", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { period } = req.query;
+
+    const consultant = await prisma.consultant.findFirst({
+      where: { userId: req.user.id },
+    });
+
+    if (!consultant) {
+      return res.status(404).json({ error: "Consultant not found" });
+    }
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        consultantId: consultant.id,
+        status: "COMPLETED",
+      },
+    });
+
+    const total = bookings.reduce((sum, b) => sum + (b.net_earning || 0), 0);
+
+    if (period === "30days") {
+      return res.json([
+        { name: "Week 1", revenue: total },
+        { name: "Week 2", revenue: 0 },
+        { name: "Week 3", revenue: 0 },
+        { name: "Week 4", revenue: 0 },
+      ]);
+    }
+
+    res.json([
+      { name: "Mon", revenue: total },
+      { name: "Tue", revenue: 0 },
+      { name: "Wed", revenue: 0 },
+      { name: "Thu", revenue: 0 },
+      { name: "Fri", revenue: 0 },
+      { name: "Sat", revenue: 0 },
+      { name: "Sun", revenue: 0 },
+    ]);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch earnings" });
+  }
+});
 /**
  * POST /consultant/upload-profile-pic
  * Upload consultant profile picture to Cloudinary
@@ -1556,346 +1716,6 @@ app.get("/credit-packages", async (req, res) => {
   }
 });
 
-/**
- * POST /payment/create-order
- * Create Razorpay order for payment
- */
-app.post("/payment/create-order", verifyFirebaseToken, async (req, res) => {
-  const { amount, package_id } = req.body;
-
-  console.log("🧪 Create Order Request:", {
-    amount,
-    package_id,
-    user: req.user,
-  });
-
-  try {
-    if (!amount || amount <= 0) {
-      console.log("❌ Invalid amount:", amount);
-      return res.status(400).json({ error: "Invalid amount" });
-    }
-
-    if (!razorpay) {
-      console.log("❌ Razorpay not initialized");
-      return res.status(503).json({ error: "Payment service not configured" });
-    }
-
-    // Calculate bonus if package is specified
-    let bonusAmount = 0;
-    if (package_id) {
-      console.log("🔍 Looking up package:", package_id);
-      const creditPackage = await prisma.creditPackage.findUnique({
-        where: { id: parseInt(package_id) },
-      });
-      console.log("📦 Found package:", creditPackage);
-      if (creditPackage) {
-        bonusAmount = creditPackage.bonus || 0;
-      }
-    }
-
-    const totalAmount = amount + bonusAmount;
-    const amountInPaise = totalAmount * 100; // Convert to paise
-
-    console.log("💰 Creating order:", { totalAmount, amountInPaise });
-
-    // Create Razorpay order
-    const options = {
-      amount: amountInPaise,
-      currency: "INR",
-      receipt: `receipt_${Date.now()}`,
-      payment_capture: 1,
-    };
-
-    console.log("📞 Calling Razorpay API...");
-    const order = await razorpay.orders.create(options);
-    console.log("✅ Razorpay order created:", order);
-
-    res.status(200).json({
-      order_id: order.id,
-      amount: totalAmount,
-      currency: "INR",
-      key_id: process.env.RAZORPAY_KEY_ID,
-      bonus: bonusAmount,
-    });
-  } catch (error) {
-    console.error("❌ Create Order Error:", error.message);
-    console.error("❌ Full error:", error);
-    res
-      .status(500)
-      .json({ error: "Failed to create payment order: " + error.message });
-  }
-});
-
-/**
- * POST /payment/verify
- * Verify Razorpay payment and add credits to wallet
- */
-app.post("/payment/verify", verifyFirebaseToken, async (req, res) => {
-  const {
-    razorpay_order_id,
-    razorpay_payment_id,
-    razorpay_signature,
-    amount,
-    package_id,
-  } = req.body;
-
-  try {
-    if (!razorpay) {
-      return res.status(503).json({ error: "Payment service not configured" });
-    }
-
-    // Verify payment signature
-    const crypto = require("crypto");
-    const generated_signature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest("hex");
-
-    if (generated_signature !== razorpay_signature) {
-      return res.status(400).json({ error: "Invalid payment signature" });
-    }
-
-    // Get user
-    const user = await prisma.user.findUnique({
-      where: { firebase_uid: req.user.firebase_uid },
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // Create or get wallet
-    let wallet = await prisma.wallet.findUnique({
-      where: { userId: user.id },
-    });
-
-    if (!wallet) {
-      wallet = await prisma.wallet.create({
-        data: {
-          userId: user.id,
-          balance: 0,
-        },
-      });
-    }
-
-    // Calculate bonus if package is specified
-    let bonusAmount = 0;
-    if (package_id) {
-      const creditPackage = await prisma.creditPackage.findUnique({
-        where: { id: parseInt(package_id) },
-      });
-      if (creditPackage) {
-        bonusAmount = creditPackage.bonus || 0;
-      }
-    }
-
-    const totalCredits = amount + bonusAmount;
-
-    // Update wallet balance
-    const updatedWallet = await prisma.wallet.update({
-      where: { id: wallet.id },
-      data: {
-        balance: wallet.balance + totalCredits,
-      },
-    });
-
-    // Create transaction record
-    await prisma.transaction.create({
-      data: {
-        userId: user.id,
-        type: "CREDIT",
-        amount: totalCredits,
-        description: `Added ₹${amount} credits${
-          bonusAmount > 0 ? ` with ₹${bonusAmount} bonus` : ""
-        } via Razorpay`,
-        payment_method: "CREDIT_CARD",
-        status: "SUCCESS",
-      },
-    });
-
-    console.log(
-      `✓ Payment verified and ₹${totalCredits} credits added to user ${user.email}`
-    );
-    res.status(200).json({
-      message: "Payment successful and credits added",
-      amount_added: totalCredits,
-      bonus: bonusAmount,
-      new_balance: updatedWallet.balance,
-      payment_id: razorpay_payment_id,
-    });
-  } catch (error) {
-    console.error("Payment Verification Error:", error.message);
-    res.status(500).json({ error: "Failed to verify payment" });
-  }
-});
-
-/**
- * POST /wallet/add-credits
- * Add credits to user wallet (simulate payment)
- */
-app.post("/wallet/add-credits", verifyFirebaseToken, async (req, res) => {
-  const { amount, package_id } = req.body;
-
-  try {
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ error: "Invalid amount" });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { firebase_uid: req.user.firebase_uid },
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // Create or get wallet
-    let wallet = await prisma.wallet.findUnique({
-      where: { userId: user.id },
-    });
-
-    if (!wallet) {
-      wallet = await prisma.wallet.create({
-        data: {
-          userId: user.id,
-          balance: 0,
-        },
-      });
-    }
-
-    // Calculate bonus if package is specified
-    let bonusAmount = 0;
-    if (package_id) {
-      const creditPackage = await prisma.creditPackage.findUnique({
-        where: { id: parseInt(package_id) },
-      });
-      if (creditPackage) {
-        bonusAmount = creditPackage.bonus || 0;
-      }
-    }
-
-    const totalCredits = amount + bonusAmount;
-
-    // Update wallet balance
-    const updatedWallet = await prisma.wallet.update({
-      where: { id: wallet.id },
-      data: {
-        balance: wallet.balance + totalCredits,
-      },
-    });
-
-    // Create transaction record
-    await prisma.transaction.create({
-      data: {
-        userId: user.id,
-        type: "CREDIT",
-        amount: totalCredits,
-        description: `Added ₹${amount} credits${
-          bonusAmount > 0 ? ` with ₹${bonusAmount} bonus` : ""
-        }`,
-        payment_method: "CREDIT_CARD",
-        status: "SUCCESS",
-      },
-    });
-
-    console.log(`✓ Added ₹${totalCredits} credits to user ${user.email}`);
-    res.status(200).json({
-      message: "Credits added successfully",
-      amount_added: totalCredits,
-      bonus: bonusAmount,
-      new_balance: updatedWallet.balance,
-    });
-  } catch (error) {
-    console.error("Add Credits Error:", error.message);
-    res.status(500).json({ error: "Failed to add credits: " + error.message });
-  }
-});
-
-/**
- * GET /transactions
- * Get user's transaction history
- */
-app.get("/transactions", verifyFirebaseToken, async (req, res) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { firebase_uid: req.user.firebase_uid },
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const transactions = await prisma.transaction.findMany({
-      where: { userId: user.id },
-      orderBy: { created_at: "desc" },
-      take: 50, // Limit to last 50 transactions
-    });
-
-    res.status(200).json(transactions);
-  } catch (error) {
-    console.error("Get Transactions Error:", error.message);
-    res.status(500).json({ error: "Failed to fetch transactions" });
-  }
-});
-
-/**
- * GET /wallet
- * Get user's wallet balance
- */
-app.get("/wallet", verifyFirebaseToken, async (req, res) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { firebase_uid: req.user.firebase_uid },
-      include: { wallet: true },
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // Create wallet if it doesn't exist
-    let wallet = user.wallet;
-    if (!wallet) {
-      wallet = await prisma.wallet.create({
-        data: {
-          userId: user.id,
-          balance: 0,
-        },
-      });
-    }
-
-    res.status(200).json({
-      balance: wallet.balance,
-      user_id: user.id,
-    });
-  } catch (error) {
-    console.error("Get Wallet Error:", error.message);
-    res.status(500).json({ error: "Failed to fetch wallet balance" });
-  }
-});
-
-/**
- * GET /credit-packages
- * Get available credit packages
- */
-app.get("/credit-packages", async (req, res) => {
-  try {
-    const packages = await prisma.creditPackage.findMany({
-      where: { is_active: true },
-      orderBy: { amount: "asc" },
-    });
-
-    res.status(200).json(packages);
-  } catch (error) {
-    console.error("Get Credit Packages Error:", error.message);
-    res.status(500).json({ error: "Failed to fetch credit packages" });
-  }
-});
-
-/**
- * POST /payment/create-order
- * Create Razorpay order for payment
- */
 app.post("/payment/create-order", verifyFirebaseToken, async (req, res) => {
   const { amount, package_id } = req.body;
 
@@ -2085,74 +1905,73 @@ app.get("/payment-page", (req, res) => {
           const userEmail = getUserEmail();
           
           // Initialize Razorpay directly with checkout.open()
-          Razorpay.open({
-            key: '${razorpayKey}',
-            amount: ${amountInPaise},
-            currency: 'INR',
-            name: 'ConsultaPro',
-            description: 'Add ${credits || "credits"} credits to your wallet',
-            order_id: '${order_id}',
-            prefill: {
-              email: userEmail,
-              contact: '9999999999'
-            },
-            notes: {
-              credits: '${credits}',
-              app: 'ConsultaPro'
-            },
-            theme: {
-              color: '#3b82f6'
-            },
-            method: {
-              upi: true,
-              netbanking: true,
-              card: true,
-              wallet: true
-            },
-            handler: function(response) {
-              // Show loading state
-              document.getElementById('payBtn').disabled = true;
-              document.getElementById('payBtn').innerText = 'Verifying...';
-              
-              // Verify payment on backend
-              fetch('http://localhost:5000/payment/verify', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                  amount: ${amount}
-                })
-              })
-              .then(res => res.json())
-              .then(data => {
-                if (data.success || data.new_balance !== undefined) {
-                  // Payment successful - show success message and redirect
-                  alert('Payment successful! ' + data.amount_added + ' credits have been added to your wallet.');
-                  // Redirect back to credits page - preserves auth context
-                  window.location.href = 'http://localhost:3000/credits?payment=success&credits=' + encodeURIComponent(data.amount_added);
-                } else {
-                  alert('Payment verification failed: ' + (data.error || 'Unknown error'));
-                  document.getElementById('payBtn').disabled = false;
-                  document.getElementById('payBtn').innerText = 'Pay with Razorpay';
-                }
-              })
-              .catch(err => {
-                alert('Error: ' + err.message);
-                document.getElementById('payBtn').disabled = false;
-                document.getElementById('payBtn').innerText = 'Pay with Razorpay';
-              });
-            },
-            modal: {
-              ondismiss: function() {
-                document.getElementById('payBtn').disabled = false;
-                document.getElementById('payBtn').innerText = 'Pay with Razorpay';
-              }
-            }
-          });
+var options = {
+  key: '${razorpayKey}',
+  amount: ${amountInPaise},
+  currency: 'INR',
+  name: 'ConsultaPro',
+  description: 'Add ${credits || "credits"} credits to your wallet',
+  order_id: '${order_id}',
+  prefill: {
+    email: userEmail,
+    contact: '9999999999'
+  },
+  notes: {
+    credits: '${credits}',
+    app: 'ConsultaPro'
+  },
+  theme: {
+    color: '#3b82f6'
+  },
+  method: {
+    upi: true,
+    netbanking: true,
+    card: true,
+    wallet: true
+  },
+  handler: function(response) {
+    document.getElementById('payBtn').disabled = true;
+    document.getElementById('payBtn').innerText = 'Verifying...';
+
+    fetch('http://localhost:5000/payment/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        razorpay_order_id: response.razorpay_order_id,
+        razorpay_payment_id: response.razorpay_payment_id,
+        razorpay_signature: response.razorpay_signature,
+        amount: ${amount}
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success || data.new_balance !== undefined) {
+        alert('Payment successful! ' + data.amount_added + ' credits have been added to your wallet.');
+        window.location.href = 'http://localhost:3000/credits?payment=success&credits=' + encodeURIComponent(data.amount_added);
+      } else {
+        alert('Payment verification failed: ' + (data.error || 'Unknown error'));
+        document.getElementById('payBtn').disabled = false;
+        document.getElementById('payBtn').innerText = 'Pay with Razorpay';
+      }
+    })
+    .catch(err => {
+      alert('Error: ' + err.message);
+      document.getElementById('payBtn').disabled = false;
+      document.getElementById('payBtn').innerText = 'Pay with Razorpay';
+    });
+  },
+  modal: {
+    ondismiss: function() {
+      document.getElementById('payBtn').disabled = false;
+      document.getElementById('payBtn').innerText = 'Pay with Razorpay';
+    }
+  }
+};
+
+var rzp = new Razorpay(options);
+rzp.open();
         });
       </script>
     </body>
@@ -2210,6 +2029,17 @@ app.post("/payment/verify", async (req, res) => {
         note: "Please contact support if credits are not added",
       });
     }
+    // 🔒 Prevent double processing of same order
+    if (orderRecord.status === "COMPLETED") {
+      console.warn(
+        "⚠️ Payment already processed for order:",
+        razorpay_order_id
+      );
+      return res.status(200).json({
+        message: "Payment already processed",
+        already_processed: true,
+      });
+    }
 
     // Get user
     const user = await prisma.user.findUnique({
@@ -2238,29 +2068,40 @@ app.post("/payment/verify", async (req, res) => {
     const bonusAmount = orderRecord.bonus || 0;
     const totalCredits = creditsToAdd + bonusAmount;
 
-    // Update wallet balance
-    const updatedWallet = await prisma.wallet.update({
-      where: { id: wallet.id },
-      data: {
-        balance: wallet.balance + totalCredits,
-      },
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedWallet = await tx.wallet.update({
+        where: { id: wallet.id },
+        data: {
+          balance: wallet.balance + totalCredits,
+        },
+      });
+
+      await tx.transaction.create({
+        data: {
+          userId: user.id,
+          type: "CREDIT",
+          amount: totalCredits,
+          description: `Added ${creditsToAdd} credits${
+            bonusAmount > 0 ? ` with ${bonusAmount} bonus` : ""
+          } via Razorpay (Order: ${razorpay_order_id})`,
+          payment_method: "RAZORPAY",
+          status: "SUCCESS",
+        },
+      });
+
+      await tx.paymentOrder.update({
+        where: { id: orderRecord.id },
+        data: {
+          status: "COMPLETED",
+          razorpay_payment_id: razorpay_payment_id,
+          razorpay_signature: razorpay_signature,
+        },
+      });
+
+      return updatedWallet;
     });
 
-    // Create transaction record
-    await prisma.transaction.create({
-      data: {
-        userId: user.id,
-        type: "CREDIT",
-        amount: totalCredits,
-        description: `Added ${creditsToAdd} credits${
-          bonusAmount > 0 ? ` with ${bonusAmount} bonus` : ""
-        } via Razorpay (Order: ${razorpay_order_id})`,
-        payment_method: "RAZORPAY",
-        status: "SUCCESS",
-      },
-    });
-
-    // Update order status
+    const updatedWallet = result;
     await prisma.paymentOrder.update({
       where: { id: orderRecord.id },
       data: {
@@ -2368,20 +2209,25 @@ app.post("/payment/verify", async (req, res) => {
     `;
 
     // Send email asynchronously (don't wait for it)
-    transporter
-      .sendMail({
-        from: process.env.EMAIL_USER,
-        to: user.email,
-        subject: "Payment Invoice - ConsultaPro Credits Purchase",
-        html: invoiceHtml,
-      })
-      .catch((err) => {
-        console.error(
-          `Failed to send invoice email to ${user.email}:`,
-          err.message
-        );
-      });
-
+    if (transporter && isEmailConfigured) {
+      transporter
+        .sendMail({
+          from: process.env.EMAIL_USER,
+          to: user.email,
+          subject: "Payment Invoice - ConsultaPro Credits Purchase",
+          html: invoiceHtml,
+        })
+        .catch((err) => {
+          console.error(
+            `Failed to send invoice email to ${user.email}:`,
+            err.message
+          );
+        });
+    } else {
+      console.log(
+        `📧 Email not configured - skipping invoice email for ${user.email}`
+      );
+    }
     console.log(
       `✓ Payment verified and ${totalCredits} credits added to user ${user.email}`
     );
@@ -2535,8 +2381,14 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
     }
 
     // Get consultant details to check fee
+    // Validate consultant_id
+    const consultantId = parseInt(consultant_id);
+    if (isNaN(consultantId) || consultantId <= 0) {
+      return res.status(400).json({ error: "Invalid consultant ID format" });
+    }
+
     const consultant = await prisma.consultant.findUnique({
-      where: { id: parseInt(consultant_id) },
+      where: { id: consultantId },
     });
 
     if (!consultant) {
@@ -2777,6 +2629,59 @@ app.get("/bookings", verifyFirebaseToken, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch bookings" });
   }
 });
+// ... previous code ...
+
+/**
+ * GET /bookings/:id/messages
+ * Get all messages for a specific booking
+ */
+app.get("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const bookingId = parseInt(id);
+
+    // Verify user has access to this booking
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { consultant: true },
+    });
+
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    // Check if user is either the client or the consultant
+    const requester = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+    });
+
+    if (!requester) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const isClient = booking.userId === requester.id;
+    const isConsultant = booking.consultant?.userId === requester.id;
+
+    if (!isClient && !isConsultant) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to view these messages" });
+    }
+
+    // Fetch messages
+    const messages = await prisma.message.findMany({
+      where: { bookingId: bookingId },
+      orderBy: { created_at: "asc" },
+    });
+
+    res.status(200).json(messages);
+  } catch (error) {
+    console.error("Fetch Messages Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch messages" });
+  }
+});
+
+/* ================= AGORA TOKEN ================= */
 app.get("/agora/token", async (req, res) => {
   const { channelName, userId } = req.query;
 
@@ -2823,40 +2728,15 @@ app.get("/agora/token", async (req, res) => {
 });
 /* ================= AUTH ME ================= */
 
-app.get("/auth/me", async (req, res) => {
-  try {
-    const token = req.headers.authorization?.split("Bearer ")[1];
-
-    if (!token) {
-      return res.status(401).json({ error: "No token" });
-    }
-
-    const decoded = await admin.auth().verifyIdToken(token);
-
-    const user = await prisma.user.findUnique({
-      where: { firebase_uid: decoded.uid },
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    res.json(user);
-  } catch (err) {
-    console.log("AUTH ME ERROR:", err);
-    res.status(401).json({ error: "Unauthorized" });
-  }
-});
-
 const PORT = process.env.PORT || 5000;
 
 io.use(async (socket, next) => {
   try {
-    const email = socket.handshake.auth.email;
+    const { email, userId } = socket.handshake.auth;
 
-    if (!email) {
-      console.log("❌ No Email in Socket Auth");
-      return next(new Error("No email"));
+    if (!email || !userId) {
+      console.log("❌ Missing email or userId in Socket Auth");
+      return next(new Error("Missing credentials"));
     }
 
     const user = await prisma.user.findUnique({
@@ -2868,20 +2748,28 @@ io.use(async (socket, next) => {
       return next(new Error("User not found"));
     }
 
-    socket.user = user; // 🔥 THIS IS THE MAIN FIX
+    // Verify that the userId matches
+    if (user.id !== parseInt(userId)) {
+      console.log("❌ User ID mismatch");
+      return next(new Error("Invalid user"));
+    }
 
-    console.log("✅ Socket User Attached:", user.email);
-
+    socket.user = user;
+    console.log("✅ Socket User Attached:", user.email, "User ID:", user.id);
     next();
   } catch (err) {
     console.log("Socket Auth Error:", err);
     next(new Error("Auth failed"));
   }
 });
-
 io.on("connection", (socket) => {
   const user = socket.user;
   console.log("🔌 Connected:", user.email);
+  // ================= MARK CONSULTANT ONLINE =================
+  if (user.role === "CONSULTANT") {
+    onlineConsultants.set(user.id, socket.id);
+    console.log("🟢 Consultant online:", user.email);
+  }
   /* ================= JOIN BOOKING ================= */
 
   socket.on("join-booking", async ({ bookingId }) => {
@@ -2913,8 +2801,14 @@ io.on("connection", (socket) => {
       console.log("Join Booking Error:", err);
     }
   });
+  /* ================= LEAVE BOOKING ================= */
+  socket.on("leave-booking", ({ bookingId }) => {
+    console.log(`👋 User ${user.email} leaving booking_${bookingId}`);
+    socket.leave(`booking_${Number(bookingId)}`);
+  });
   /* ================= CHAT ================= */
 
+  /* ================= CHAT ================= */
   socket.on("send-message", async ({ bookingId, content }) => {
     try {
       const id = Number(bookingId);
@@ -2943,7 +2837,7 @@ io.on("connection", (socket) => {
         }
       }
 
-      // 3️⃣ Save message
+      // 3️⃣ Save message with user info
       const message = await prisma.message.create({
         data: {
           bookingId: id,
@@ -2952,10 +2846,23 @@ io.on("connection", (socket) => {
         },
       });
 
-      // 4️⃣ Emit to room
-      io.to(`booking_${id}`).emit("receive-message", message);
+      // 4️⃣ Attach sender info to message
+      const messageWithSender = {
+        ...message,
+        sender: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        },
+      };
+
+      // 5️⃣ Emit to room (including sender)
+      io.to(`booking_${id}`).emit("receive-message", messageWithSender);
+
+      console.log(`📨 Message sent in booking_${id} from ${user.email}`);
     } catch (err) {
       console.log("CHAT ERROR:", err);
+      socket.emit("chat-error", { message: "Failed to send message" });
     }
   });
   /* ================= VIDEO START ================= */
@@ -2972,6 +2879,11 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log("❌ Disconnected:", user.email);
+
+    if (user.role === "CONSULTANT") {
+      onlineConsultants.delete(user.id);
+      console.log("🔴 Consultant offline:", user.email);
+    }
   });
 });
 /* ================= TEST BOOKING ================= */

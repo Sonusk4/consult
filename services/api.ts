@@ -1,15 +1,15 @@
 import axios from "axios";
+import { auth as firebaseAuth } from "../src/services/firebase";
 import { UserRole } from "../types";
 
 /* ================= AXIOS INSTANCE ================= */
 
 const api = axios.create({
-  baseURL: "/", // Using Vite proxy
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000",
   headers: {
     "Content-Type": "application/json",
   },
 });
-
 /* ================= RESPONSE INTERCEPTOR ================= */
 
 api.interceptors.response.use(
@@ -34,27 +34,33 @@ api.interceptors.response.use(
 
 /* ================= REQUEST INTERCEPTOR ================= */
 
+/* ================= REQUEST INTERCEPTOR ================= */
+
+/* ================= REQUEST INTERCEPTOR ================= */
 api.interceptors.request.use(
-  (config) => {
-    const userStr = localStorage.getItem("user");
+  async (config) => {
+    // Get current Firebase user
+    const user = firebaseAuth.currentUser;
 
-    if (userStr) {
+    if (user) {
       try {
-        const user = JSON.parse(userStr);
-
-        if (user.email) {
-          config.headers["x-user-email"] = user.email;
-        }
-      } catch (e) {
-        console.error("Failed to parse user from local storage", e);
+        // Get fresh ID token - wait for it
+        const token = await user.getIdToken(true); // Force refresh
+        config.headers.Authorization = `Bearer ${token}`;
+        console.log("✅ Added Firebase token to request for:", user.email);
+      } catch (error) {
+        console.error("Failed to get Firebase token:", error);
       }
+    } else {
+      console.log("⚠️ No Firebase user, request without auth");
+      // If no user, maybe wait for auth state?
+      // For now, we'll let it fail with 401
     }
 
     return config;
   },
   (error) => Promise.reject(error)
 );
-
 /* ========================================================= */
 /* ======================= AUTH ============================= */
 /* ========================================================= */
@@ -70,16 +76,29 @@ export const auth = {
   },
 
   sendOtp: async (email: string, type: "LOGIN" | "SIGNUP") => {
-    const response = await api.post("/auth/send-otp", { email, type });
-    return response.data;
+    try {
+      console.log(`📤 Sending OTP request for ${email}, type: ${type}`);
+      const response = await api.post("/auth/send-otp", { email, type });
+      console.log("📥 OTP send response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("❌ sendOtp error:", error);
+      throw error;
+    }
   },
 
   verifyOtp: async (email: string, otp: string) => {
-    const response = await api.post("/auth/verify-otp", { email, otp });
-    return response.data;
+    try {
+      console.log(`📤 Verifying OTP for ${email}`);
+      const response = await api.post("/auth/verify-otp", { email, otp });
+      console.log("📥 OTP verify response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("❌ verifyOtp error:", error);
+      throw error;
+    }
   },
 };
-
 /* ========================================================= */
 /* ===================== CONSULTANTS ======================== */
 /* ========================================================= */

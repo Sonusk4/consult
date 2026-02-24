@@ -1,23 +1,27 @@
 import axios from "axios";
+import { auth as firebaseAuth } from "./firebase";
 
 // Create axios instance with base URL
 // Since we have set up proxy in vite.config.ts, we can just use '/' as base
 const api = axios.create({
-  baseURL: "/",
+  baseURL: "http://localhost:5000",
   headers: {
     "Content-Type": "application/json",
   },
 });
-api.interceptors.request.use((config) => {
-  const storedUser = localStorage.getItem("user");
+api.interceptors.request.use(
+  async (config) => {
+    const user = firebaseAuth.currentUser;
 
-  if (storedUser) {
-    const user = JSON.parse(storedUser);
-    config.headers["x-user-email"] = user.email;
-  }
+    if (user) {
+      const token = await user.getIdToken();
+      config.headers.Authorization = `Bearer ${token}`;
+    }
 
-  return config;
-});
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 // Add a response interceptor to handle errors globally
 api.interceptors.response.use(

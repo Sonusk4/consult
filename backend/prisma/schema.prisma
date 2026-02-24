@@ -22,7 +22,7 @@ model User {
   temp_username         String?
   temp_password         String?
   created_at            DateTime        @default(now())
-  updated_at            DateTime        @updatedAt
+  updated_at            DateTime?       @updatedAt
   bookings              Booking[]
   consultant            Consultant?
   enterpriseId          Int?
