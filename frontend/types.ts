@@ -22,6 +22,7 @@ export interface User {
   phone?: string | null;
   is_verified?: boolean;
   avatar?: string;
+  name?: string;
 }
 
 export interface Consultant {

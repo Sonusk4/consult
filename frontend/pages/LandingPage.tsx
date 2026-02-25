@@ -1,114 +1,242 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Star, CheckCircle, Video, Globe, Users } from 'lucide-react';
-import { TOP_CONSULTANTS } from '../constants';
+import { 
+  CheckCircle, 
+  Star, 
+  Users, 
+  TrendingUp, 
+  ArrowRight,
+  Play,
+  Shield,
+  Clock,
+  Award,
+  Video,
+  MessageSquare,
+  Zap
+} from 'lucide-react';
 
-// Force cache refresh
-console.log('LandingPage loaded at:', new Date().toISOString());
-
-const LandingPage: React.FC = () => {
+const PerfectLandingPage: React.FC = () => {
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
   return (
-    <div className="bg-white">
-      {/* Navbar */}
-      <nav className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-        <div className="text-2xl font-bold text-blue-600">ConsultaPro</div>
-        <div className="hidden md:flex items-center space-x-8 text-gray-600 font-medium">
-          <a href="#features" className="hover:text-blue-600 transition-colors">How it works</a>
-          <a href="#experts" className="hover:text-blue-600 transition-colors">Find Experts</a>
-          <a href="#benefits" className="hover:text-blue-600 transition-colors">Benefits</a>
-        </div>
-        <div className="flex items-center space-x-4">
-          <Link to="/auth" className="text-gray-600 font-medium px-4 py-2 hover:text-blue-600">Login</Link>
-          <Link to="/signup" className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-full hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
-            Get Started
-          </Link>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+      {/* Navigation */}
+      <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-8">
+              <Link to="/" className="text-2xl font-bold text-gray-900">
+                ConsultaPro
+              </Link>
+              <div className="hidden md:flex items-center space-x-6">
+                <button 
+                  onClick={() => scrollToSection('features')}
+                  className="text-gray-700 hover:text-gray-900 font-medium transition-colors"
+                >
+                  Features
+                </button>
+                <button 
+                  onClick={() => scrollToSection('experts')}
+                  className="text-gray-700 hover:text-gray-900 font-medium transition-colors"
+                >
+                  Experts
+                </button>
+                <button 
+                  onClick={() => scrollToSection('how-it-works')}
+                  className="text-gray-700 hover:text-gray-900 font-medium transition-colors"
+                >
+                  How It Works
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center space-x-4">
+              <Link 
+                to="/login" 
+                className="text-gray-700 hover:text-gray-900 font-medium transition-colors"
+              >
+                Login
+              </Link>
+              <Link 
+                to="/signup" 
+                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:shadow-lg transform hover:-translate-y-1 transition-all duration-300"
+              >
+                Get Started
+              </Link>
+            </div>
+          </div>
         </div>
       </nav>
 
-      {/* Hero */}
-      <section className="max-w-7xl mx-auto px-6 py-20 lg:py-32 grid lg:grid-cols-2 gap-12 items-center">
-        <div>
-          <div className="inline-flex items-center space-x-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-full text-sm font-semibold mb-6">
-            <Star size={16} fill="currentColor" />
-            <span>#1 Marketplace for Expert Consultations</span>
-          </div>
-          <h1 className="text-5xl lg:text-7xl font-bold text-gray-900 leading-tight mb-8">
-            Connect with Global <span className="text-blue-600">Experts</span> in Minutes.
-          </h1>
-          <p className="text-xl text-gray-600 mb-10 leading-relaxed max-w-lg">
-            Whether it's legal advice, tech strategy, or business growth, find verified consultants ready to help you succeed.
-          </p>
-          <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-            <Link to="/signup" className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all flex items-center justify-center">
-              Find Consultants <ArrowRight className="ml-2" size={20} />
-            </Link>
-            <Link to="/signup" className="border-2 border-gray-200 text-gray-700 px-8 py-4 rounded-xl font-bold text-lg hover:border-blue-600 hover:text-blue-600 transition-all flex items-center justify-center">
-              Become a Consultant
-            </Link>
-          </div>
-          <div className="mt-12 flex items-center space-x-6">
-            <div className="flex -space-x-3">
-              {[1, 2, 3, 4].map(i => (
-                <img key={i} src={`https://picsum.photos/seed/${i}/100`} className="w-12 h-12 rounded-full border-4 border-white shadow-sm" alt="User" />
-              ))}
-            </div>
-            <div>
-              <div className="flex text-yellow-400">
-                {[1, 2, 3, 4, 5].map(i => <Star key={i} size={16} fill="currentColor" />)}
+      {/* Hero Section */}
+      <section className="py-20 px-6">
+        <div className="container mx-auto">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            <div className="space-y-8">
+              {/* Trust Badge */}
+              <div className="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-blue-100 border border-blue-200">
+                <CheckCircle className="w-4 h-4 text-blue-600" />
+                <span className="text-blue-900 font-semibold">Trusted by 50,000+ users worldwide</span>
               </div>
-              <p className="text-sm text-gray-500 font-medium">Trusted by 10,000+ happy clients</p>
+
+              {/* Main Heading */}
+              <h1 className="text-5xl lg:text-7xl font-bold text-gray-900 leading-tight mb-6">
+                Get Expert Help
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+                  {" "}When You Need It Most
+                </span>
+              </h1>
+
+              {/* Description */}
+              <p className="text-xl text-gray-900 leading-relaxed mb-8 max-w-lg">
+                Connect with verified professionals who provide personalized guidance for your specific challenges - 
+                from business strategy to career advice.
+              </p>
+
+              {/* Key Benefits */}
+              <div className="space-y-4 mb-8">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                    <Video className="w-5 h-5 text-green-800" />
+                  </div>
+                  <span className="text-gray-900 font-medium">1-on-1 video consultations with verified experts</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                    <Clock className="w-5 h-5 text-green-800" />
+                  </div>
+                  <span className="text-gray-900 font-medium">Instant booking, flexible scheduling</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                    <Shield className="w-5 h-5 text-green-800" />
+                  </div>
+                  <span className="text-gray-900 font-medium">Affordable rates, secure payments</span>
+                </div>
+              </div>
+
+              {/* CTA Buttons */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Link 
+                  to="/search" 
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300 flex items-center justify-center group"
+                >
+                  Find Experts
+                  <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </Link>
+                <Link 
+                  to="/signup/consultant" 
+                  className="bg-white text-gray-900 px-8 py-4 rounded-xl font-bold text-lg border-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-300 flex items-center justify-center"
+                >
+                  Become a Consultant
+                  <ArrowRight className="ml-2 w-5 h-5" />
+                </Link>
+              </div>
+
+              {/* Social Proof */}
+              <div className="flex items-center space-x-4">
+                <div className="flex -space-x-3">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <img 
+                      key={i} 
+                      src={`https://picsum.photos/seed/user${i}/40`} 
+                      className="w-10 h-10 rounded-full border-2 border-white shadow-md" 
+                      alt={`User ${i}`} 
+                    />
+                  ))}
+                </div>
+                <div className="text-gray-700">
+                  <div className="flex text-yellow-400 mb-1">
+                    {[1, 2, 3, 4, 5].map(i => <Star key={i} className="w-4 h-4 fill-current" />)}
+                  </div>
+                  <p className="font-bold text-gray-900">4.9/5 average rating • 10,000+ sessions completed</p>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        <div className="relative">
-          <img src="https://picsum.photos/seed/consult/800/1000" className="rounded-3xl shadow-2xl" alt="Consultation" />
-          <div className="absolute -bottom-6 -left-6 bg-white p-6 rounded-2xl shadow-xl flex items-center space-x-4 max-w-xs animate-bounce">
-            <div className="bg-green-100 p-3 rounded-full text-green-600">
-              <Video size={24} />
-            </div>
-            <div>
-              <p className="font-bold text-gray-900">Session Live Now</p>
-              <p className="text-sm text-gray-500">Legal Consultation with Dr. Sarah</p>
+
+            {/* Right Side - Visual */}
+            <div className="relative">
+              <div className="relative z-10">
+                <img 
+                  src="https://picsum.photos/seed/consultation-platform/600/700" 
+                  alt="Consultation Platform" 
+                  className="rounded-3xl shadow-2xl w-full h-auto object-cover border-2 border-gray-200"
+                />
+                
+                {/* Live Sessions Badge */}
+                <div className="absolute top-6 -right-6 bg-green-500 text-white rounded-2xl shadow-xl p-4">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                    <span className="font-bold">12 Live Sessions</span>
+                  </div>
+                </div>
+
+                {/* Success Rate Badge */}
+                <div className="absolute bottom-6 -left-6 bg-blue-600 text-white rounded-2xl shadow-xl p-4">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold">95%</div>
+                    <div className="text-sm">Success Rate</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Featured Experts */}
-      <section id="experts" className="bg-gray-50 py-24">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-12">
-            <div>
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">Meet our Top Consultants</h2>
-              <p className="text-gray-600 max-w-md">Vetted professionals from diverse industries ready to provide high-impact advice.</p>
-            </div>
-            <Link to="/signup" className="text-blue-600 font-bold flex items-center mt-4 md:mt-0 hover:underline">
-              View all 200+ consultants <ArrowRight className="ml-1" size={18} />
-            </Link>
+      {/* Experts Section */}
+      <section id="experts" className="py-20 bg-white">
+        <div className="container mx-auto px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-4">
+              Meet Our <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">Expert Consultants</span>
+            </h2>
+            <p className="text-xl text-gray-800 max-w-3xl mx-auto">
+              Learn from industry leaders with proven track records
+            </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {TOP_CONSULTANTS.map((c) => (
-              <div key={c.id} className="bg-white rounded-3xl p-6 shadow-sm hover:shadow-xl transition-all border border-gray-100 group">
-                <div className="relative mb-6">
-                  <img src={c.image} alt={c.name} className="w-full h-64 object-cover rounded-2xl" />
-                  <div className="absolute top-4 right-4 bg-white px-3 py-1 rounded-full flex items-center space-x-1 shadow-md">
-                    <Star size={14} className="text-yellow-400" fill="currentColor" />
-                    <span className="text-sm font-bold text-gray-800">{c.rating}</span>
+          <div className="grid md:grid-cols-2 gap-8 mb-16">
+            {[
+              {
+                name: "Dr. Sarah Johnson",
+                title: "Business Strategy Consultant",
+                expertise: "Strategic Planning, Market Analysis",
+                experience: "15+ years experience",
+                rating: "4.9/5",
+                sessions: "2,500+ sessions",
+                image: "https://picsum.photos/seed/sarah-expert/400"
+              },
+              {
+                name: "Michael Chen",
+                title: "Career Development Coach", 
+                expertise: "Resume Building, Interview Prep",
+                experience: "10+ years experience",
+                rating: "4.8/5",
+                sessions: "1,800+ sessions",
+                image: "https://picsum.photos/seed/michael-expert/400"
+              }
+            ].map((expert, index) => (
+              <div key={index} className="bg-white rounded-2xl p-8 shadow-xl border-2 border-gray-100 hover:shadow-2xl transition-all duration-300">
+                <div className="flex items-start space-x-6">
+                  <img 
+                    src={expert.image} 
+                    alt={expert.name}
+                    className="w-24 h-24 rounded-full object-cover border-4 border-blue-100"
+                  />
+                  <div className="flex-1">
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">{expert.name}</h3>
+                    <p className="text-lg font-semibold text-blue-600 mb-2">{expert.title}</p>
+                    <p className="text-gray-700 mb-3">{expert.expertise}</p>
+                    <div className="flex items-center space-x-4 text-sm">
+                      <span className="text-gray-600">{expert.experience}</span>
+                      <span className="text-yellow-500 font-semibold">⭐ {expert.rating}</span>
+                      <span className="text-gray-600">{expert.sessions}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="text-xl font-bold text-gray-900">{c.name}</h3>
-                  <div className="text-blue-600 bg-blue-50 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">{c.domain}</div>
-                </div>
-                <p className="text-gray-500 mb-6 line-clamp-2">{c.bio}</p>
-                <div className="flex items-center justify-between pt-6 border-t border-gray-50">
-                  <div>
-                    <span className="text-2xl font-bold text-gray-900">₹{c.hourly_price}</span>
-                    <span className="text-gray-400 text-sm ml-1">/ session</span>
-                  </div>
-                  <Link to="/signup" className="bg-gray-900 text-white px-6 py-2 rounded-xl font-bold group-hover:bg-blue-600 transition-all">Book Now</Link>
                 </div>
               </div>
             ))}
@@ -116,67 +244,116 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Stats */}
-      <section className="py-20 border-y">
-        <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-          {[
-            { label: 'Verified Experts', value: '250+', icon: <CheckCircle className="mx-auto text-blue-600 mb-2" /> },
-            { label: 'Sessions Completed', value: '15k+', icon: <Video className="mx-auto text-blue-600 mb-2" /> },
-            { label: 'Global Reach', value: '45 Countries', icon: <Globe className="mx-auto text-blue-600 mb-2" /> },
-            { label: 'Happy Customers', value: '98%', icon: <Users className="mx-auto text-blue-600 mb-2" /> },
-          ].map((stat, i) => (
-            <div key={i}>
-              {stat.icon}
-              <div className="text-4xl font-bold text-gray-900 mb-1">{stat.value}</div>
-              <div className="text-gray-500 font-medium">{stat.label}</div>
-            </div>
-          ))}
+      {/* How It Works */}
+      <section id="how-it-works" className="py-20 bg-gray-50">
+        <div className="container mx-auto px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-4">
+              Get Started in <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">3 Simple Steps</span>
+            </h2>
+            <p className="text-xl text-gray-800 max-w-3xl mx-auto">
+              From finding the right expert to getting your problem solved
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8 mb-16">
+            {[
+              { title: "Find Your Expert", description: "Browse verified consultants by expertise, rating, and availability", icon: Users },
+              { title: "Book a Session", description: "Schedule a consultation at your convenience with secure booking", icon: Clock },
+              { title: "Connect & Solve", description: "Join a video session and get personalized solutions", icon: Video }
+            ].map((step, index) => (
+              <div key={index} className="text-center bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300">
+                <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <step.icon className="w-8 h-8 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{step.title}</h3>
+                <p className="text-gray-700">{step.description}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 text-gray-300 py-16">
-        <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-5 gap-12">
-          <div className="col-span-2">
-            <div className="text-2xl font-bold text-white mb-6">ConsultaPro</div>
-            <p className="max-w-xs mb-8">
-              The premium destination for professional advice and high-level strategic consulting.
+      {/* Features Section */}
+      <section id="features" className="py-20 bg-white">
+        <div className="container mx-auto px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-4">
+              Why Choose <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">ConsultaPro</span>?
+            </h2>
+            <p className="text-xl text-gray-800 max-w-3xl mx-auto">
+              Experience the future of professional consultations with our cutting-edge platform
             </p>
-            <div className="flex space-x-4">
-              {[1, 2, 3, 4].map(i => <div key={i} className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-blue-600 transition-all cursor-pointer"></div>)}
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[
+              { title: "Smart Matching", description: "AI-powered expert recommendations based on your needs", icon: Zap },
+              { title: "Instant Booking", description: "Book sessions in seconds with our streamlined process", icon: Clock },
+              { title: "HD Video Sessions", description: "Crystal clear video quality for effective communication", icon: Video },
+              { title: "Verified Experts", description: "All consultants undergo rigorous background checks", icon: Shield },
+              { title: "Secure Payments", description: "Safe and encrypted payment processing", icon: Award },
+              { title: "Post-Session Support", description: "Follow-up assistance and resources included", icon: MessageSquare }
+            ].map((feature, index) => (
+              <div key={index} className="bg-gray-50 rounded-2xl p-8 border border-gray-200 hover:shadow-xl hover:border-blue-300 transition-all duration-300">
+                <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mb-6">
+                  <feature.icon className="w-8 h-8 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{feature.title}</h3>
+                <p className="text-gray-700">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-20 bg-gradient-to-br from-blue-600 to-purple-600 text-white">
+        <div className="container mx-auto px-6 text-center">
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-4xl lg:text-6xl font-bold mb-6">
+              Ready to Transform Your
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-pink-300"> Future?</span>
+            </h2>
+            <p className="text-xl text-blue-100 mb-12 leading-relaxed">
+              Join thousands of professionals who are already achieving their goals with expert guidance. 
+              Your success story starts here.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-6 justify-center mb-12">
+              <Link 
+                to="/signup" 
+                className="bg-white text-blue-600 px-10 py-5 rounded-2xl font-bold text-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300 flex items-center justify-center group"
+              >
+                Get Started Free
+                <ArrowRight className="ml-3 w-6 h-6 group-hover:translate-x-2 transition-transform" />
+              </Link>
+              <Link 
+                to="/search" 
+                className="border-2 border-white/30 text-white px-10 py-5 rounded-2xl font-bold text-lg hover:border-white hover:bg-white/10 transition-all duration-300 flex items-center justify-center"
+              >
+                Browse Experts
+              </Link>
+            </div>
+            <div className="grid md:grid-cols-3 gap-8">
+              {[
+                { title: "No Risk", description: "30-day money-back guarantee", icon: Shield },
+                { title: "Verified Experts", description: "All consultants are background checked", icon: Users },
+                { title: "Quick Start", description: "Book your first session in minutes", icon: Clock }
+              ].map((benefit, index) => (
+                <div key={index} className="text-center">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <benefit.icon className="w-6 h-6 text-yellow-300" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-2">{benefit.title}</h3>
+                  <p className="text-blue-100">{benefit.description}</p>
+                </div>
+              ))}
             </div>
           </div>
-          <div>
-            <h4 className="text-white font-bold mb-6">Product</h4>
-            <ul className="space-y-4">
-              <li><a href="#" className="hover:text-blue-400">Browse Experts</a></li>
-              <li><a href="#" className="hover:text-blue-400">Enterprise Solution</a></li>
-              <li><a href="#" className="hover:text-blue-400">Pricing</a></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="text-white font-bold mb-6">Company</h4>
-            <ul className="space-y-4">
-              <li><a href="#" className="hover:text-blue-400">About Us</a></li>
-              <li><a href="#" className="hover:text-blue-400">Careers</a></li>
-              <li><a href="#" className="hover:text-blue-400">Contact</a></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="text-white font-bold mb-6">Support</h4>
-            <ul className="space-y-4">
-              <li><a href="#" className="hover:text-blue-400">Help Center</a></li>
-              <li><a href="#" className="hover:text-blue-400">Safety Policy</a></li>
-              <li><a href="#" className="hover:text-blue-400">Terms of Service</a></li>
-            </ul>
-          </div>
         </div>
-        <div className="max-w-7xl mx-auto px-6 mt-16 pt-8 border-t border-gray-800 text-center text-sm">
-          © 2024 ConsultaPro Inc. All rights reserved.
-        </div>
-      </footer>
+      </section>
     </div>
   );
 };
 
-export default LandingPage;
+export default PerfectLandingPage;

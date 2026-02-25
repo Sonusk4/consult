@@ -31,6 +31,7 @@ import BookingsPage from "./pages/BookingsPage";
 import AvailabilityPage from "./pages/AvailabilityPage";
 import EarningsPage from "./pages/EarningsPage";
 import ProfilePage from "./pages/ProfilePage";
+import ReviewsPage from "./pages/ReviewsPage";
 
 /* ENTERPRISE ADMIN */
 import EnterpriseDashboard from "./pages/enterprise/EnterpriseDashboard";
@@ -81,14 +82,14 @@ const App: React.FC = () => {
     try {
       const userData = await auth.login(email, role, name);
       setUser(userData);
-      
+
       // Store user data with session timestamp
       const sessionData = {
         ...userData,
         loginTime: Date.now(),
         sessionDuration: 3600000, // 1 hour in milliseconds
       };
-      
+
       localStorage.setItem("user", JSON.stringify(sessionData));
       console.log("✅ User session stored:", userData.email);
       return userData;
@@ -110,13 +111,13 @@ const App: React.FC = () => {
       const storedUserStr = localStorage.getItem("user");
       if (storedUserStr) {
         const storedSession = JSON.parse(storedUserStr);
-        
+
         // Check if session is still valid (not expired)
         const currentTime = Date.now();
         const loginTime = storedSession.loginTime || currentTime;
         const sessionDuration = storedSession.sessionDuration || 3600000; // Default 1 hour
         const sessionAge = currentTime - loginTime;
-        
+
         if (sessionAge < sessionDuration) {
           // Session is still valid
           setUser(storedSession);
@@ -220,7 +221,11 @@ const App: React.FC = () => {
             <Route
               path="/consultant/bookings"
               element={
-                isConsultant ? <ConsultantBookingsPage /> : <Navigate to="/auth" />
+                isConsultant ? (
+                  <ConsultantBookingsPage />
+                ) : (
+                  <Navigate to="/auth" />
+                )
               }
             />
             <Route
@@ -250,6 +255,14 @@ const App: React.FC = () => {
             <Route
               path="/consultant/profile"
               element={isConsultant ? <ProfilePage /> : <Navigate to="/auth" />}
+            />
+            <Route
+              path="/consultant/reviews"
+              element={isConsultant ? <ReviewsPage /> : <Navigate to="/auth" />}
+            />
+            <Route
+              path="/consultant/support"
+              element={isConsultant ? <UserSupportPage /> : <Navigate to="/auth" />}
             />
 
             {/* ================= ENTERPRISE ADMIN ================= */}
@@ -394,7 +407,7 @@ const App: React.FC = () => {
               path="/member/messages"
               element={
                 isEnterpriseMember ? (
-                  <MemberMessages />
+                  <MessagesPage /> // 👈 Use MessagesPage instead
                 ) : (
                   <Navigate to="/auth" />
                 )
