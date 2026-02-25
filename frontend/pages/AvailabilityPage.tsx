@@ -133,8 +133,7 @@ const AvailabilityPage: React.FC = () => {
       const api = (await import('../services/api')).default;
       await api.post('/consultant/availability', {
         date: selectedDateStr,
-        start_time: startTime,
-        end_time: endTime
+        time: startTime
       });
 
       // Refresh availability data

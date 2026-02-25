@@ -21,7 +21,6 @@ const PUBLIC_ROUTES = [
   "/auth/send-otp",
   "/auth/verify-otp",
   "/auth/login",
-  "/auth/me",
 ];
 
 /* ========================================================= */
@@ -30,8 +29,9 @@ const PUBLIC_ROUTES = [
 
 api.interceptors.request.use(
   async (config) => {
-    // Allow public routes without auth
+    // Allow public routes without auth - RETURN EARLY
     if (PUBLIC_ROUTES.some((route) => config.url?.includes(route))) {
+      console.log("🔓 Public route detected, skipping auth:", config.url);
       return config;
     }
 

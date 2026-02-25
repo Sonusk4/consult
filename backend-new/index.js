@@ -3268,14 +3268,17 @@ app.get("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
     // Verify user has access to this booking
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { consultant: true },
+      include: {
+        consultant: true,
+        enterpriseMember: true, // Keep this
+      },
     });
 
     if (!booking) {
       return res.status(404).json({ error: "Booking not found" });
     }
 
-    // Check if user is either the client or the consultant
+    // Check if user is authorized (client, consultant, OR enterprise member)
     const requester = await prisma.user.findUnique({
       where: { firebase_uid: req.user.firebase_uid },
     });
@@ -3286,14 +3289,17 @@ app.get("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
 
     const isClient = booking.userId === requester.id;
     const isConsultant = booking.consultant?.userId === requester.id;
+    // 👇 ADD THIS LINE - Check if user is the enterprise member
+    const isEnterpriseMember = booking.enterpriseMemberId === requester.id;
 
-    if (!isClient && !isConsultant) {
+    // 👇 MODIFY THIS CONDITION - Include enterprise member
+    if (!isClient && !isConsultant && !isEnterpriseMember) {
       return res
         .status(403)
         .json({ error: "Not authorized to view these messages" });
     }
 
-    // ✅ FIX: Include sender information when fetching messages
+    // Fetch messages with sender info
     const messages = await prisma.message.findMany({
       where: { bookingId: bookingId },
       orderBy: { created_at: "asc" },
@@ -3303,6 +3309,7 @@ app.get("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
             id: true,
             email: true,
             name: true,
+            role: true, // 👈 Also add role for better UI
           },
         },
       },
@@ -3482,7 +3489,6 @@ app.put("/bookings/:id/status", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-/* ================= AGORA TOKEN ================= */
 app.get("/agora/token", async (req, res) => {
   const { channelName, userId } = req.query;
 
@@ -3493,65 +3499,37 @@ app.get("/agora/token", async (req, res) => {
   }
 
   try {
-    const userIdInt = Number(userId);
-
-    // Expecting channelName format: booking_123
+    const dbUserId = Number(userId);
     const bookingId = parseInt(channelName.split("_")[1]);
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { consultant: true },
+      include: {
+        consultant: true,
+        enterpriseMember: true,
+      },
     });
 
     if (!booking) {
       return res.status(404).json({ error: "Booking not found" });
     }
 
-    const isClient = booking.userId === userIdInt;
-    const isConsultant = booking.consultant?.userId === userIdInt;
+    const isClient = booking.userId === dbUserId;
+    const isConsultant = booking.consultant?.userId === dbUserId;
+    const isEnterpriseMember = booking.enterpriseMemberId === dbUserId;
 
-    if (!isClient && !isConsultant) {
+    if (!isClient && !isConsultant && !isEnterpriseMember) {
       return res.status(403).json({ error: "Not authorized" });
     }
 
-    // Allow video calls for CONFIRMED bookings with payment or PENDING/ACCEPTED bookings (for testing)
-    const validStatuses = ["CONFIRMED", "PENDING", "ACCEPTED"];
-    if (!validStatuses.includes(booking.status)) {
-      return res.status(403).json({
-        error: `Booking status '${
-          booking.status
-        }' does not allow video calls. Valid statuses: ${validStatuses.join(
-          ", "
-        )}`,
-      });
-    }
+    // ✅ Generate unique Agora UID HERE
+    const agoraUid = Math.floor(Math.random() * 1000000);
 
-    // Log booking details for debugging
-    console.log(`📱 Agora token request:`, {
-      bookingId,
-      userId: userIdInt,
-      status: booking.status,
-      is_paid: booking.is_paid,
-      isClient,
-      isConsultant,
-    });
+    const token = generateAgoraToken(channelName, agoraUid);
 
-    const token = generateAgoraToken(channelName, userIdInt);
-
-    if (!token) {
-      return res.status(500).json({ error: "Failed to generate Agora token" });
-    }
-
-    console.log(
-      `✅ Agora token generated successfully for channel: ${channelName}`
-    );
-
-    res.json({ token, uid: userIdInt });
+    res.json({ token, uid: agoraUid });
   } catch (error) {
-    console.error("❌ Agora Token Error:", error.message);
-    res
-      .status(500)
-      .json({ error: "Failed to generate token: " + error.message });
+    res.status(500).json({ error: "Failed to generate token" });
   }
 });
 /* ================= AUTH ME ================= */
@@ -3583,7 +3561,15 @@ io.use(async (socket, next) => {
     }
 
     socket.user = user;
-    console.log("✅ Socket User Attached:", user.email, "User ID:", user.id);
+    // 👇 CHANGE THIS LINE ONLY - add role to log
+    console.log(
+      "✅ Socket User Attached:",
+      user.email,
+      "User ID:",
+      user.id,
+      "Role:",
+      user.role
+    );
     next();
   } catch (err) {
     console.log("Socket Auth Error:", err);
@@ -3598,14 +3584,22 @@ io.on("connection", (socket) => {
     onlineConsultants.set(user.id, socket.id);
     console.log("🟢 Consultant online:", user.email);
   }
+  // 👇 ADD THIS - Enterprise Member online check
+  if (user.role === "ENTERPRISE_MEMBER") {
+    onlineConsultants.set(user.id, socket.id);
+    console.log("🟢 Enterprise Member online:", user.email);
+  }
   /* ================= JOIN BOOKING ================= */
-
   socket.on("join-booking", async ({ bookingId }) => {
     console.log("📨 join-booking event received from:", user.email);
     try {
+      // 👇 CHANGE THIS - include enterpriseMember in the query
       const booking = await prisma.booking.findUnique({
         where: { id: Number(bookingId) },
-        include: { consultant: true },
+        include: {
+          consultant: true,
+          enterpriseMember: true, // 👈 ADD THIS
+        },
       });
 
       if (!booking) {
@@ -3616,32 +3610,55 @@ io.on("connection", (socket) => {
       const userId = Number(user.id);
       const bookingUserId = Number(booking.userId);
       const bookingConsultantUserId = Number(booking.consultant?.userId);
+      // 👇 ADD THIS - get enterprise member ID
+      const bookingMemberUserId = Number(booking.enterpriseMemberId);
 
-      if (userId !== bookingUserId && userId !== bookingConsultantUserId) {
+      // 👇 MODIFY THIS - add enterprise member check
+      if (
+        userId !== bookingUserId &&
+        userId !== bookingConsultantUserId &&
+        userId !== bookingMemberUserId
+      ) {
         console.log("❌ Unauthorized join attempt:", user.email);
         return;
       }
 
       socket.join(`booking_${Number(bookingId)}`);
 
-      console.log(`${user.email} joined booking_${bookingId}`);
+      // 👇 CHANGE THIS - add role to log
+      console.log(`${user.email} (${user.role}) joined booking_${bookingId}`);
+
+      // 👇 ADD THIS OPTIONAL - notify others in the room
+      socket.to(`booking_${Number(bookingId)}`).emit("user-joined", {
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      });
     } catch (err) {
       console.log("Join Booking Error:", err);
     }
   });
   /* ================= LEAVE BOOKING ================= */
   socket.on("leave-booking", ({ bookingId }) => {
-    console.log(`👋 User ${user.email} leaving booking_${bookingId}`);
+    console.log(
+      `👋 User ${user.email} (${user.role}) leaving booking_${bookingId}`
+    );
     socket.leave(`booking_${Number(bookingId)}`);
+
+    // 👇 ADD THIS - notify others
+    socket.to(`booking_${Number(bookingId)}`).emit("user-left", {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
   });
   /* ================= CHAT ================= */
 
-  /* ================= CHAT ================= */
+  /* ================= SEND MESSAGE ================= */
   socket.on("send-message", async ({ bookingId, content }) => {
     try {
       const id = Number(bookingId);
 
-      // 1️⃣ Get booking
       const booking = await prisma.booking.findUnique({
         where: { id },
       });
@@ -3652,7 +3669,6 @@ io.on("connection", (socket) => {
         });
       }
 
-      // 2️⃣ If not paid → allow only 5 messages
       if (!booking.is_paid) {
         const messageCount = await prisma.message.count({
           where: { bookingId: id },
@@ -3665,7 +3681,7 @@ io.on("connection", (socket) => {
         }
       }
 
-      // 3️⃣ Save message with user info
+      // 3️⃣ Save message with user info - NO CHANGE
       const message = await prisma.message.create({
         data: {
           bookingId: id,
@@ -3674,55 +3690,84 @@ io.on("connection", (socket) => {
         },
       });
 
-      // 4️⃣ Attach sender info to message
+      // 4️⃣ 👇 MODIFY THIS - add role to sender info
       const messageWithSender = {
         ...message,
         sender: {
           id: user.id,
           email: user.email,
           name: user.name,
+          role: user.role, // 👈 ADD THIS
         },
       };
 
-      // 5️⃣ Emit to room (including sender)
       io.to(`booking_${id}`).emit("receive-message", messageWithSender);
 
-      console.log(`📨 Message sent in booking_${id} from ${user.email}`);
+      // 👇 CHANGE THIS - add role to log
+      console.log(
+        `📨 Message sent in booking_${id} from ${user.email} (${user.role})`
+      );
     } catch (err) {
       console.log("CHAT ERROR:", err);
       socket.emit("chat-error", { message: "Failed to send message" });
     }
   });
   /* ================= VIDEO START ================= */
-
   socket.on("start-video-call", ({ bookingId, callerId }) => {
     console.log(
       "📢 Starting video call for booking:",
       bookingId,
       "caller:",
-      callerId
+      callerId,
+      "role:",
+      user.role // 👈 ADD THIS
     );
 
-    // ✅ Send the data properly!
     io.to(`booking_${bookingId}`).emit("video-call-started", {
       bookingId: bookingId,
       callerId: callerId,
-      callerName: "User", // You can add more fields if needed
+      callerName: user.name || user.email, // 👈 IMPROVE THIS
+      callerRole: user.role, // 👈 ADD THIS
+    });
+  });
+  /* ================= TYPING INDICATOR ================= */
+  socket.on("typing", ({ bookingId, isTyping }) => {
+    socket.to(`booking_${bookingId}`).emit("user-typing", {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      isTyping,
+    });
+  });
+
+  // 👇 ADD THIS NEW HANDLER - user joined video call
+  socket.on("user-joined-video", ({ bookingId, userId }) => {
+    console.log(`📹 User ${userId} joined video call for booking ${bookingId}`);
+    socket.to(`booking_${bookingId}`).emit("remote-user-joined", {
+      userId,
+      message: "A participant has joined the video call",
     });
   });
 
   /* ================= VIDEO END ================= */
-
   socket.on("end-video-call", ({ bookingId }) => {
-    io.to(`booking_${bookingId}`).emit("video-call-ended");
+    console.log(
+      `📹 Video call ended for booking ${bookingId} by ${user.email} (${user.role})`
+    ); // 👈 ADD THIS
+    io.to(`booking_${bookingId}`).emit("video-call-ended", {
+      endedBy: user.id,
+      endedByEmail: user.email,
+      endedByRole: user.role, // 👈 ADD THIS
+    });
   });
 
   socket.on("disconnect", () => {
-    console.log("❌ Disconnected:", user.email);
+    console.log("❌ Disconnected:", user.email, "Role:", user.role); // 👈 ADD THIS
 
-    if (user.role === "CONSULTANT") {
+    // 👇 MODIFY THIS - remove both consultants and enterprise members
+    if (user.role === "CONSULTANT" || user.role === "ENTERPRISE_MEMBER") {
       onlineConsultants.delete(user.id);
-      console.log("🔴 Consultant offline:", user.email);
+      console.log(`🔴 ${user.role} offline:`, user.email);
     }
   });
 });
@@ -3806,61 +3851,364 @@ app.get("/dev-verify-consultant", async (req, res) => {
     res.json(e);
   }
 });
-app.get("/consultant/reviews", verifyFirebaseToken, async (req, res) => {
+// ================= ENTERPRISE MEMBER ENDPOINTS =================
+
+/**
+ * GET /enterprise/member/profile
+ * Get enterprise member profile
+ */
+app.get("/enterprise/member/profile", verifyFirebaseToken, async (req, res) => {
   try {
-    // Find consultant for logged-in user
-    const consultant = await prisma.consultant.findFirst({
-      where: { userId: req.user.id },
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+      include: {
+        enterprise: true,
+        profile: true,
+      },
     });
 
-    if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
+    if (!user || user.role !== "ENTERPRISE_MEMBER") {
+      return res.status(403).json({ error: "Not authorized" });
     }
 
-    const reviews = await prisma.review.findMany({
-      where: { consultantId: consultant.id },
-      include: {
-        user: true, // For user name
+    if (!user.enterprise) {
+      return res
+        .status(404)
+        .json({ error: "Enterprise not found for this member" });
+    }
+
+    res.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      phone: user.phone,
+      enterprise: {
+        id: user.enterprise.id,
+        name: user.enterprise.name,
+        logo: user.enterprise.logo,
       },
-      orderBy: { created_at: "desc" },
+      profile: user.profile,
     });
-
-    // Frontend expects custom mapping
-    const formatted = reviews.map((r) => ({
-      id: r.id,
-      userName: r.user.name || r.user.email,
-      rating: r.rating,
-      comment: r.comment,
-      created_at: r.created_at,
-      consultantReply: r.consultantReply,
-      replied_at: r.replied_at,
-    }));
-
-    res.json(formatted);
   } catch (error) {
-    console.error("Reviews Error:", error);
-    res.status(500).json({ error: "Failed to load reviews" });
+    console.error("Get member profile error:", error);
+    res.status(500).json({ error: "Failed to fetch member profile" });
   }
 });
 
-app.post("/reviews/:id/reply", verifyFirebaseToken, async (req, res) => {
-  try {
-    const { reply } = req.body;
+/**
+ * GET /enterprise/member/available-clients
+ * Get clients available for enterprise members to book
+ */
+app.get(
+  "/enterprise/member/available-clients",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { firebase_uid: req.user.firebase_uid },
+        include: { enterprise: true },
+      });
 
-    const updated = await prisma.review.update({
-      where: { id: Number(req.params.id) },
-      data: {
-        consultantReply: reply,
-        replied_at: new Date(),
-      },
-    });
+      if (!user || user.role !== "ENTERPRISE_MEMBER" || !user.enterprise) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
 
-    res.json(updated);
-  } catch (error) {
-    console.error("Reply Error:", error);
-    res.status(500).json({ error: "Failed to submit reply" });
+      // Get all users with role USER who are verified
+      const clients = await prisma.user.findMany({
+        where: {
+          role: "USER",
+          is_verified: true,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          profile: {
+            select: {
+              avatar: true,
+              bio: true,
+              headline: true,
+            },
+          },
+        },
+      });
+
+      res.json(clients);
+    } catch (error) {
+      console.error("Fetch available clients error:", error);
+      res.status(500).json({ error: "Failed to fetch available clients" });
+    }
   }
-});
+);
+
+/**
+ * POST /enterprise/member/bookings/create
+ * Create a booking as an enterprise member with a client
+ */
+app.post(
+  "/enterprise/member/bookings/create",
+  verifyFirebaseToken,
+  async (req, res) => {
+    const { client_id, date, time_slot } = req.body;
+
+    try {
+      if (!client_id || !date || !time_slot) {
+        return res
+          .status(400)
+          .json({ error: "client_id, date, and time_slot are required" });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { firebase_uid: req.user.firebase_uid },
+        include: {
+          enterprise: {
+            include: {
+              owner: {
+                include: { wallet: true },
+              },
+            },
+          },
+          wallet: true,
+        },
+      });
+
+      if (!user || user.role !== "ENTERPRISE_MEMBER" || !user.enterprise) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      // Get enterprise owner's wallet
+      const enterpriseWallet = await prisma.wallet.findUnique({
+        where: { userId: user.enterprise.ownerId },
+      });
+
+      if (!enterpriseWallet) {
+        return res.status(400).json({ error: "Enterprise wallet not found" });
+      }
+
+      // Check if enterprise has sufficient balance
+      const bookingFee = 100; // Default fee - can be customized
+      if (enterpriseWallet.balance < bookingFee) {
+        return res.status(400).json({
+          error: "Insufficient enterprise balance",
+          required: bookingFee,
+          current: enterpriseWallet.balance,
+        });
+      }
+
+      // Deduct amount from enterprise wallet
+      const updatedWallet = await prisma.wallet.update({
+        where: { id: enterpriseWallet.id },
+        data: {
+          balance: enterpriseWallet.balance - bookingFee,
+        },
+      });
+
+      // Create booking
+      const booking = await prisma.booking.create({
+        data: {
+          userId: parseInt(client_id),
+          enterpriseMemberId: user.id,
+          date: new Date(date),
+          time_slot: time_slot,
+          status: "CONFIRMED",
+          is_paid: true,
+          consultant_fee: bookingFee,
+          commission_fee: bookingFee * 0.1,
+          net_earning: bookingFee * 0.9,
+        },
+        include: {
+          user: true,
+          enterpriseMember: true,
+        },
+      });
+
+      // Create transaction record
+      await prisma.transaction.create({
+        data: {
+          userId: user.enterprise.ownerId,
+          type: "DEBIT",
+          amount: bookingFee,
+          description: `Enterprise booking with client ID ${client_id}`,
+          bookingId: booking.id,
+          payment_method: "WALLET",
+          status: "SUCCESS",
+        },
+      });
+
+      console.log(
+        `✓ Enterprise booking created: Member ${user.email} → Client ${client_id}`
+      );
+      res.status(201).json({
+        ...booking,
+        message: "Booking created successfully",
+        remaining_balance: updatedWallet.balance,
+      });
+    } catch (error) {
+      console.error("Create enterprise booking error:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to create booking: " + error.message });
+    }
+  }
+);
+
+/**
+ * GET /enterprise/member/bookings
+ * Get enterprise member's bookings
+ */
+/**
+ * GET /enterprise/member/bookings
+ * Get enterprise member's bookings
+ */
+app.get(
+  "/enterprise/member/bookings",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      console.log("=".repeat(50));
+      console.log("🔍 ENTERPRISE MEMBER BOOKINGS DEBUG");
+      console.log("=".repeat(50));
+
+      // Log the user from token
+      console.log("📋 User from token:", {
+        firebase_uid: req.user.firebase_uid,
+        email: req.user.email,
+        id: req.user.id,
+        role: req.user.role,
+      });
+
+      // Find the user in database
+      const user = await prisma.user.findUnique({
+        where: { firebase_uid: req.user.firebase_uid },
+      });
+
+      console.log("📋 Database user:", {
+        id: user?.id,
+        email: user?.email,
+        role: user?.role,
+        enterpriseId: user?.enterpriseId,
+      });
+
+      if (!user) {
+        console.log("❌ User not found in database");
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      if (user.role !== "ENTERPRISE_MEMBER") {
+        console.log(`❌ Wrong role: ${user.role}, expected ENTERPRISE_MEMBER`);
+        return res.status(403).json({
+          error: "Not authorized - wrong role",
+          userRole: user.role,
+        });
+      }
+
+      // Check if user has enterpriseId
+      if (!user.enterpriseId) {
+        console.log("❌ User has no enterpriseId");
+
+        // Return empty array instead of error - this is better UX
+        console.log("📚 Returning empty bookings array");
+        return res.json([]);
+      }
+
+      // Fetch bookings
+      console.log(`📚 Fetching bookings for enterprise member ID: ${user.id}`);
+
+      const bookings = await prisma.booking.findMany({
+        where: {
+          enterpriseMemberId: user.id,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              profile: true,
+            },
+          },
+        },
+        orderBy: { date: "desc" },
+      });
+
+      console.log(`✅ Found ${bookings.length} bookings`);
+
+      if (bookings.length > 0) {
+        console.log("📋 First booking:", JSON.stringify(bookings[0], null, 2));
+      }
+
+      console.log("=".repeat(50));
+      res.json(bookings);
+    } catch (error) {
+      console.error("❌ ERROR in /enterprise/member/bookings:");
+      console.error(error);
+      console.error("=".repeat(50));
+
+      res.status(500).json({
+        error: "Failed to fetch bookings",
+        message: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * GET /enterprise/member/dashboard-stats
+ * Get dashboard statistics for enterprise member
+ */
+app.get(
+  "/enterprise/member/dashboard-stats",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { firebase_uid: req.user.firebase_uid },
+      });
+
+      if (!user || user.role !== "ENTERPRISE_MEMBER") {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      const totalBookings = await prisma.booking.count({
+        where: { enterpriseMemberId: user.id },
+      });
+
+      const pendingBookings = await prisma.booking.count({
+        where: {
+          enterpriseMemberId: user.id,
+          status: "PENDING",
+        },
+      });
+
+      const completedSessions = await prisma.booking.count({
+        where: {
+          enterpriseMemberId: user.id,
+          call_completed: true,
+        },
+      });
+
+      const upcomingSessions = await prisma.booking.count({
+        where: {
+          enterpriseMemberId: user.id,
+          date: { gte: new Date() },
+          call_completed: false,
+          status: "CONFIRMED",
+        },
+      });
+
+      res.json({
+        totalBookings,
+        pendingBookings,
+        completedSessions,
+        upcomingSessions,
+      });
+    } catch (error) {
+      console.error("Fetch member stats error:", error);
+      res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  }
+);
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
