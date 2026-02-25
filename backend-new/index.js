@@ -1381,6 +1381,9 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
     }
 
     // Combine consultant and profile data
+    const kycDocuments = user.consultant.kyc_documents || [];
+    const certificates = user.consultant.certificates || [];
+    
     const profileData = {
       ...user.consultant,
       bio: user.profile?.bio || null,
@@ -1388,6 +1391,11 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
+      // Backward compatibility fields
+      kyc_document: kycDocuments.length > 0 ? kycDocuments[0].url : null,
+      kyc_document_data: kycDocuments.length > 0 ? kycDocuments[0] : null,
+      certificates: certificates,
+      certificate_urls: certificates.map(cert => cert.url)
     };
 
     res.json(profileData);
@@ -1402,7 +1410,7 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
  * Update consultant profile
  */
 app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
-  const { type, domain, bio, languages, hourly_price, full_name } = req.body;
+  const { type, domain, bio, languages, hourly_price, full_name, phone } = req.body;
 
   try {
     const user = await prisma.user.findUnique({
@@ -1447,11 +1455,14 @@ app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
       });
     }
 
-    // Update user's name if provided
-    if (full_name) {
+    // Update user's name and phone if provided
+    if (full_name || phone !== undefined) {
       await prisma.user.update({
         where: { id: user.id },
-        data: { name: full_name },
+        data: { 
+          name: full_name || user.name,
+          phone: phone !== undefined ? phone : user.phone,
+        },
       });
     }
     console.log(`✓ Consultant profile updated for user ${user.email}`);
@@ -1471,7 +1482,7 @@ app.get(
       });
 
       if (!consultant) {
-        return res.status(404).json({ error: "Consultant not found" });
+       return res.json([]);
       }
 
       const totalSessions = await prisma.booking.count({
@@ -1513,11 +1524,29 @@ app.get("/consultant/bookings", verifyFirebaseToken, async (req, res) => {
 
     const bookings = await prisma.booking.findMany({
       where: { consultantId: consultant.id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true
+          }
+        }
+      },
       orderBy: { date: "desc" },
     });
 
-    res.json(bookings);
+    // Format the bookings to include user info and proper time display
+    const formattedBookings = bookings.map(booking => ({
+      ...booking,
+      user: booking.user,
+      // Keep time_slot as is for now, but this represents the booked time
+      time_slot: booking.time_slot
+    }));
+
+    res.json(formattedBookings);
   } catch (err) {
+    console.error("Get Bookings Error:", err);
     res.status(500).json({ error: "Failed to fetch bookings" });
   }
 });
@@ -1788,6 +1817,319 @@ app.post(
     }
   }
 );
+
+/**
+ * POST /consultant/upload-kyc
+ * Upload KYC documents to Cloudinary
+ */
+app.post(
+  "/consultant/upload-kyc",
+  verifyFirebaseToken,
+  upload.array("files", 5), // Allow up to 5 files
+  async (req, res) => {
+    try {
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: "No files provided" });
+      }
+
+      // Find consultant for logged-in user
+      const consultant = await prisma.consultant.findFirst({
+        where: { userId: req.user.id },
+      });
+
+      if (!consultant) {
+        return res.status(404).json({ error: "Consultant not found" });
+      }
+
+      // Upload all files to Cloudinary
+      const uploadPromises = req.files.map((file) => {
+        return new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            { 
+              folder: "consultancy-platform/kyc-documents",
+              resource_type: "auto"
+            },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          );
+          uploadStream.end(file.buffer);
+        });
+      });
+
+      const uploadResults = await Promise.all(uploadPromises);
+      
+      // Format documents for storage
+      const documents = uploadResults.map((result, index) => ({
+        id: index + 1,
+        name: req.files[index].originalname,
+        url: result.secure_url,
+        public_id: result.public_id,
+        uploaded_at: new Date().toISOString(),
+        type: req.body.documentType || 'document'
+      }));
+
+      // Update consultant's KYC documents
+      const existingKycDocuments = consultant.kyc_documents || [];
+      const updatedKycDocuments = [...existingKycDocuments, ...documents];
+
+      await prisma.consultant.update({
+        where: { id: consultant.id },
+        data: {
+          kyc_documents: updatedKycDocuments,
+          kyc_status: "SUBMITTED"
+        },
+      });
+
+      res.status(200).json({
+        message: "KYC documents uploaded successfully",
+        documents: documents,
+        kyc_status: "SUBMITTED"
+      });
+    } catch (error) {
+      console.error("KYC Upload Error:", error);
+      res.status(500).json({ error: "Failed to upload KYC documents" });
+    }
+  }
+);
+
+/**
+ * POST /consultant/upload-certificates
+ * Upload certificates to Cloudinary
+ */
+app.post(
+  "/consultant/upload-certificates",
+  verifyFirebaseToken,
+  upload.array("files", 10), // Allow up to 10 certificates
+  async (req, res) => {
+    try {
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: "No files provided" });
+      }
+
+      // Find consultant for logged-in user
+      const consultant = await prisma.consultant.findFirst({
+        where: { userId: req.user.id },
+      });
+
+      if (!consultant) {
+        return res.status(404).json({ error: "Consultant not found" });
+      }
+
+      // Upload all files to Cloudinary
+      const uploadPromises = req.files.map((file) => {
+        return new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            { 
+              folder: "consultancy-platform/certificates",
+              resource_type: "auto"
+            },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          );
+          uploadStream.end(file.buffer);
+        });
+      });
+
+      const uploadResults = await Promise.all(uploadPromises);
+      
+      // Format certificates for storage
+      const certificates = uploadResults.map((result, index) => ({
+        id: Date.now() + index, // Generate unique ID
+        name: req.files[index].originalname,
+        url: result.secure_url,
+        public_id: result.public_id,
+        uploaded_at: new Date().toISOString(),
+        issuer: req.body.issuer || "Not specified",
+        issue_date: req.body.issueDate || null,
+        expiry_date: req.body.expiryDate || null,
+        credential_id: req.body.credentialId || null
+      }));
+
+      // Update consultant's certificates
+      const existingCertificates = consultant.certificates || [];
+      const updatedCertificates = [...existingCertificates, ...certificates];
+
+      await prisma.consultant.update({
+        where: { id: consultant.id },
+        data: {
+          certificates: updatedCertificates,
+        },
+      });
+
+      res.status(200).json({
+        message: "Certificates uploaded successfully",
+        certificates: certificates
+      });
+    } catch (error) {
+      console.error("Certificates Upload Error:", error);
+      res.status(500).json({ error: "Failed to upload certificates" });
+    }
+  }
+);
+
+/**
+ * GET /consultant/kyc-status
+ * Get KYC status and documents
+ */
+app.get("/consultant/kyc-status", verifyFirebaseToken, async (req, res) => {
+  try {
+    const consultant = await prisma.consultant.findFirst({
+      where: { userId: req.user.id },
+      select: {
+        kyc_status: true,
+        kyc_documents: true
+      }
+    });
+
+    if (!consultant) {
+      return res.status(404).json({ error: "Consultant not found" });
+    }
+
+    // For backward compatibility, return single document if only one exists
+    const documents = consultant.kyc_documents || [];
+    const singleDocument = documents.length > 0 ? documents[0] : null;
+
+    res.json({
+      kyc_status: consultant.kyc_status,
+      documents: documents,
+      kyc_document: singleDocument?.url || null, // Backward compatibility
+      kyc_document_data: singleDocument || null // Full document data
+    });
+  } catch (error) {
+    console.error("KYC Status Error:", error);
+    res.status(500).json({ error: "Failed to get KYC status" });
+  }
+});
+
+/**
+ * GET /consultant/certificates
+ * Get consultant certificates
+ */
+app.get("/consultant/certificates", verifyFirebaseToken, async (req, res) => {
+  try {
+    const consultant = await prisma.consultant.findFirst({
+      where: { userId: req.user.id },
+      select: {
+        certificates: true
+      }
+    });
+
+    if (!consultant) {
+      return res.status(404).json({ error: "Consultant not found" });
+    }
+
+    const certificates = consultant.certificates || [];
+    
+    // For backward compatibility, return array of URLs
+    const certificateUrls = certificates.map(cert => cert.url);
+
+    res.json({
+      certificates: certificates,
+      certificate_urls: certificateUrls // Backward compatibility
+    });
+  } catch (error) {
+    console.error("Certificates Error:", error);
+    res.status(500).json({ error: "Failed to get certificates" });
+  }
+});
+
+/**
+ * DELETE /consultant/certificate/:id
+ * Delete a certificate
+ */
+app.delete("/consultant/certificate/:id", verifyFirebaseToken, async (req, res) => {
+  try {
+    const consultant = await prisma.consultant.findFirst({
+      where: { userId: req.user.id },
+    });
+
+    if (!consultant) {
+      return res.status(404).json({ error: "Consultant not found" });
+    }
+
+    const certificateId = parseInt(req.params.id);
+    const certificates = consultant.certificates || [];
+    
+    // Find the certificate to delete
+    const certificateToDelete = certificates.find(cert => cert.id === certificateId);
+    
+    if (!certificateToDelete) {
+      return res.status(404).json({ error: "Certificate not found" });
+    }
+
+    // Delete from Cloudinary
+    if (certificateToDelete.public_id) {
+      await cloudinary.uploader.destroy(certificateToDelete.public_id);
+    }
+
+    // Remove from database
+    const updatedCertificates = certificates.filter(cert => cert.id !== certificateId);
+    
+    await prisma.consultant.update({
+      where: { id: consultant.id },
+      data: {
+        certificates: updatedCertificates,
+      },
+    });
+
+    res.json({ message: "Certificate deleted successfully" });
+  } catch (error) {
+    console.error("Delete Certificate Error:", error);
+    res.status(500).json({ error: "Failed to delete certificate" });
+  }
+});
+
+/**
+ * DELETE /consultant/kyc-document/:id
+ * Delete a KYC document
+ */
+app.delete("/consultant/kyc-document/:id", verifyFirebaseToken, async (req, res) => {
+  try {
+    const consultant = await prisma.consultant.findFirst({
+      where: { userId: req.user.id },
+    });
+
+    if (!consultant) {
+      return res.status(404).json({ error: "Consultant not found" });
+    }
+
+    const documentId = parseInt(req.params.id);
+    const kycDocuments = consultant.kyc_documents || [];
+    
+    // Find the document to delete
+    const documentToDelete = kycDocuments.find(doc => doc.id === documentId);
+    
+    if (!documentToDelete) {
+      return res.status(404).json({ error: "KYC document not found" });
+    }
+
+    // Delete from Cloudinary
+    if (documentToDelete.public_id) {
+      await cloudinary.uploader.destroy(documentToDelete.public_id);
+    }
+
+    // Remove from database
+    const updatedDocuments = kycDocuments.filter(doc => doc.id !== documentId);
+    
+    await prisma.consultant.update({
+      where: { id: consultant.id },
+      data: {
+        kyc_documents: updatedDocuments,
+        kyc_status: updatedDocuments.length === 0 ? "PENDING" : "SUBMITTED"
+      },
+    });
+
+    res.json({ message: "KYC document deleted successfully" });
+  } catch (error) {
+    console.error("Delete KYC Document Error:", error);
+    res.status(500).json({ error: "Failed to delete KYC document" });
+  }
+});
+
 /**
  * GET /consultants
  * Get all consultants (with optional domain filter)
@@ -3462,6 +3804,61 @@ app.get("/dev-verify-consultant", async (req, res) => {
     res.json({ message: "All consultants verified", count: consultant.count });
   } catch (e) {
     res.json(e);
+  }
+});
+app.get("/consultant/reviews", verifyFirebaseToken, async (req, res) => {
+  try {
+    // Find consultant for logged-in user
+    const consultant = await prisma.consultant.findFirst({
+      where: { userId: req.user.id },
+    });
+
+    if (!consultant) {
+      return res.status(404).json({ error: "Consultant not found" });
+    }
+
+    const reviews = await prisma.review.findMany({
+      where: { consultantId: consultant.id },
+      include: {
+        user: true, // For user name
+      },
+      orderBy: { created_at: "desc" },
+    });
+
+    // Frontend expects custom mapping
+    const formatted = reviews.map((r) => ({
+      id: r.id,
+      userName: r.user.name || r.user.email,
+      rating: r.rating,
+      comment: r.comment,
+      created_at: r.created_at,
+      consultantReply: r.consultantReply,
+      replied_at: r.replied_at,
+    }));
+
+    res.json(formatted);
+  } catch (error) {
+    console.error("Reviews Error:", error);
+    res.status(500).json({ error: "Failed to load reviews" });
+  }
+});
+
+app.post("/reviews/:id/reply", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { reply } = req.body;
+
+    const updated = await prisma.review.update({
+      where: { id: Number(req.params.id) },
+      data: {
+        consultantReply: reply,
+        replied_at: new Date(),
+      },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error("Reply Error:", error);
+    res.status(500).json({ error: "Failed to submit reply" });
   }
 });
 

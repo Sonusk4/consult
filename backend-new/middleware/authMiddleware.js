@@ -26,6 +26,7 @@ const verifyFirebaseToken = async (req, res, next) => {
     // First try to verify as dev JWT token
     let decodedToken;
     let isDevToken = false;
+    let isCustomToken = false;
 
     try {
       const devSecret = process.env.JWT_SECRET || "dev-secret-key-for-testing-only";
@@ -33,17 +34,34 @@ const verifyFirebaseToken = async (req, res, next) => {
       console.log("✅ Dev JWT token verified for user:", decodedToken.email);
       isDevToken = true;
     } catch (devError) {
-      // If dev token fails, try Firebase token
-      console.log("Not a dev token, trying Firebase verification...");
+      // If dev token fails, try custom base64 token
+      console.log("Not a dev JWT token, trying custom base64 token...");
       
       try {
-        decodedToken = await admin.auth().verifyIdToken(token);
-        console.log("✅ Firebase token verified for UID:", decodedToken.uid);
-      } catch (firebaseError) {
-        console.error("❌ Both token verifications failed");
-        console.error("Dev JWT error:", devError.message);
-        console.error("Firebase error:", firebaseError.message);
-        return res.status(401).json({ error: "Invalid or expired token" });
+        const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
+        
+        // Check if token has expired
+        if (decoded.exp && Date.now() > decoded.exp) {
+          throw new Error("Custom token expired");
+        }
+        
+        decodedToken = decoded;
+        console.log("✅ Custom base64 token verified for user:", decodedToken.email);
+        isCustomToken = true;
+      } catch (customError) {
+        // If custom token fails, try Firebase token
+        console.log("Not a custom token, trying Firebase verification...");
+        
+        try {
+          decodedToken = await admin.auth().verifyIdToken(token);
+          console.log("✅ Firebase token verified for UID:", decodedToken.uid);
+        } catch (firebaseError) {
+          console.error("❌ All token verifications failed");
+          console.error("Dev JWT error:", devError.message);
+          console.error("Custom token error:", customError.message);
+          console.error("Firebase error:", firebaseError.message);
+          return res.status(401).json({ error: "Invalid or expired token" });
+        }
       }
     }
 
@@ -55,6 +73,11 @@ const verifyFirebaseToken = async (req, res, next) => {
       email = decodedToken.email;
       firebase_uid = decodedToken.uid; // Should be user.id from DB
       console.log("🔧 Using dev token for email:", email);
+    } else if (isCustomToken) {
+      // Handle custom base64 token
+      email = decodedToken.email;
+      firebase_uid = decodedToken.id?.toString(); // Convert to string for consistency
+      console.log("🔧 Using custom token for email:", email);
     } else {
       // Handle Firebase token
       firebase_uid = decodedToken.uid;
@@ -65,15 +88,25 @@ const verifyFirebaseToken = async (req, res, next) => {
       return res.status(400).json({ error: "Email not found in token" });
     }
 
-    // Find user in database by firebase_uid (for Firebase tokens) or by email (for dev tokens)
+    // Find user in database
     let user;
     
-    if (isDevToken) {
-      // For dev tokens, find by email
+    if (isDevToken || isCustomToken) {
+      // For dev and custom tokens, find by email first
       user = await prisma.user.findUnique({
         where: { email },
         include: { consultant: true },
       });
+      
+      // If found by email and we have a firebase_uid, update it
+      if (user && firebase_uid && !user.firebase_uid) {
+        user = await prisma.user.update({
+          where: { email },
+          data: { firebase_uid },
+          include: { consultant: true },
+        });
+        console.log("✅ Updated user with firebase_uid:", user.id);
+      }
     } else {
       // For Firebase tokens, find by firebase_uid
       user = await prisma.user.findUnique({
@@ -83,7 +116,7 @@ const verifyFirebaseToken = async (req, res, next) => {
     }
 
     // If not found by firebase_uid, try to find by email and link
-    if (!user && !isDevToken) {
+    if (!user && !isDevToken && !isCustomToken) {
       console.log("User not found by firebase_uid, checking by email:", email);
 
       const existingUser = await prisma.user.findUnique({
@@ -114,6 +147,10 @@ const verifyFirebaseToken = async (req, res, next) => {
         });
         console.log("✅ Created new user for Firebase UID:", user.id);
       }
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
     }
 
     // Attach user to request object

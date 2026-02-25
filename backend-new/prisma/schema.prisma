@@ -59,6 +59,14 @@ model Consultant {
   rating         Float           @default(0)
   total_reviews  Int             @default(0)
   is_verified    Boolean         @default(false)
+  
+  // KYC Fields
+  kyc_status      String          @default("PENDING") // PENDING, SUBMITTED, APPROVED, REJECTED
+  kyc_documents   Json?           // Store KYC document URLs and metadata
+  
+  // Certificate Fields
+  certificates    Json?           // Store certificate URLs and metadata
+  
   availability   Availability[]
   bookings       Booking[]
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -172,6 +180,8 @@ model Review {
   booking      Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consultantReply String?
+replied_at      DateTime?
 }
 
 model Enterprise {

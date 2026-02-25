@@ -48,9 +48,9 @@ const AvailabilityPage: React.FC = () => {
         }
         slotsByDateMap[dateKey].push({
           id: slot.id,
-          start: slot.available_time,
-          end: '', // Will calculate based on duration
-          display: slot.available_time
+          start: slot.start_time || slot.available_time,
+          end: slot.end_time || '',
+          display: slot.start_time ? `${slot.start_time} - ${slot.end_time}` : slot.available_time
         });
       });
       
@@ -127,13 +127,14 @@ const AvailabilityPage: React.FC = () => {
     }
 
     try {
-      const selectedDateStr = selectedDate.toISOString().split('T')[0];
+      const selectedDateStr = selectedDate.toLocaleDateString('en-CA'); // YYYY-MM-DD format in local timezone
       
       // Save to backend using the api instance
       const api = (await import('../services/api')).default;
       await api.post('/consultant/availability', {
         date: selectedDateStr,
-        time: startTime
+        start_time: startTime,
+        end_time: endTime
       });
 
       // Refresh availability data
@@ -155,7 +156,7 @@ const AvailabilityPage: React.FC = () => {
 
   const handleDeleteSlot = async (index: number) => {
     try {
-      const selectedDateStr = selectedDate.toISOString().split('T')[0];
+      const selectedDateStr = selectedDate.toLocaleDateString('en-CA'); // YYYY-MM-DD format in local timezone
       const selectedSlots = slotsByDate[selectedDate.toDateString()] || [];
       const slotToDelete = selectedSlots[index];
       
@@ -307,7 +308,9 @@ const AvailabilityPage: React.FC = () => {
                 key={index}
                 className="flex justify-between items-center p-4 rounded-xl bg-gray-50 border"
               >
-                <p className="font-bold">{slot.display}</p>
+                <p className="font-bold">
+                  {slot.end ? `${convertTo12Hour(slot.start)} - ${convertTo12Hour(slot.end)}` : convertTo12Hour(slot.start)}
+                </p>
 
                 <button
                   onClick={() => handleDeleteSlot(index)}

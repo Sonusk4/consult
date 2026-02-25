@@ -31,6 +31,7 @@ import BookingsPage from "./pages/BookingsPage";
 import AvailabilityPage from "./pages/AvailabilityPage";
 import EarningsPage from "./pages/EarningsPage";
 import ProfilePage from "./pages/ProfilePage";
+import ReviewsPage from "./pages/ReviewsPage";
 
 /* ENTERPRISE ADMIN */
 import EnterpriseDashboard from "./pages/enterprise/EnterpriseDashboard";
@@ -248,6 +249,14 @@ const App: React.FC = () => {
             <Route
               path="/consultant/profile"
               element={isConsultant ? <ProfilePage /> : <Navigate to="/auth" />}
+            />
+            <Route
+              path="/consultant/reviews"
+              element={isConsultant ? <ReviewsPage /> : <Navigate to="/auth" />}
+            />
+            <Route
+              path="/consultant/support"
+              element={isConsultant ? <UserSupportPage /> : <Navigate to="/auth" />}
             />
 
             {/* ================= ENTERPRISE ADMIN ================= */}

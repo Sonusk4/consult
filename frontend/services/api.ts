@@ -2,7 +2,9 @@ import axios from "axios";
 import { auth as firebaseAuth } from "../src/services/firebase";
 import { UserRole } from "../types";
 
-/* ================= AXIOS INSTANCE ================= */
+/* ========================================================= */
+/* ===================== AXIOS INSTANCE ===================== */
+/* ========================================================= */
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000",
@@ -10,7 +12,65 @@ const api = axios.create({
     "Content-Type": "application/json",
   },
 });
-/* ================= RESPONSE INTERCEPTOR ================= */
+
+/* ========================================================= */
+/* ================== PUBLIC ROUTES (NO TOKEN) ============== */
+/* ========================================================= */
+
+const PUBLIC_ROUTES = [
+  "/auth/send-otp",
+  "/auth/verify-otp",
+  "/auth/login",
+  "/auth/me",
+];
+
+/* ========================================================= */
+/* =============== REQUEST INTERCEPTOR (FIXED) ============== */
+/* ========================================================= */
+
+api.interceptors.request.use(
+  async (config) => {
+    // Allow public routes without auth
+    if (PUBLIC_ROUTES.some((route) => config.url?.includes(route))) {
+      return config;
+    }
+
+    // 1️⃣ Dev Mode Token (optional for testing)
+    const devToken = localStorage.getItem("devToken");
+    if (devToken) {
+      config.headers.Authorization = `Bearer ${devToken}`;
+      return config;
+    }
+
+    // 2️⃣ Custom Backend JWT Token (your real login system)
+    const backendToken = localStorage.getItem("authToken");
+    if (backendToken) {
+      config.headers.Authorization = `Bearer ${backendToken}`;
+      return config;
+    }
+
+    // 3️⃣ Firebase Token (if logged in with Firebase)
+    const user = firebaseAuth.currentUser;
+    if (user) {
+      try {
+        const token = await user.getIdToken(true);
+        config.headers.Authorization = `Bearer ${token}`;
+        return config;
+      } catch (err) {
+        console.error("Failed to get Firebase token:", err);
+      }
+    }
+
+    // 4️⃣ No token → let backend return 401
+    console.warn("⚠️ No authentication token found for:", config.url);
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+/* ========================================================= */
+/* ================= RESPONSE INTERCEPTOR =================== */
+/* ========================================================= */
 
 api.interceptors.response.use(
   (response) => response,
@@ -22,113 +82,53 @@ api.interceptors.response.use(
 
     console.error("API Error:", message);
 
-    // Only auto-logout on 401 if it's not during OTP verification
-    // This prevents accidental logouts from other 401 errors
-    if (error.response?.status === 401) {
-      const isOtpEndpoint = error.config?.url?.includes("/auth/verify-otp");
-      const isLoginEndpoint = error.config?.url?.includes("/auth/me");
-      
-      // Don't auto-logout during these operations
-      if (!isOtpEndpoint && !isLoginEndpoint) {
-        console.warn("⚠️ Authentication failed - user may need to re-login");
-      }
+    // Prevent auto-logout on OTP endpoints
+    const isOtp = error.config?.url?.includes("/auth/verify-otp");
+    const isMeRequest = error.config?.url?.includes("/auth/me");
+
+    if (error.response?.status === 401 && !isOtp && !isMeRequest) {
+      console.warn("⚠️ Unauthorized - user may need to login again");
     }
 
-    const event = new CustomEvent("toast", {
-      detail: { message, type: "error" },
-    });
-
-    window.dispatchEvent(event);
+    // Global toast event
+    window.dispatchEvent(
+      new CustomEvent("toast", {
+        detail: { message, type: "error" },
+      })
+    );
 
     return Promise.reject(error);
   }
 );
 
-/* ================= REQUEST INTERCEPTOR ================= */
-
-/* ================= REQUEST INTERCEPTOR ================= */
-
-/* ================= REQUEST INTERCEPTOR ================= */
-api.interceptors.request.use(
-  async (config) => {
-    // Check for dev mode token first (stored in localStorage)
-    const devToken = localStorage.getItem("devToken");
-    
-    if (devToken) {
-      config.headers.Authorization = `Bearer ${devToken}`;
-      console.log("✅ Added dev token to request");
-      return config;
-    }
-
-    // Get current Firebase user
-    const user = firebaseAuth.currentUser;
-
-    if (user) {
-      try {
-        // Get fresh ID token - wait for it
-        const token = await user.getIdToken(true); // Force refresh
-        config.headers.Authorization = `Bearer ${token}`;
-        console.log("✅ Added Firebase token to request for:", user.email);
-      } catch (error) {
-        console.error("Failed to get Firebase token:", error);
-      }
-    } else {
-      console.log("⚠️ No Firebase user or dev token, request without auth");
-      // If no user, maybe wait for auth state?
-      // For now, we'll let it fail with 401
-    }
-
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
 /* ========================================================= */
-/* ======================= AUTH ============================= */
+/* ========================= AUTH =========================== */
 /* ========================================================= */
 
 export const auth = {
   login: async (email: string, role?: UserRole, name?: string) => {
-    const res = await api.post("/auth/me", {
-      email,
-      role,
-      name,
-    });
+    const res = await api.post("/auth/me", { email, role, name });
     return res.data;
   },
 
   sendOtp: async (email: string, type: "LOGIN" | "SIGNUP") => {
-    try {
-      console.log(`📤 Sending OTP request for ${email}, type: ${type}`);
-      const response = await api.post("/auth/send-otp", { email, type });
-      console.log("📥 OTP send response:", response.data);
-      return response.data;
-    } catch (error) {
-      console.error("❌ sendOtp error:", error);
-      throw error;
-    }
+    const response = await api.post("/auth/send-otp", { email, type });
+    return response.data;
   },
 
   verifyOtp: async (email: string, otp: string) => {
-    try {
-      console.log(`📤 Verifying OTP for ${email}`);
-      const response = await api.post("/auth/verify-otp", { email, otp });
-      console.log("📥 OTP verify response:", response.data);
-      return response.data;
-    } catch (error) {
-      console.error("❌ verifyOtp error:", error);
-      throw error;
-    }
+    const response = await api.post("/auth/verify-otp", { email, otp });
+    return response.data;
   },
 };
+
 /* ========================================================= */
 /* ===================== CONSULTANTS ======================== */
 /* ========================================================= */
 
 export const consultants = {
   getAll: async (domain?: string) => {
-    const response = await api.get("/consultants", {
-      params: { domain },
-    });
+    const response = await api.get("/consultants", { params: { domain } });
     return response.data;
   },
 
@@ -155,80 +155,28 @@ export const consultants = {
   uploadProfilePic: async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-
-    const response = await api.post(
-      "/consultant/upload-profile-pic",
-      formData,
-      { headers: { "Content-Type": "multipart/form-data" } }
-    );
-
-    return response.data;
-  },
-  getDashboardStats: async () => {
-    const response = await api.get("/consultant/dashboard-stats");
-    return response.data;
-  },
-
-  getConsultantBookings: async () => {
-    const response = await api.get("/consultant/bookings");
-    return response.data;
-  },
-
-  getConsultantAvailability: async () => {
-    const response = await api.get("/consultant/availability");
-    return response.data;
-  },
-
-  getConsultantEarnings: async (period: string) => {
-    const response = await api.get("/consultant/earnings", {
-      params: { period },
-    });
-    return response.data;
-  },
-};
-
-/* ========================================================= */
-/* ========================= USERS ========================== */
-/* ========================================================= */
-
-export const users = {
-  uploadProfilePic: async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await api.post("/user/upload-profile-pic", formData, {
+    const response = await api.post("/consultant/upload-profile-pic", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
-
-    return response.data;
-  },
-};
-
-/* ========================================================= */
-/* ========================= WALLET ========================= */
-/* ========================================================= */
-
-export const wallet = {
-  getBalance: async () => {
-    const response = await api.get("/wallet");
     return response.data;
   },
 
-  addCredits: async (amount: number, package_id?: number) => {
-    const response = await api.post("/wallet/add-credits", {
-      amount,
-      package_id,
-    });
+  getDashboardStats: async () => api.get("/consultant/dashboard-stats").then((res) => res.data),
+  getConsultantBookings: async () => api.get("/consultant/bookings").then((res) => res.data),
+  getConsultantAvailability: async () => api.get("/consultant/availability").then((res) => res.data),
+
+  getConsultantEarnings: async (period: string) => {
+    const response = await api.get("/consultant/earnings", { params: { period } });
     return response.data;
   },
 
-  getTransactions: async () => {
-    const response = await api.get("/transactions");
+  deleteCertificate: async (certificateId: number) => {
+    const response = await api.delete(`/consultant/certificates/${certificateId}`);
     return response.data;
   },
 
-  getCreditPackages: async () => {
-    const response = await api.get("/credit-packages");
+  deleteKycDocument: async (documentId: number) => {
+    const response = await api.delete(`/consultant/kyc/${documentId}`);
     return response.data;
   },
 };
@@ -238,58 +186,33 @@ export const wallet = {
 /* ========================================================= */
 
 export const bookings = {
-  create: async (data: {
-    consultant_id: number;
-    date: string;
-    time_slot: string;
-  }) => {
-    const response = await api.post("/bookings/create", data);
-    return response.data;
-  },
+  create: async (data: any) => api.post("/bookings/create", data).then((res) => res.data),
+  getAll: async () => api.get("/bookings").then((res) => res.data),
 
-  getAll: async () => {
-    const response = await api.get("/bookings");
-    return response.data;
-  },
+  updateStatus: async (bookingId: number, status: string) =>
+    api.put(`/bookings/${bookingId}/status`, { status }).then((res) => res.data),
 
-  updateStatus: async (bookingId: number, status: 'ACCEPTED' | 'REJECTED' | 'CANCELLED') => {
-    const response = await api.put(`/bookings/${bookingId}/status`, { status });
-    return response.data;
-  },
-
-  complete: async (bookingId: number, duration: number) => {
-    const response = await api.post(`/bookings/${bookingId}/complete`, {
-      call_duration: duration,
-    });
-    return response.data;
-  },
-
-  getMessages: async (bookingId: number) => {
-    const response = await api.get(`/bookings/${bookingId}/messages`);
-    return response.data;
-  },
-
-  sendMessage: async (bookingId: number, content: string) => {
-    const response = await api.post(`/bookings/${bookingId}/messages`, { content });
-    return response.data;
-  },
+  complete: async (bookingId: number, duration: number) =>
+    api.post(`/bookings/${bookingId}/complete`, { call_duration: duration }).then((res) => res.data),
 };
 
 /* ========================================================= */
-/* ========================= PAYMENTS ======================= */
+/* ===================== WALLET / USERS ===================== */
 /* ========================================================= */
 
-export const payments = {
-  createOrder: async (amount: number, package_id?: number) => {
-    const response = await api.post("/payment/create-order", {
-      amount,
-      package_id,
-    });
-    return response.data;
-  },
+export const wallet = {
+  getBalance: async () => api.get("/wallet").then((res) => res.data),
+  addCredits: async (amount: number, package_id?: number) =>
+    api.post("/wallet/add-credits", { amount, package_id }).then((res) => res.data),
+};
 
-  verifyPayment: async (data: any) => {
-    const response = await api.post("/payment/verify", data);
+export const users = {
+  uploadProfilePic: async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await api.post("/user/upload-profile-pic", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
     return response.data;
   },
 };

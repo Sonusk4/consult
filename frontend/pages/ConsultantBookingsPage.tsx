@@ -18,13 +18,14 @@ interface Booking {
   userId: number;
   consultantId: number;
   date: string;
-  time_slot: string;
-  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';
+  time_slot: string; // This is the actual booked time
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED' | 'CONFIRMED';
   is_paid: boolean;
   consultant_fee: number;
   user?: {
+    id: number;
     email: string;
-  name?: string;
+    name?: string;
   };
 }
 
@@ -147,16 +148,19 @@ const ConsultantBookingsPage: React.FC = () => {
                 <div key={booking.id} className="border rounded-2xl p-6 hover:shadow-md transition-shadow">
                   
                   {/* Booking Header */}
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-800">
-                        Booking #{booking.id}
-                      </h3>
-                      <p className="text-sm text-gray-600">
-                        Client: {booking.user?.email || 'Unknown'}
-                      </p>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                        <User size={20} className="text-blue-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">
+                          {booking.user?.name || booking.user?.email || 'Unknown User'}
+                        </h3>
+                        <p className="text-sm text-gray-500">{booking.user?.email}</p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="text-right">
                       <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1 ${getStatusColor(booking.status)}`}>
                         {getStatusIcon(booking.status)}
                         {booking.status}
@@ -173,6 +177,7 @@ const ConsultantBookingsPage: React.FC = () => {
                     <div className="flex items-center text-gray-600">
                       <Clock size={16} className="mr-2" />
                       <span>{booking.time_slot}</span>
+                      <span className="text-xs text-gray-500 ml-2">(Booked Time)</span>
                     </div>
                     <div className="flex items-center text-gray-600">
                       <DollarSign size={16} className="mr-2" />
