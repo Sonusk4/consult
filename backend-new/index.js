@@ -93,12 +93,17 @@ if (
  */
 console.log("🔍 Checking Agora environment variables:");
 console.log("AGORA_APP_ID:", process.env.AGORA_APP_ID ? "SET" : "NOT SET");
-console.log("AGORA_APP_CERTIFICATE:", process.env.AGORA_APP_CERTIFICATE ? "SET" : "NOT SET");
+console.log(
+  "AGORA_APP_CERTIFICATE:",
+  process.env.AGORA_APP_CERTIFICATE ? "SET" : "NOT SET"
+);
 
 if (process.env.AGORA_APP_ID && process.env.AGORA_APP_CERTIFICATE) {
   console.log("✅ Agora Video Call initialized successfully");
 } else {
-  console.log("⚠️ Agora credentials not configured. Video calls will not work.");
+  console.log(
+    "⚠️ Agora credentials not configured. Video calls will not work."
+  );
 }
 
 /**
@@ -123,7 +128,7 @@ if (isEmailConfigured) {
     },
   });
   console.log("✅ Gmail Nodemailer initialized successfully");
-  
+
   // Test the transporter connection
   transporter.verify((error, success) => {
     if (error) {
@@ -763,16 +768,18 @@ app.post("/auth/send-otp", async (req, res) => {
           message: err.message,
         });
         console.error(
-          `🔧 Configuration check: EMAIL_USER="${process.env.EMAIL_USER}", EMAIL_PASS set: ${!!process.env.EMAIL_PASS}`
+          `🔧 Configuration check: EMAIL_USER="${
+            process.env.EMAIL_USER
+          }", EMAIL_PASS set: ${!!process.env.EMAIL_PASS}`
         );
         console.log(`📝 OTP saved to database for testing: ${otp}`);
-        
+
         // Return error to frontend
         return res.status(500).json({
           error: "Failed to send OTP email",
           details: err.message,
           fallback: `OTP for testing: ${otp}`,
-          hint: "Check your email credentials in .env file"
+          hint: "Check your email credentials in .env file",
         });
       }
     }
@@ -841,17 +848,15 @@ app.post("/auth/verify-otp", async (req, res) => {
 
     // CHECK IF FIREBASE IS INITIALIZED
     if (!firebaseAdminInitialized) {
-      console.warn(
-        "⚠️ Firebase not initialized - generating dev mode token"
-      );
+      console.warn("⚠️ Firebase not initialized - generating dev mode token");
 
       // Generate a proper JWT token for development
       const devToken = jwt.sign(
-        { 
-          email, 
+        {
+          email,
           uid: user.id,
           iat: Math.floor(Date.now() / 1000),
-          exp: Math.floor(Date.now() / 1000) + 3600 // 1 hour expiry
+          exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour expiry
         },
         process.env.JWT_SECRET || "dev-secret-key-for-testing-only",
         { algorithm: "HS256" }
@@ -1382,7 +1387,7 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
       languages: user.profile?.languages || null,
       name: user.name,
       email: user.email,
-      phone: user.phone
+      phone: user.phone,
     };
 
     res.json(profileData);
@@ -1431,7 +1436,8 @@ app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
         where: { userId: user.id },
         update: {
           bio: bio !== undefined ? bio : user.profile?.bio,
-          languages: languages !== undefined ? languages : user.profile?.languages,
+          languages:
+            languages !== undefined ? languages : user.profile?.languages,
         },
         create: {
           userId: user.id,
@@ -1533,7 +1539,7 @@ app.get("/consultant/availability", verifyFirebaseToken, async (req, res) => {
         },
       },
       orderBy: {
-        available_date: 'asc',
+        available_date: "asc",
       },
     });
 
@@ -1551,7 +1557,7 @@ app.get("/consultant/availability", verifyFirebaseToken, async (req, res) => {
 app.post("/consultant/availability", verifyFirebaseToken, async (req, res) => {
   try {
     const { date, time } = req.body;
-    
+
     const consultant = await prisma.consultant.findFirst({
       where: { userId: req.user.id },
     });
@@ -1579,40 +1585,44 @@ app.post("/consultant/availability", verifyFirebaseToken, async (req, res) => {
  * DELETE /consultant/availability/:id
  * Delete availability slot
  */
-app.delete("/consultant/availability/:id", verifyFirebaseToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    const consultant = await prisma.consultant.findFirst({
-      where: { userId: req.user.id },
-    });
+app.delete(
+  "/consultant/availability/:id",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
 
-    if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
+      const consultant = await prisma.consultant.findFirst({
+        where: { userId: req.user.id },
+      });
+
+      if (!consultant) {
+        return res.status(404).json({ error: "Consultant not found" });
+      }
+
+      // Verify the availability belongs to this consultant
+      const availability = await prisma.availability.findFirst({
+        where: {
+          id: parseInt(id),
+          consultantId: consultant.id,
+        },
+      });
+
+      if (!availability) {
+        return res.status(404).json({ error: "Availability slot not found" });
+      }
+
+      await prisma.availability.delete({
+        where: { id: parseInt(id) },
+      });
+
+      res.status(200).json({ message: "Availability deleted successfully" });
+    } catch (error) {
+      console.error("Delete Availability Error:", error.message);
+      res.status(500).json({ error: "Failed to delete availability" });
     }
-
-    // Verify the availability belongs to this consultant
-    const availability = await prisma.availability.findFirst({
-      where: {
-        id: parseInt(id),
-        consultantId: consultant.id,
-      },
-    });
-
-    if (!availability) {
-      return res.status(404).json({ error: "Availability slot not found" });
-    }
-
-    await prisma.availability.delete({
-      where: { id: parseInt(id) },
-    });
-
-    res.status(200).json({ message: "Availability deleted successfully" });
-  } catch (error) {
-    console.error("Delete Availability Error:", error.message);
-    res.status(500).json({ error: "Failed to delete availability" });
   }
-});
+);
 
 app.get("/consultant/earnings", verifyFirebaseToken, async (req, res) => {
   try {
@@ -1827,11 +1837,11 @@ app.get("/consultants", async (req, res) => {
 app.get("/consultants/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const consultant = await prisma.consultant.findUnique({
-      where: { 
+      where: {
         id: parseInt(id),
-        is_verified: true // Only return verified consultants
+        is_verified: true, // Only return verified consultants
       },
       include: {
         user: {
@@ -1865,9 +1875,9 @@ app.get("/consultants/:id/availability", async (req, res) => {
     }
 
     const consultant = await prisma.consultant.findFirst({
-      where: { 
+      where: {
         id: parseInt(id),
-        is_verified: true
+        is_verified: true,
       },
     });
 
@@ -1882,7 +1892,7 @@ app.get("/consultants/:id/availability", async (req, res) => {
         is_booked: false,
       },
       orderBy: {
-        available_time: 'asc',
+        available_time: "asc",
       },
     });
 
@@ -2710,7 +2720,9 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
       data: { is_booked: true },
     });
 
-    console.log(`📅 Booking ${booking.id} created for user ${user.email} with consultant ${consultant_id}`);
+    console.log(
+      `📅 Booking ${booking.id} created for user ${user.email} with consultant ${consultant_id}`
+    );
 
     // Create transaction record for wallet deduction
     await prisma.transaction.create({
@@ -2905,6 +2917,7 @@ app.get("/bookings", verifyFirebaseToken, async (req, res) => {
  * GET /bookings/:id/messages
  * Get all messages for a specific booking
  */
+// In index.js - update the GET /bookings/:id/messages endpoint
 app.get("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -2938,10 +2951,19 @@ app.get("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
         .json({ error: "Not authorized to view these messages" });
     }
 
-    // Fetch messages
+    // ✅ FIX: Include sender information when fetching messages
     const messages = await prisma.message.findMany({
       where: { bookingId: bookingId },
       orderBy: { created_at: "asc" },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        },
+      },
     });
 
     res.status(200).json(messages);
@@ -2961,7 +2983,7 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
     const { content } = req.body;
     const bookingId = parseInt(id);
 
-    if (!content || content.trim() === '') {
+    if (!content || content.trim() === "") {
       return res.status(400).json({ error: "Message content is required" });
     }
 
@@ -2989,9 +3011,7 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
     const isConsultant = booking.consultant?.userId === sender.id;
 
     if (!isClient && !isConsultant) {
-      return res
-        .status(403)
-        .json({ error: "Not authorized to send messages" });
+      return res.status(403).json({ error: "Not authorized to send messages" });
     }
 
     // Create message
@@ -3004,7 +3024,7 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
     });
 
     // Emit real-time message via Socket.IO
-    io.to(`booking_${bookingId}`).emit('new_message', {
+    io.to(`booking_${bookingId}`).emit("new_message", {
       id: message.id,
       bookingId: bookingId,
       senderId: sender.id,
@@ -3016,7 +3036,9 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
       },
     });
 
-    console.log(`💬 Message sent in booking ${bookingId} by user ${sender.email}`);
+    console.log(
+      `💬 Message sent in booking ${bookingId} by user ${sender.email}`
+    );
 
     res.status(201).json({
       message: "Message sent successfully",
@@ -3038,7 +3060,7 @@ app.put("/bookings/:id/status", verifyFirebaseToken, async (req, res) => {
     const { status } = req.body; // ACCEPTED, REJECTED, CANCELLED
     const bookingId = parseInt(id);
 
-    if (!['ACCEPTED', 'REJECTED', 'CANCELLED'].includes(status)) {
+    if (!["ACCEPTED", "REJECTED", "CANCELLED"].includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
     }
 
@@ -3058,7 +3080,9 @@ app.put("/bookings/:id/status", verifyFirebaseToken, async (req, res) => {
     });
 
     if (!consultant || consultant.id !== booking.consultantId) {
-      return res.status(403).json({ error: "Only consultant can update booking status" });
+      return res
+        .status(403)
+        .json({ error: "Only consultant can update booking status" });
     }
 
     // Update booking status
@@ -3068,7 +3092,7 @@ app.put("/bookings/:id/status", verifyFirebaseToken, async (req, res) => {
     });
 
     // Handle status-specific logic
-    if (status === 'REJECTED') {
+    if (status === "REJECTED") {
       // Refund credits to user wallet
       await prisma.wallet.update({
         where: { userId: booking.userId },
@@ -3089,13 +3113,17 @@ app.put("/bookings/:id/status", verifyFirebaseToken, async (req, res) => {
         data: { is_booked: false },
       });
 
-      console.log(`❌ Booking ${bookingId} REJECTED by consultant ${consultant.id}`);
-    } else if (status === 'ACCEPTED') {
-      console.log(`✅ Booking ${bookingId} ACCEPTED by consultant ${consultant.id}`);
+      console.log(
+        `❌ Booking ${bookingId} REJECTED by consultant ${consultant.id}`
+      );
+    } else if (status === "ACCEPTED") {
+      console.log(
+        `✅ Booking ${bookingId} ACCEPTED by consultant ${consultant.id}`
+      );
     }
 
     // Emit real-time status update via Socket.IO
-    io.to(`booking_${bookingId}`).emit('booking_status_update', {
+    io.to(`booking_${bookingId}`).emit("booking_status_update", {
       bookingId: bookingId,
       status: status,
       updatedBy: consultant.id,
@@ -3147,8 +3175,12 @@ app.get("/agora/token", async (req, res) => {
     // Allow video calls for CONFIRMED bookings with payment or PENDING/ACCEPTED bookings (for testing)
     const validStatuses = ["CONFIRMED", "PENDING", "ACCEPTED"];
     if (!validStatuses.includes(booking.status)) {
-      return res.status(403).json({ 
-        error: `Booking status '${booking.status}' does not allow video calls. Valid statuses: ${validStatuses.join(", ")}`
+      return res.status(403).json({
+        error: `Booking status '${
+          booking.status
+        }' does not allow video calls. Valid statuses: ${validStatuses.join(
+          ", "
+        )}`,
       });
     }
 
@@ -3159,21 +3191,25 @@ app.get("/agora/token", async (req, res) => {
       status: booking.status,
       is_paid: booking.is_paid,
       isClient,
-      isConsultant
+      isConsultant,
     });
 
     const token = generateAgoraToken(channelName, userIdInt);
-    
+
     if (!token) {
       return res.status(500).json({ error: "Failed to generate Agora token" });
     }
 
-    console.log(`✅ Agora token generated successfully for channel: ${channelName}`);
+    console.log(
+      `✅ Agora token generated successfully for channel: ${channelName}`
+    );
 
     res.json({ token, uid: userIdInt });
   } catch (error) {
     console.error("❌ Agora Token Error:", error.message);
-    res.status(500).json({ error: "Failed to generate token: " + error.message });
+    res
+      .status(500)
+      .json({ error: "Failed to generate token: " + error.message });
   }
 });
 /* ================= AUTH ME ================= */
@@ -3317,8 +3353,20 @@ io.on("connection", (socket) => {
   });
   /* ================= VIDEO START ================= */
 
-  socket.on("start-video-call", ({ bookingId }) => {
-    io.to(`booking_${bookingId}`).emit("video-call-started");
+  socket.on("start-video-call", ({ bookingId, callerId }) => {
+    console.log(
+      "📢 Starting video call for booking:",
+      bookingId,
+      "caller:",
+      callerId
+    );
+
+    // ✅ Send the data properly!
+    io.to(`booking_${bookingId}`).emit("video-call-started", {
+      bookingId: bookingId,
+      callerId: callerId,
+      callerName: "User", // You can add more fields if needed
+    });
   });
 
   /* ================= VIDEO END ================= */

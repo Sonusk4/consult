@@ -25,6 +25,7 @@ const MessagesPage: React.FC = () => {
   const [callerInfo, setCallerInfo] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+  const [activeCallBooking, setActiveCallBooking] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom of messages
@@ -32,79 +33,42 @@ const MessagesPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Scroll when messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // ✅ FETCH BOOKINGS - Only fetch when user is loaded
+  // Fetch bookings
   useEffect(() => {
     const fetchBookings = async () => {
-      if (!currentUser) {
-        console.log("⏳ Waiting for user to load before fetching bookings");
-        return;
-      }
-
+      if (!currentUser) return;
       setIsLoadingBookings(true);
       try {
-        console.log("📚 Fetching bookings for user:", currentUser.email);
         const res = await api.get("/bookings");
-        console.log("Bookings fetched successfully:", res.data);
         setBookings(res.data);
       } catch (error: any) {
         console.error("Failed to fetch bookings:", error);
-        if (error.response?.status === 401) {
-          console.log("🔑 Token might be expired, retrying in 2 seconds...");
-          // Retry once after a delay
-          setTimeout(() => {
-            fetchBookings();
-          }, 2000);
-        }
       } finally {
         setIsLoadingBookings(false);
       }
     };
-
     fetchBookings();
   }, [currentUser]);
 
-  // ✅ SOCKET CONNECTION with user email and ID
+  // Socket connection
   useEffect(() => {
-    if (!currentUser?.email) {
-      console.log("❌ No user email found");
-      return;
-    }
-
-    console.log("🔌 Connecting socket for user:", {
-      email: currentUser.email,
-      dbId: currentUser.id,
-      role: currentUser.role,
-    });
+    if (!currentUser?.email) return;
 
     const socketUrl = `http://${window.location.hostname}:5000`;
-    console.log("🔌 Socket URL:", socketUrl);
-
     const newSocket = io(socketUrl, {
       auth: {
         email: currentUser.email,
         userId: currentUser.id,
       },
       transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000,
     });
 
     newSocket.on("connect", () => {
-      console.log("✅ Socket Connected Successfully!");
-      console.log("✅ Socket ID:", newSocket.id);
-      console.log("✅ Connected as user:", {
-        email: currentUser.email,
-        id: currentUser.id,
-        role: currentUser.role,
-      });
+      console.log("✅ Socket Connected");
       setIsConnected(true);
     });
 
@@ -113,137 +77,93 @@ const MessagesPage: React.FC = () => {
       setIsConnected(false);
     });
 
-    newSocket.on("error", (error: any) => {
-      console.log("❌ Socket Error:", error);
-    });
-
-    newSocket.on("disconnect", (reason: string) => {
-      console.log("🔌 Socket Disconnected. Reason:", reason);
+    newSocket.on("disconnect", () => {
+      console.log("🔌 Socket Disconnected");
       setIsConnected(false);
-
-      if (reason === "io server disconnect") {
-        setTimeout(() => {
-          console.log("🔄 Attempting to reconnect...");
-          newSocket.connect();
-        }, 1000);
-      }
-    });
-
-    newSocket.io.on("reconnect_attempt", (attempt: number) => {
-      console.log(`🔄 Reconnection attempt #${attempt}`);
-    });
-
-    newSocket.io.on("reconnect", () => {
-      console.log("✅ Socket Reconnected!");
-      setIsConnected(true);
     });
 
     setSocket(newSocket);
 
     return () => {
-      console.log("🔌 Cleaning up socket connection");
-      if (newSocket) {
-        newSocket.removeAllListeners();
-        newSocket.disconnect();
-      }
+      newSocket.disconnect();
     };
   }, [currentUser]);
 
-  // ✅ JOIN BOOKING ROOM WHEN SELECTED
+  // Join booking room
   useEffect(() => {
     if (!socket || !selectedBooking?.id || !socket.connected) return;
-
-    console.log(`🔌 Joining booking_${selectedBooking.id} room`);
-    socket.emit("join-booking", {
-      bookingId: selectedBooking.id,
-    });
-
+    socket.emit("join-booking", { bookingId: selectedBooking.id });
     return () => {
       if (socket.connected) {
-        console.log(`🔌 Leaving booking_${selectedBooking.id} room`);
-        socket.emit("leave-booking", {
-          bookingId: selectedBooking.id,
-        });
+        socket.emit("leave-booking", { bookingId: selectedBooking.id });
       }
     };
   }, [socket, selectedBooking?.id]);
 
-  // ✅ FETCH MESSAGES WHEN BOOKING SELECTED
+  // Fetch messages
   useEffect(() => {
-    if (!selectedBooking?.id || !currentUser) {
-      console.log(
-        "⏳ Waiting for user or booking to load before fetching messages"
-      );
-      return;
-    }
-
+    if (!selectedBooking?.id || !currentUser) return;
     const fetchMessages = async () => {
       try {
-        console.log(`📥 Fetching messages for booking ${selectedBooking.id}`);
         const response = await api.get(
           `/bookings/${selectedBooking.id}/messages`
         );
-        console.log("📥 Messages fetched:", response.data);
         setMessages(response.data);
       } catch (error) {
         console.error("Failed to fetch messages:", error);
       }
     };
-
     fetchMessages();
   }, [selectedBooking?.id, currentUser]);
 
-  // ✅ RECEIVE MESSAGE HANDLER
+  // Socket event listeners
   useEffect(() => {
     if (!socket) return;
 
     const handleReceiveMessage = (message: any) => {
-      console.log("📩 Received message from socket:", message);
-
       setMessages((prev) => {
-        // Check if this is a real message replacing a temp message
         const tempIndex = prev.findIndex(
           (m) =>
-            m.id < 0 && // temp messages have negative IDs
+            m.id < 0 &&
             m.senderId === message.senderId &&
             m.content === message.content
         );
-
         if (tempIndex !== -1) {
-          // Replace temp message with real one
-          console.log("🔄 Replacing temp message with real message");
           const newMessages = [...prev];
-          newMessages[tempIndex] = {
-            ...message,
-            isTemp: false, // Remove temp flag
-          };
+          newMessages[tempIndex] = { ...message, isTemp: false };
           return newMessages;
         }
-
-        // Check if message already exists (prevent duplicates)
         const exists = prev.some((m) => m.id === message.id);
-        if (exists) {
-          console.log("⏭️ Message already exists, skipping:", message.id);
-          return prev;
-        }
-
+        if (exists) return prev;
         return [...prev, message];
       });
     };
 
     const handleIncomingCall = (data: any) => {
-      if (currentUser && Number(data?.callerId) === Number(currentUser.id)) {
+      console.log("📞 Incoming call received:", data);
+
+      if (!data || !data.bookingId) {
+        console.error("❌ Invalid call data:", data);
         return;
       }
-      console.log("📞 Incoming call received");
-      setIncomingCall(true);
-      setCallerInfo(data);
+
+      // Don't show incoming call if it's from ourselves
+      if (currentUser && Number(data.callerId) === Number(currentUser.id)) {
+        console.log("⏭️ Ignoring own call");
+        return;
+      }
+
+      const booking = bookings.find((b) => b.id === data.bookingId);
+      if (booking) {
+        setActiveCallBooking(booking);
+        setIncomingCall(true);
+        setCallerInfo(data);
+      } else {
+        console.warn("⚠️ Booking not found for ID:", data.bookingId);
+      }
     };
 
-    const handleChatBlocked = (data: any) => {
-      alert(data.message);
-    };
-
+    const handleChatBlocked = (data: any) => alert(data.message);
     const handleChatError = (data: any) => {
       console.error("Chat error:", data);
       alert(data.message);
@@ -260,27 +180,11 @@ const MessagesPage: React.FC = () => {
       socket.off("chat-blocked", handleChatBlocked);
       socket.off("chat-error", handleChatError);
     };
-  }, [socket, currentUser]);
+  }, [socket, currentUser, bookings]);
 
-  // ✅ SEND MESSAGE
   const sendMessage = () => {
-    if (!socket || !selectedBooking || !currentUser) {
-      console.log("❌ Cannot send message - missing:", {
-        hasSocket: !!socket,
-        hasBooking: !!selectedBooking,
-        hasUser: !!currentUser,
-      });
+    if (!socket || !selectedBooking || !currentUser || !newMessage.trim())
       return;
-    }
-
-    if (!newMessage.trim()) return;
-
-    console.log("📤 SENDING MESSAGE AS USER:", {
-      userId: currentUser.id,
-      userEmail: currentUser.email,
-      userRole: currentUser.role,
-      bookingId: selectedBooking.id,
-    });
 
     const tempId = -Date.now();
     const tempMessage = {
@@ -299,14 +203,43 @@ const MessagesPage: React.FC = () => {
 
     setMessages((prev) => [...prev, tempMessage]);
     setNewMessage("");
-
     socket.emit("send-message", {
       bookingId: selectedBooking.id,
       content: newMessage,
     });
   };
 
-  // Format date for display
+  const startVideoCall = () => {
+    if (!selectedBooking || !socket || !currentUser) return;
+
+    console.log("📞 Starting video call for booking:", selectedBooking.id);
+    setActiveCallBooking(selectedBooking);
+    setIsCalling(true);
+
+    // Emit to backend
+    socket.emit("start-video-call", {
+      bookingId: selectedBooking.id,
+      callerId: currentUser.id,
+    });
+  };
+
+  const acceptCall = () => {
+    console.log("✅ Accepting call");
+    setIncomingCall(false);
+    setIsCalling(true);
+  };
+
+  const rejectCall = () => {
+    console.log("❌ Rejecting call");
+    setIncomingCall(false);
+    if (socket && activeCallBooking) {
+      socket.emit("end-video-call", {
+        bookingId: activeCallBooking.id,
+      });
+    }
+    setActiveCallBooking(null);
+  };
+
   const formatMessageTime = (dateString: string) => {
     try {
       const date = new Date(dateString);
@@ -458,14 +391,7 @@ const MessagesPage: React.FC = () => {
                 )}
 
                 <button
-                  onClick={() => {
-                    if (!selectedBooking || !socket || !currentUser) return;
-                    socket.emit("start-video-call", {
-                      bookingId: selectedBooking.id,
-                      callerId: currentUser.id,
-                    });
-                    setIsCalling(true);
-                  }}
+                  onClick={startVideoCall}
                   disabled={!selectedBooking || !isConnected}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
                     !selectedBooking || !isConnected
@@ -578,18 +504,23 @@ const MessagesPage: React.FC = () => {
       </Layout>
 
       {/* VIDEO MODAL */}
-      {isCalling && selectedBooking && socket && currentUser && (
+      {isCalling && activeCallBooking && socket && currentUser && (
         <VideoCallModal
-          bookingId={selectedBooking.id}
+          key={`call-${activeCallBooking.id}`}
+          bookingId={activeCallBooking.id}
           userId={currentUser.id}
           socket={socket}
-          onClose={() => setIsCalling(false)}
+          onClose={() => {
+            console.log("🔚 Closing video call modal");
+            setIsCalling(false);
+            setActiveCallBooking(null);
+          }}
           startAgora={isCalling}
         />
       )}
 
       {/* INCOMING CALL POPUP */}
-      {incomingCall && (
+      {incomingCall && activeCallBooking && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[9999]">
           <div className="bg-white p-8 rounded-xl text-center w-80 shadow-2xl">
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -599,27 +530,19 @@ const MessagesPage: React.FC = () => {
             <p className="text-gray-500 mb-6">
               {callerInfo?.callerName || "Someone"} is calling...
             </p>
+            <p className="text-xs text-gray-400 mb-4">
+              Booking #{activeCallBooking.id}
+            </p>
 
             <div className="flex justify-between gap-4">
               <button
-                onClick={() => {
-                  setIncomingCall(false);
-                  setIsCalling(true);
-                }}
+                onClick={acceptCall}
                 className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-all"
               >
                 Accept
               </button>
-
               <button
-                onClick={() => {
-                  setIncomingCall(false);
-                  if (socket && selectedBooking) {
-                    socket.emit("end-video-call", {
-                      bookingId: selectedBooking.id,
-                    });
-                  }
-                }}
+                onClick={rejectCall}
                 className="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-all"
               >
                 Reject
