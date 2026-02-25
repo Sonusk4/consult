@@ -4,7 +4,7 @@ import { auth as firebaseAuth } from "./firebase";
 // Create axios instance with base URL
 // Since we have set up proxy in vite.config.ts, we can just use '/' as base
 const api = axios.create({
-  baseURL: "http://localhost:5000",
+  baseURL: "http://localhost:5001",
   headers: {
     "Content-Type": "application/json",
   },

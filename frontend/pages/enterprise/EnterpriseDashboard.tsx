@@ -79,7 +79,8 @@ const EnterpriseDashboard: React.FC = () => {
 
   const fetchNotifications = async () => {
     try {
-      const res = await api.get("/notifications");
+      // TODO: Implement notifications endpoint
+      // const res = await api.get("/notifications");
 
       const data = Array.isArray(res.data)
         ? res.data

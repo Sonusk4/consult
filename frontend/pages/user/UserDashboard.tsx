@@ -51,18 +51,13 @@ const UserDashboard: React.FC = () => {
 
   const fetchNotifications = async () => {
     try {
-      const res = await api.get("/notifications");
-
-      // Ensure it's always an array
-      const data = Array.isArray(res.data)
-        ? res.data
-        : res.data?.notifications || res.data?.data || [];
-
-      setNotifications(data.slice(0, 3));
-
+      // TODO: Implement notifications endpoint
+      // const res = await api.get("/notifications");
+      // const data = Array.isArray(res.data) ? res.data : res.data?.notifications || res.data?.data || [];
+      // setNotifications(data.slice(0, 3));
+      setNotifications([]); // placeholder until endpoint is implemented
     } catch (err) {
-      console.error("Failed to fetch notifications");
-      setNotifications([]); // fallback
+      setNotifications([]);
     }
   };
 

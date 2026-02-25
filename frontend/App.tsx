@@ -51,6 +51,7 @@ import MemberAvailability from "./pages/enterprise/member/MemberAvailability";
 import MemberEarnings from "./pages/enterprise/member/MemberEarnings";
 import MemberReviews from "./pages/enterprise/member/MemberReviews";
 import MemberMessages from "./pages/enterprise/member/MemberMessages";
+import InviteAcceptPage from "./pages/enterprise/InviteAcceptPage";
 
 /* ===================================================== */
 
@@ -165,6 +166,7 @@ const App: React.FC = () => {
             <Route path="/auth" element={<Navigate to="/login" />} />
             <Route path="/login" element={<AuthPage type="LOGIN" />} />
             <Route path="/signup" element={<AuthPage type="SIGNUP" />} />
+            <Route path="/enterprise/invite/:token" element={<InviteAcceptPage />} />
 
             {/* ================= USER ================= */}
             <Route

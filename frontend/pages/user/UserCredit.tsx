@@ -69,7 +69,7 @@ const UserCredit: React.FC = () => {
 
       // Redirect to backend payment page
       // Backend will handle Razorpay and redirect back after payment
-      window.location.href = `http://localhost:5000/payment-page?order_id=${orderResponse.data.order_id}&amount=${packPrice}&credits=${packAmount}`;
+      window.location.href = `http://localhost:5001/payment-page?order_id=${orderResponse.data.order_id}&amount=${packPrice}&credits=${packAmount}`;
       
     } catch (error) {
       console.error('Payment error:', error);

@@ -5,7 +5,7 @@ import { UserRole } from "../types";
 import { ArrowRight, Mail, Shield, ChevronLeft, Info } from "lucide-react";
 import { auth } from "../services/api";
 
-type AuthStep = "ROLE" | "EMAIL" | "OTP" | "PASSWORD";
+type AuthStep = "ROLE" | "EMAIL" | "OTP" | "PASSWORD" | "MEMBER_LOGIN";
 
 interface AuthPageProps {
   type: "LOGIN" | "SIGNUP";
@@ -13,12 +13,14 @@ interface AuthPageProps {
 
 const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
   const [step, setStep] = useState<AuthStep>(
-    type === "LOGIN" ? "EMAIL" : "ROLE"
+    type === "LOGIN" ? "ROLE" : "ROLE"
   );
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.USER);
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showLoginRedirect, setShowLoginRedirect] = useState(false);
@@ -28,13 +30,24 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
   // Reset step if type changes
   React.useEffect(() => {
-    setStep(type === "LOGIN" ? "EMAIL" : "ROLE");
+    setStep("ROLE");
     setError("");
   }, [type]);
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
-    setStep("EMAIL");
+    
+    // Team members can only login with username/password
+    if (role === UserRole.ENTERPRISE_MEMBER) {
+      if (type === "SIGNUP") {
+        setError("Enterprise team members cannot sign up independently. Please request an invitation from your enterprise administrator.");
+        setShowLoginRedirect(true);
+        return;
+      }
+      setStep("MEMBER_LOGIN");
+    } else {
+      setStep("EMAIL");
+    }
   };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
@@ -56,6 +69,61 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       console.error("❌ OTP send error:", err);
       const message =
         err.response?.data?.error || "Failed to send OTP. Please try again.";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMemberLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username || !password) {
+      setError("Please enter your username and password");
+      return;
+    }
+    setError("");
+    setIsLoading(true);
+
+    try {
+      console.log("Logging in team member:", username);
+      const loginRes = await auth.loginMember(username, password);
+
+      if (!loginRes.customToken) {
+        throw new Error("No token received from server");
+      }
+
+      console.log("Team member login successful");
+
+      // Check if in dev mode
+      if (loginRes.devMode) {
+        console.log("Dev mode detected - storing JWT token");
+        localStorage.setItem("devToken", loginRes.customToken);
+      } else {
+        // Production: Sign in with Firebase custom token
+        console.log("Production mode - signing in with Firebase");
+        const { signInWithCustomToken } = await import("firebase/auth");
+        const { auth: firebaseAuth } = await import("../src/services/firebase");
+        await signInWithCustomToken(firebaseAuth, loginRes.customToken);
+      }
+
+      // Store user data
+      if (loginRes.user) {
+        localStorage.setItem("user", JSON.stringify(loginRes.user));
+      }
+
+      // Call login to sync with backend
+      const user = await login(loginRes.user?.email);
+
+      console.log("Team member synced successfully:", user);
+
+      // Redirect to member dashboard
+      navigate("/member/dashboard");
+    } catch (err: any) {
+      console.error("Team member login failed:", err);
+      const message =
+        err.response?.data?.error ||
+        err.message ||
+        "Invalid username or password";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -164,6 +232,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
     EMAIL: type === "LOGIN" ? 50 : 66,
     OTP: 100,
     PASSWORD: 100,
+    MEMBER_LOGIN: 50,
   }[step];
 
   return (
@@ -202,38 +271,40 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
           {step === "ROLE" ? (
             <div className="space-y-4">
               <h3 className="text-xl font-bold text-gray-800 mb-6">
-                Choose your path
+                {type === "LOGIN" ? "Login as" : "Choose your path"}
               </h3>
               <RoleButton
                 title="Client / User"
-                subtitle="I want to find and book consultants"
+                subtitle={type === "LOGIN" ? "I am a client" : "I want to find and book consultants"}
                 onClick={() => handleRoleSelect(UserRole.USER)}
               />
               <RoleButton
                 title="Individual Expert"
-                subtitle="I want to offer my expertise directly"
+                subtitle={type === "LOGIN" ? "I am a consultant" : "I want to offer my expertise directly"}
                 onClick={() => handleRoleSelect(UserRole.CONSULTANT)}
               />
               <RoleButton
-                title="Enterprise Partner"
-                subtitle="Managing teams and large-scale operations"
+                title="Enterprise Admin"
+                subtitle={type === "LOGIN" ? "I manage teams" : "Managing teams and large-scale operations"}
                 onClick={() => handleRoleSelect(UserRole.ENTERPRISE_ADMIN)}
               />
 
-              <RoleButton
-                title="Enterprise Team Member"
-                subtitle="I am part of an enterprise organization"
-                onClick={() => handleRoleSelect(UserRole.ENTERPRISE_MEMBER)}
-              />
+              {type === "LOGIN" && (
+                <RoleButton
+                  title="Enterprise Team Member"
+                  subtitle="I am part of an enterprise team"
+                  onClick={() => handleRoleSelect(UserRole.ENTERPRISE_MEMBER)}
+                />
+              )}
 
               <div className="pt-4 text-center">
                 <p className="text-sm text-gray-500">
-                  Already have an account?{" "}
+                  {type === "LOGIN" ? "New here? " : "Already have an account? "}
                   <button
-                    onClick={() => navigate("/login")}
+                    onClick={() => navigate(type === "LOGIN" ? "/signup" : "/login")}
                     className="text-blue-600 font-bold hover:underline"
                   >
-                    Login here
+                    {type === "LOGIN" ? "Sign up here" : "Login here"}
                   </button>
                 </p>
               </div>
@@ -241,7 +312,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
           ) : step === "EMAIL" ? (
             <form onSubmit={handleEmailSubmit} className="space-y-6">
               {type === "SIGNUP" && (
-                <BackButton onClick={() => setStep("ROLE")} />
+                <BackButton onClick={() => { setStep("ROLE"); setError(""); }} />
               )}
               <div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">
@@ -373,6 +444,68 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                 </p>
               </div>
             </div>
+          ) : step === "MEMBER_LOGIN" ? (
+            <form onSubmit={handleMemberLogin} className="space-y-6">
+              <BackButton onClick={() => { setStep("ROLE"); setError(""); }} />
+              <div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">
+                  Team Member Login
+                </h3>
+                <p className="text-gray-500 text-sm leading-relaxed">
+                  Enter your username and password provided by your enterprise administrator.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter your username"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Enter your password"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center group disabled:opacity-50"
+                >
+                  {isLoading ? (
+                    "Logging in..."
+                  ) : (
+                    <>
+                      Login{" "}
+                      <ArrowRight
+                        className="ml-2 group-hover:translate-x-1 transition-transform"
+                        size={20}
+                      />
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           ) : null}
 
           <div className="mt-8 pt-8 border-t border-gray-100 flex items-center justify-center space-x-2 text-gray-400">
@@ -398,6 +531,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
             <br />• Enter a valid email found in backend (or any new email to
             register).
             <br />• Check backend logs for OTP if email sending fails locally.
+            <br />• Team members use the credentials provided by their admin.
           </p>
         </div>
       </div>

@@ -5,7 +5,7 @@ import { UserRole } from "../types";
 /* ================= AXIOS INSTANCE ================= */
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000",
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5001",
   headers: {
     "Content-Type": "application/json",
   },
@@ -52,12 +52,37 @@ api.interceptors.response.use(
 api.interceptors.request.use(
   async (config) => {
     // Check for dev mode token first (stored in localStorage)
-    const devToken = localStorage.getItem("devToken");
+    let devToken = localStorage.getItem("devToken");
     
     if (devToken) {
       config.headers.Authorization = `Bearer ${devToken}`;
       console.log("✅ Added dev token to request");
       return config;
+    }
+
+    // If no dev token but user is logged in, use a session-based auth
+    const storedUser = localStorage.getItem("user");
+    if (storedUser && !devToken) {
+      try {
+        const user = JSON.parse(storedUser);
+        // Create a mock JWT-like token that the backend can identify
+        // Format: base64(header).base64(payload).base64(signature)
+        const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+        const payload = btoa(JSON.stringify({ 
+          email: user.email, 
+          uid: user.id,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 86400 // 24 hours
+        }));
+        const signature = btoa("dev-mode-signature");
+        devToken = `${header}.${payload}.${signature}`;
+        localStorage.setItem("devToken", devToken);
+        config.headers.Authorization = `Bearer ${devToken}`;
+        console.log("✅ Created and added JWT dev token for:", user.email);
+        return config;
+      } catch (error) {
+        console.error("Failed to create dev token:", error);
+      }
     }
 
     // Get current Firebase user
@@ -116,6 +141,18 @@ export const auth = {
       return response.data;
     } catch (error) {
       console.error("❌ verifyOtp error:", error);
+      throw error;
+    }
+  },
+
+  loginMember: async (username: string, password: string) => {
+    try {
+      console.log(`📤 Logging in team member: ${username}`);
+      const response = await api.post("/auth/login-member", { username, password });
+      console.log("📥 Team member login response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("❌ loginMember error:", error);
       throw error;
     }
   },

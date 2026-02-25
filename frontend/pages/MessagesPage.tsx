@@ -58,7 +58,7 @@ const MessagesPage: React.FC = () => {
   useEffect(() => {
     if (!currentUser?.email) return;
 
-    const socketUrl = `http://${window.location.hostname}:5000`;
+    const socketUrl = `http://${window.location.hostname}:5001`;
     const newSocket = io(socketUrl, {
       auth: {
         email: currentUser.email,

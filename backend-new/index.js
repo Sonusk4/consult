@@ -43,7 +43,7 @@ try {
 }
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://localhost:3001"],
+    origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
@@ -56,7 +56,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:3000", "http://localhost:3001"],
+    origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
     methods: ["GET", "POST"],
   },
 });
@@ -172,21 +172,70 @@ app.get("/auth/debug", verifyFirebaseToken, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-app.post("/auth/me", verifyFirebaseToken, async (req, res) => {
+app.post("/auth/me", async (req, res) => {
   try {
-    const firebase_uid = req.user.firebase_uid;
-    const email = req.user.email;
     const { role, name } = req.body;
+    let userEmail = req.body.email;
+    let user;
 
-    if (!firebase_uid || !email) {
-      return res.status(400).json({ error: "Invalid user data from token" });
+    // Try to get user from auth token first
+    if (req.user?.email) {
+      userEmail = req.user.email;
     }
 
-    console.log(
-      `📝 Syncing user: ${email} with role: ${role || "existing role"}`
-    );
+    if (!userEmail) {
+      return res.status(400).json({ error: "Email is required" });
+    }
 
-    let user = await prisma.user.findUnique({
+    console.log(`📝 Syncing user: ${userEmail}, role: ${role || "N/A"}`);
+
+    // Find or create user
+    user = await prisma.user.findUnique({
+      where: { email: userEmail },
+    });
+
+    if (user) {
+      // Update existing user
+      console.log(`✏️ Updating existing user: ${userEmail}`);
+      user = await prisma.user.update({
+        where: { email: userEmail },
+        data: {
+          role: role || user.role,
+          name: name || user.name,
+          is_verified: true,
+        },
+      });
+    } else {
+      // Create new user
+      console.log(`✨ Creating new user: ${userEmail}`);
+      user = await prisma.user.create({
+        data: {
+          email: userEmail,
+          role: role || "USER",
+          name: name || null,
+          is_verified: true,
+        },
+      });
+    }
+
+    console.log(`✅ User synced: ${user.email} with role ${user.role}`);
+
+    res.status(200).json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      is_verified: user.is_verified,
+    });
+  } catch (error) {
+    console.error("❌ Sync user error:", error.message);
+    res.status(500).json({ error: "Failed to sync user: " + error.message });
+  }
+});
+
+/* ================= PROTECTED ENDPOINTS ================= */
+
+/**
       where: { firebase_uid },
       include: {
         consultant: true,
@@ -432,7 +481,7 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
           invite_token: inviteToken,
           invite_token_expiry: inviteTokenExpiry,
           temp_username: username,
-          temp_password: hashedPassword,
+          temp_password: password,
         },
       });
     } else {
@@ -455,7 +504,7 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
     // Create invite link
     const inviteLink = `${
       process.env.FRONTEND_URL || "http://localhost:3000"
-    }/invite/${inviteToken}`;
+    }/#/enterprise/invite/${inviteToken}`;
 
     // Send invite email with credentials
     try {
@@ -608,6 +657,7 @@ app.get("/enterprise/invite/:token", async (req, res) => {
       email: invitedUser.email,
       name: invitedUser.name,
       username: invitedUser.temp_username,
+      temp_password: invitedUser.temp_password,
     });
   } catch (error) {
     console.error("Verify invite error:", error);
@@ -621,7 +671,7 @@ app.get("/enterprise/invite/:token", async (req, res) => {
  */
 app.post("/enterprise/accept-invite", async (req, res) => {
   try {
-    const { token, firebase_uid, phone, profile_bio } = req.body;
+    const { token, firebase_uid, phone, profile_bio, name } = req.body;
 
     if (!token || !firebase_uid) {
       return res
@@ -647,6 +697,7 @@ app.post("/enterprise/accept-invite", async (req, res) => {
       where: { id: invitedUser.id },
       data: {
         firebase_uid: firebase_uid,
+        name: name || invitedUser.name,
         phone: phone || invitedUser.phone,
         is_verified: true,
         invite_token: null,
@@ -700,6 +751,27 @@ app.post("/auth/send-otp", async (req, res) => {
   }
 
   try {
+    // Check if user is an enterprise team member - prevent them from using OTP signup
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser && existingUser.role === "ENTERPRISE_MEMBER") {
+      // Team members can only login with username/password
+      return res.status(403).json({ 
+        error: "Enterprise team members must login with their provided credentials",
+        hint: "Use the Team Member login option with your username and password"
+      });
+    }
+
+    // Prevent team members from signing up fresh with ENTERPRISE_MEMBER role
+    if (type === "SIGNUP" && req.body.role === "ENTERPRISE_MEMBER") {
+      return res.status(403).json({ 
+        error: "Enterprise team members cannot sign up independently",
+        hint: "Please request an invitation from your enterprise administrator"
+      });
+    }
+
     const otp = generateOTP();
     const expiryTime = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
 
@@ -936,6 +1008,85 @@ app.get("/auth/test-firebase", async (req, res) => {
     });
   }
 });
+
+/**
+ * POST /auth/login-member
+ * Login for enterprise team members using username and temporary password
+ */
+app.post("/auth/login-member", async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password are required" });
+  }
+
+  try {
+    // Find user by temp_username
+    const user = await prisma.user.findFirst({
+      where: {
+        temp_username: username,
+        role: "ENTERPRISE_MEMBER",
+      },
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: "Invalid username or password" });
+    }
+
+    // Verify password (comparing plain text - should use bcrypt in production)
+    if (user.temp_password !== password) {
+      return res.status(401).json({ error: "Invalid username or password" });
+    }
+
+    // Check if not yet accepted the invitation
+    if (!user.is_verified) {
+      return res.status(403).json({ error: "Please accept the invitation first" });
+    }
+
+    console.log(`✅ Team member logged in: ${username} (${user.email})`);
+
+    // Generate JWT token
+    let token;
+    if (!firebaseAdminInitialized) {
+      console.log("Dev mode - generating JWT token");
+      token = jwt.sign(
+        {
+          email: user.email,
+          uid: user.id,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 86400, // 24 hours expiry
+        },
+        process.env.JWT_SECRET || "dev-secret-key-for-testing-only",
+        { algorithm: "HS256" }
+      );
+    } else {
+      // Create Firebase custom token
+      let firebaseUser;
+      try {
+        firebaseUser = await admin.auth().getUserByEmail(user.email);
+      } catch {
+        firebaseUser = await admin.auth().createUser({ email: user.email });
+      }
+      token = await admin.auth().createCustomToken(firebaseUser.uid);
+    }
+
+    res.status(200).json({
+      message: "Login successful",
+      customToken: token,
+      devMode: !firebaseAdminInitialized,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error("Member login error:", error.message);
+    res.status(500).json({ error: "Login failed: " + error.message });
+  }
+});
+
 // LOGIN / CREATE USER AFTER OTP
 
 /**
@@ -1166,10 +1317,130 @@ app.get("/enterprise/team", verifyFirebaseToken, async (req, res) => {
       },
     });
 
-    res.status(200).json(members);
+    // Add status field to distinguish pending vs accepted invites
+    const membersWithStatus = members.map(member => ({
+      ...member,
+      status: member.is_verified ? "Active" : "Pending Invitation"
+    }));
+
+    res.status(200).json(membersWithStatus);
   } catch (error) {
     console.error("Enterprise team error:", error);
     res.status(500).json({ error: "Failed to fetch team" });
+  }
+});
+
+app.patch("/enterprise/team/:id", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email } = req.body;
+
+    let admin = await prisma.user
+      .findUnique({
+        where: { firebase_uid: req.user.firebase_uid },
+      })
+      .catch(() => null);
+
+    if (!admin) {
+      admin = await prisma.user
+        .findUnique({
+          where: { email: req.user.email },
+        })
+        .catch(() => null);
+    }
+
+    if (!admin || admin.role !== "ENTERPRISE_ADMIN") {
+      return res
+        .status(403)
+        .json({ error: "Not authorized. Admin role required." });
+    }
+
+    const member = await prisma.user.findUnique({
+      where: { id: Number(id) },
+    });
+
+    if (!member || member.role !== "ENTERPRISE_MEMBER") {
+      return res.status(404).json({ error: "Team member not found." });
+    }
+
+    const updatedMember = await prisma.user.update({
+      where: { id: Number(id) },
+      data: {
+        name: typeof name === "string" && name.trim() ? name.trim() : member.name,
+        email: typeof email === "string" && email.trim() ? email.trim() : member.email,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        is_verified: true,
+      },
+    });
+
+    res.status(200).json({
+      ...updatedMember,
+      status: updatedMember.is_verified ? "Active" : "Pending Invitation",
+    });
+  } catch (error) {
+    console.error("Enterprise team update error:", error);
+    res.status(500).json({ error: "Failed to update team member" });
+  }
+});
+
+app.get("/enterprise/team/:id/credentials", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify admin
+    let admin = await prisma.user
+      .findUnique({
+        where: { firebase_uid: req.user.firebase_uid },
+      })
+      .catch(() => null);
+
+    if (!admin) {
+      admin = await prisma.user
+        .findUnique({
+          where: { email: req.user.email },
+        })
+        .catch(() => null);
+    }
+
+    if (!admin || admin.role !== "ENTERPRISE_ADMIN") {
+      return res
+        .status(403)
+        .json({ error: "Not authorized. Admin role required." });
+    }
+
+    // Get member details with credentials
+    const member = await prisma.user.findUnique({
+      where: { id: Number(id) },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        is_verified: true,
+        temp_username: true,
+        temp_password: true,
+      },
+    });
+
+    if (!member || member.role !== "ENTERPRISE_MEMBER") {
+      return res.status(404).json({ error: "Team member not found." });
+    }
+
+    res.status(200).json({
+      id: member.id,
+      email: member.email,
+      name: member.name,
+      is_verified: member.is_verified,
+      username: member.temp_username,
+      password: member.temp_password,
+    });
+  } catch (error) {
+    console.error("Get member credentials error:", error);
+    res.status(500).json({ error: "Failed to fetch member credentials" });
   }
 });
 
@@ -2149,7 +2420,7 @@ app.get("/payment-page", (req, res) => {
         <div class="amount">₹${amount}</div>
         <p class="description">Adding ${credits || "credits"} to your wallet</p>
         <button id="payBtn">Pay with Razorpay</button>
-        <a href="http://localhost:3000" class="cancel-link">Cancel</a>
+        <a href="http://localhost:3000/#/user/credits" class="cancel-link">Cancel</a>
       </div>
 
       <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
@@ -2200,7 +2471,7 @@ var options = {
     document.getElementById('payBtn').disabled = true;
     document.getElementById('payBtn').innerText = 'Verifying...';
 
-    fetch('http://localhost:5000/payment/verify', {
+    fetch('http://localhost:5001/payment/verify', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2216,7 +2487,7 @@ var options = {
     .then(data => {
       if (data.success || data.new_balance !== undefined) {
         alert('Payment successful! ' + data.amount_added + ' credits have been added to your wallet.');
-        window.location.href = 'http://localhost:3000/credits?payment=success&credits=' + encodeURIComponent(data.amount_added);
+        window.location.href = 'http://localhost:3000/#/user/credits?payment=success&credits=' + encodeURIComponent(data.amount_added);
       } else {
         alert('Payment verification failed: ' + (data.error || 'Unknown error'));
         document.getElementById('payBtn').disabled = false;

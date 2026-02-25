@@ -85,7 +85,7 @@ const WalletPage: React.FC = () => {
 
       // Step 2: Redirect to backend payment page
       // Backend will handle Razorpay checkout and redirect back after payment
-      window.location.href = `http://localhost:5000/payment-page?order_id=${orderData.order_id}&amount=${amount}&credits=${packageId}`;
+      window.location.href = `http://localhost:5001/payment-page?order_id=${orderData.order_id}&amount=${amount}&credits=${packageId}`;
       
     } catch (error) {
       console.error('Payment error:', error);

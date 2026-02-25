@@ -50,7 +50,7 @@ const ConsultantDetailsPage: React.FC = () => {
     
     setLoadingSlots(true);
     try {
-      const response = await fetch(`http://localhost:5000/consultants/${id}/availability?date=${bookingDate}`);
+      const response = await fetch(`http://localhost:5001/consultants/${id}/availability?date=${bookingDate}`);
       const slots = await response.json();
       setAvailableSlots(slots);
     } catch (error) {

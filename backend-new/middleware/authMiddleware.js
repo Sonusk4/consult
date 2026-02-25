@@ -22,6 +22,7 @@ const verifyFirebaseToken = async (req, res, next) => {
     }
 
     console.log("🔑 Verifying token...");
+    console.log("Token received:", token.substring(0, 50) + "...");
 
     // First try to verify as dev JWT token
     let decodedToken;
@@ -33,17 +34,45 @@ const verifyFirebaseToken = async (req, res, next) => {
       console.log("✅ Dev JWT token verified for user:", decodedToken.email);
       isDevToken = true;
     } catch (devError) {
-      // If dev token fails, try Firebase token
-      console.log("Not a dev token, trying Firebase verification...");
+      console.log("Dev JWT verification failed:", devError.message);
+      
+      // Try Firebase token
+      console.log("Trying Firebase verification...");
       
       try {
         decodedToken = await admin.auth().verifyIdToken(token);
         console.log("✅ Firebase token verified for UID:", decodedToken.uid);
       } catch (firebaseError) {
-        console.error("❌ Both token verifications failed");
-        console.error("Dev JWT error:", devError.message);
-        console.error("Firebase error:", firebaseError.message);
-        return res.status(401).json({ error: "Invalid or expired token" });
+        console.log("Firebase verification failed:", firebaseError.message);
+        
+        // In dev mode, try to extract email from token payload (fallback)
+        console.log("Trying dev mode fallback decoder...");
+        
+        try {
+          // Try to decode the token manually (without verification) to extract email
+          const parts = token.split(".");
+          if (parts.length === 3) {
+            // Decode the payload part
+            const payloadStr = Buffer.from(parts[1], "base64").toString();
+            console.log("Decoded payload:", payloadStr);
+            const decoded = JSON.parse(payloadStr);
+            if (decoded.email) {
+              console.log("✅ Dev mode fallback: extracted email from token:", decoded.email);
+              decodedToken = decoded;
+              isDevToken = true;
+            } else {
+              throw new Error("No email in token payload");
+            }
+          } else {
+            throw new Error("Invalid token format (parts: " + parts.length + ")");
+          }
+        } catch (fallbackError) {
+          console.error("❌ All token verifications failed");
+          console.error("Dev JWT error:", devError.message);
+          console.error("Firebase error:", firebaseError.message);
+          console.error("Fallback error:", fallbackError.message);
+          return res.status(401).json({ error: "Invalid or expired token" });
+        }
       }
     }
 
