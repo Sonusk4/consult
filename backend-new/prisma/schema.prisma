@@ -35,6 +35,7 @@ model User {
   transactions          Transaction[]
   profile               UserProfile?
   wallet                Wallet?
+  enterpriseBookings Booking[] @relation("EnterpriseMemberBookings")
 }
 
 model UserProfile {
@@ -79,27 +80,34 @@ model Availability {
 }
 
 model Booking {
-  id             Int        @id @default(autoincrement())
-  userId         Int
-  consultantId   Int
-  date           DateTime
-  time_slot      String
-  status         String     @default("CONFIRMED")
-  is_paid        Boolean    @default(false)
-  call_completed Boolean    @default(false)
-  call_duration  Int?
-  consultant_fee Float?
-  commission_fee Float?
-  net_earning    Float?
-  created_at     DateTime   @default(now())
-  completed_at   DateTime?
-  consultant     Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
-  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages       Message[]
-  payment        Payment?
-  review         Review?
-}
+  id                Int       @id @default(autoincrement())
 
+  userId            Int
+  consultantId      Int?
+  enterpriseMemberId Int?
+
+  date              DateTime
+  time_slot         String
+  status            String    @default("CONFIRMED")
+  is_paid           Boolean   @default(false)
+  call_completed    Boolean   @default(false)
+  call_duration     Int?
+  consultant_fee    Float?
+  commission_fee    Float?
+  net_earning       Float?
+  created_at        DateTime  @default(now())
+  completed_at      DateTime?
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  consultant        Consultant? @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+
+  enterpriseMember  User?     @relation("EnterpriseMemberBookings", fields: [enterpriseMemberId], references: [id], onDelete: Cascade)
+
+  messages          Message[]
+  payment           Payment?
+  review            Review?
+}
 model Message {
   id         Int      @id @default(autoincrement())
   bookingId  Int
