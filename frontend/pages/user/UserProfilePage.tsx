@@ -22,6 +22,10 @@ const UserProfilePage: React.FC = () => {
     phone: "",
     bio: "",
     location: "",
+    interests: "",
+    domains: "",
+    goal: "",
+    preferredSessionType: "VIDEO",
   });
 
   const [originalData, setOriginalData] = useState(formData);
@@ -37,33 +41,25 @@ const UserProfilePage: React.FC = () => {
   const fetchUserProfile = async () => {
     try {
       const res = await api.get("/user/profile");
-      const profileData = res.data;
-      
+      const data = res.data || {};
+
       const userData = {
-        name: profileData.name || "",
-        email: profileData.email || "",
-        phone: profileData.phone || "",
-        bio: profileData.bio || "",
-        location: profileData.location || "",
+        name: data.name || "",
+        email: data.email || user?.email || "",
+        phone: data.phone || "",
+        bio: data.bio || "",
+        location: data.location || "",
+        interests: data.interests || "",
+        domains: data.domains || "",
+        goal: data.goal || "",
+        preferredSessionType: data.preferredSessionType || "VIDEO",
       };
 
       setFormData(userData);
       setOriginalData(userData);
-      setPreviewImage(profileData.avatar || null);
+      setPreviewImage(data.avatar || null);
     } catch (err) {
       console.error("Profile fetch failed:", err);
-      // Fallback to cached user data
-      const userData = {
-        name: user.name || "",
-        email: user.email || "",
-        phone: user.phone || "",
-        bio: user.bio || "",
-        location: user.location || "",
-      };
-
-      setFormData(userData);
-      setOriginalData(userData);
-      setPreviewImage(user.avatar || null);
     }
   };
 
@@ -78,7 +74,7 @@ const UserProfilePage: React.FC = () => {
 
   /* ================= HANDLE CHANGE ================= */
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     setFormData({
       ...formData,
@@ -131,18 +127,18 @@ const UserProfilePage: React.FC = () => {
       );
 
       console.log("Upload response:", response.data);
-      
+
       // Use the URL returned from server
       if (response.data.avatar) {
         setPreviewImage(response.data.avatar);
       }
-      
+
       addToast("Profile photo updated successfully!", "success");
     } catch (err: any) {
       console.error("Upload error:", err);
       const errorMsg = err.response?.data?.error || err.message || "Failed to upload photo";
       addToast(errorMsg, "error");
-      
+
       // Revert preview on error
       setPreviewImage(user?.avatar || null);
     } finally {
@@ -154,13 +150,15 @@ const UserProfilePage: React.FC = () => {
   const handleSave = async () => {
     setLoading(true);
     try {
-      // Update profile using /auth/me endpoint
-      await api.post("/auth/me", {
+      await api.put("/user/profile", {
         name: formData.name,
         phone: formData.phone,
         bio: formData.bio,
         location: formData.location,
-        email: formData.email, // Include email for consistency, even if it's read-only
+        interests: formData.interests,
+        domains: formData.domains,
+        goal: formData.goal,
+        preferredSessionType: formData.preferredSessionType,
       });
 
       addToast("Profile updated successfully!", "success");
@@ -376,6 +374,72 @@ const UserProfilePage: React.FC = () => {
             <p className="text-xs text-gray-400 mt-1">
               {formData.bio.length}/500 characters
             </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-2">
+                Domains Needed
+              </label>
+              <input
+                name="domains"
+                value={formData.domains}
+                disabled={!isEditing}
+                onChange={handleChange}
+                placeholder="e.g., Technology, Business Strategy"
+                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100 disabled:cursor-not-allowed transition"
+              />
+              <p className="text-xs text-gray-400 mt-1">Comma-separated</p>
+            </div>
+
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-2">
+                Interests
+              </label>
+              <input
+                name="interests"
+                value={formData.interests}
+                disabled={!isEditing}
+                onChange={handleChange}
+                placeholder="e.g., Career Advice, Leadership"
+                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100 disabled:cursor-not-allowed transition"
+              />
+              <p className="text-xs text-gray-400 mt-1">Comma-separated</p>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-2">
+                Primary Goal
+              </label>
+              <textarea
+                name="goal"
+                value={formData.goal}
+                disabled={!isEditing}
+                onChange={handleChange}
+                placeholder="Share your main goal"
+                rows={3}
+                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100 disabled:cursor-not-allowed transition resize-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-2">
+                Preferred Session Type
+              </label>
+              <select
+                name="preferredSessionType"
+                value={formData.preferredSessionType}
+                disabled={!isEditing}
+                onChange={handleChange}
+                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100 disabled:cursor-not-allowed transition"
+              >
+                <option value="VIDEO">Video Call</option>
+                <option value="AUDIO">Audio Call</option>
+                <option value="CHAT">Chat/Messaging</option>
+              </select>
+            </div>
           </div>
 
         </div>

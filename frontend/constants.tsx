@@ -245,11 +245,6 @@ export const SIDEBAR_LINKS = {
       path: "/enterprise/settings",
     },
     {
-      label: "Messages",
-      icon: <MessageSquare size={20} />,
-      path: "/enterprise/messages",
-    },
-    {
       label: "Support",
       icon: <LifeBuoy size={20} />,
       path: "/enterprise/support",

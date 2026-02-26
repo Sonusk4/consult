@@ -24,6 +24,9 @@ const ProfilePage: React.FC = () => {
   const [certificates, setCertificates] = useState<any[]>([]);
   const [uploadingKyc, setUploadingKyc] = useState(false);
   const [uploadingCert, setUploadingCert] = useState(false);
+  const [showKycModal, setShowKycModal] = useState(false);
+  const [showCertificateModal, setShowCertificateModal] = useState(false);
+  const [tempExpertise, setTempExpertise] = useState("");
 
   const [formData, setFormData] = useState({
     name: '',
@@ -32,6 +35,12 @@ const ProfilePage: React.FC = () => {
     bio: '',
     languages: '',
     phone: '',
+    location: 'Remote',
+    expertise: [] as string[],
+    availability: 'Full-time',
+    designation: '',
+    years_experience: '',
+    education: '',
   });
 
   const isConsultant = user?.role === 'CONSULTANT' || user?.role === 'ENTERPRISE_ADMIN';
@@ -50,6 +59,12 @@ const ProfilePage: React.FC = () => {
           bio: data.bio || '',
           languages: data.languages || '',
           phone: user?.phone || '',
+          location: 'Remote',
+          expertise: data.expertise || [],
+          availability: data.availability || 'Full-time',
+          designation: data.designation || '',
+          years_experience: data.years_experience?.toString() || '',
+          education: data.education || '',
         });
       } else {
         setFormData({
@@ -59,6 +74,12 @@ const ProfilePage: React.FC = () => {
           bio: '',
           languages: '',
           phone: user?.phone || '',
+          location: 'Remote',
+          expertise: [],
+          availability: 'Full-time',
+          designation: '',
+          years_experience: '',
+          education: '',
         });
       }
     } catch (err) {
@@ -91,8 +112,26 @@ const ProfilePage: React.FC = () => {
 
   // ------ Handlers ------
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+  };
+
+  const handleAddExpertise = () => {
+    if (tempExpertise.trim() && formData.expertise.length < 15) {
+      setFormData({
+        ...formData,
+        expertise: [...formData.expertise, tempExpertise.trim()]
+      });
+      setTempExpertise("");
+    }
+  };
+
+  const handleRemoveExpertise = (index: number) => {
+    setFormData({
+      ...formData,
+      expertise: formData.expertise.filter((_, i) => i !== index)
+    });
   };
 
   const handleSave = async () => {
@@ -106,6 +145,11 @@ const ProfilePage: React.FC = () => {
           languages: formData.languages,
           full_name: formData.name,
           phone: formData.phone,
+          expertise: formData.expertise,
+          availability: formData.availability,
+          designation: formData.designation,
+          years_experience: formData.years_experience ? parseInt(formData.years_experience) : null,
+          education: formData.education
         });
         // Refresh profile data to show latest
         const fresh = await consultantsApi.getProfile();
@@ -114,6 +158,11 @@ const ProfilePage: React.FC = () => {
         await users.updateProfile({
           full_name: formData.name,
           phone: formData.phone,
+          expertise: formData.expertise,
+          availability: formData.availability,
+          designation: formData.designation,
+          years_experience: formData.years_experience ? parseInt(formData.years_experience) : null,
+          education: formData.education
         });
       }
       if (setUser) {
@@ -166,7 +215,7 @@ const ProfilePage: React.FC = () => {
     if (!e.target.files?.[0]) return;
     setUploadingKyc(true);
     try {
-      await consultantsApi.uploadKycDoc(e.target.files[0]);
+      await consultantsApi.uploadKycDoc([e.target.files[0]]);
       await fetchKycAndCertificates();
       addToast('KYC document uploaded successfully!', 'success');
     } catch (err) {
@@ -180,7 +229,7 @@ const ProfilePage: React.FC = () => {
     if (!e.target.files?.[0]) return;
     setUploadingCert(true);
     try {
-      await consultantsApi.uploadCertificate(e.target.files[0]);
+      await consultantsApi.uploadCertificate([e.target.files[0]]);
       await fetchKycAndCertificates();
       addToast('Certificate uploaded successfully!', 'success');
     } catch (err) {
@@ -481,8 +530,8 @@ const ProfilePage: React.FC = () => {
 
               {/* Upload button — always enabled */}
               <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm transition-all cursor-pointer ${uploadingKyc
-                  ? 'bg-blue-100 text-blue-400 cursor-wait'
-                  : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-100'
+                ? 'bg-blue-100 text-blue-400 cursor-wait'
+                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-100'
                 }`}>
                 {uploadingKyc
                   ? <><Loader className="animate-spin" size={16} /> Uploading...</>
@@ -564,8 +613,8 @@ const ProfilePage: React.FC = () => {
 
               {/* Upload button — always enabled */}
               <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm transition-all cursor-pointer ${uploadingCert
-                  ? 'bg-purple-100 text-purple-400 cursor-wait'
-                  : 'bg-purple-600 text-white hover:bg-purple-700 shadow-sm shadow-purple-100'
+                ? 'bg-purple-100 text-purple-400 cursor-wait'
+                : 'bg-purple-600 text-white hover:bg-purple-700 shadow-sm shadow-purple-100'
                 }`}>
                 {uploadingCert
                   ? <><Loader className="animate-spin" size={16} /> Uploading...</>
@@ -587,6 +636,8 @@ const ProfilePage: React.FC = () => {
     </Layout>
   );
 };
+
+
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

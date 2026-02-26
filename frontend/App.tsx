@@ -13,6 +13,7 @@ import { ToastProvider } from "./context/ToastContext";
 
 import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 /* USER */
 import UserDashboard from "./pages/user/UserDashboard";
@@ -42,7 +43,6 @@ import EnterpriseBookings from "./pages/enterprise/EnterpriseBookings";
 import EnterpriseEarnings from "./pages/enterprise/EnterpriseEarnings";
 import EnterpriseAnalytics from "./pages/enterprise/EnterpriseAnalytics";
 import EnterpriseSettings from "./pages/enterprise/EnterpriseSettings";
-import EnterpriseMessages from "./pages/enterprise/EnterpriseMessage";
 
 /* ENTERPRISE MEMBER */
 import MemberDashboard from "./pages/enterprise/member/MemberDashboard";
@@ -167,6 +167,7 @@ const App: React.FC = () => {
             <Route path="/auth" element={<Navigate to="/login" />} />
             <Route path="/login" element={<AuthPage type="LOGIN" />} />
             <Route path="/signup" element={<AuthPage type="SIGNUP" />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/enterprise/invite/:token" element={<InviteAcceptPage />} />
 
             {/* ================= USER ================= */}
@@ -324,16 +325,6 @@ const App: React.FC = () => {
               element={
                 isEnterpriseAdmin ? (
                   <EnterpriseSettings />
-                ) : (
-                  <Navigate to="/auth" />
-                )
-              }
-            />
-            <Route
-              path="/enterprise/messages"
-              element={
-                isEnterpriseAdmin ? (
-                  <EnterpriseMessages />
                 ) : (
                   <Navigate to="/auth" />
                 )

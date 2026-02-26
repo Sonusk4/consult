@@ -279,7 +279,7 @@ const ConsultantDashboard: React.FC = () => {
       // 3. Upload KYC document if selected
       if (kycFile) {
         try {
-          await consultantsApi.uploadKycDoc(kycFile);
+          await consultantsApi.uploadKycDoc([kycFile]);
           console.log("KYC document uploaded successfully");
         } catch (kycErr) {
           console.error("Failed to upload KYC document", kycErr);
@@ -735,8 +735,8 @@ const ConsultantDashboard: React.FC = () => {
                       </span>
                       <span
                         className={`text-xs px-2 py-1 rounded-full font-medium ${slot.status === "available"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-blue-100 text-blue-700"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-blue-100 text-blue-700"
                           }`}
                       >
                         {slot.status === "available" ? "Available" : "Booked"}
@@ -804,8 +804,8 @@ const ConsultantDashboard: React.FC = () => {
                       </div>
                       <div
                         className={`text-xs px-2 py-1 rounded-full font-medium ${session.status === "UPCOMING"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-gray-100 text-gray-700"
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-gray-100 text-gray-700"
                           }`}
                       >
                         {session.status}

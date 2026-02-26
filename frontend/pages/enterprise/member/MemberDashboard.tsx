@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Layout from "../../../components/Layout";
 import { bookings as bookingsApi } from "../../../services/api";
+import api from "../../../services/api";
+import { useAuth } from "../../../App";
 import { Booking } from "../../../types";
 import {
   Calendar,
@@ -8,17 +10,32 @@ import {
   Star,
   Video,
   Loader,
+  Award,
+  Briefcase,
+  Globe,
 } from "lucide-react";
 
 const MemberDashboard: React.FC = () => {
+  const { user } = useAuth();
   const [sessions, setSessions] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<any>(null);
 
   /* ================= FETCH BOOKINGS ================= */
 
   useEffect(() => {
     fetchBookings();
+    fetchProfile();
   }, []);
+
+  const fetchProfile = async () => {
+    try {
+      const response = await api.get("/enterprise/member/profile");
+      setProfile(response.data.profile);
+    } catch (error) {
+      console.error("Failed to fetch profile:", error);
+    }
+  };
 
   const fetchBookings = async () => {
     try {
@@ -76,14 +93,58 @@ const MemberDashboard: React.FC = () => {
     <Layout title="Dashboard">
       <div className="max-w-6xl mx-auto space-y-10">
 
-        {/* ================= WELCOME ================= */}
-        <div className="bg-white p-8 rounded-3xl border shadow-sm">
-          <h2 className="text-2xl font-bold text-gray-900">
-            Welcome Back 👋
-          </h2>
-          <p className="text-gray-500 mt-2">
-            Here's your performance overview and today's schedule.
-          </p>
+        {/* ================= WELCOME WITH PROFILE ================= */}
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-8 rounded-3xl border shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900">
+                Welcome Back, {user?.name || "Team Member"} 👋
+              </h2>
+              <p className="text-gray-600 mt-2">
+                {profile?.designation ? `${profile.designation}` : "Enterprise Team Member"}
+              </p>
+              {profile?.bio && (
+                <p className="text-gray-500 mt-2 text-sm max-w-md">{profile.bio}</p>
+              )}
+            </div>
+            {user?.profile_photo && (
+              <img
+                src={user.profile_photo}
+                alt={user.name}
+                className="w-20 h-20 rounded-full object-cover border-4 border-blue-600 shadow-lg"
+              />
+            )}
+          </div>
+
+          {/* Profile Info Cards */}
+          {profile && (
+            <div className="grid md:grid-cols-4 gap-3 mt-6 pt-6 border-t">
+              {profile.languages && (
+                <div className="flex items-center gap-2">
+                  <Globe size={16} className="text-blue-600" />
+                  <span className="text-sm">{profile.languages}</span>
+                </div>
+              )}
+              {profile.years_experience && (
+                <div className="flex items-center gap-2">
+                  <Briefcase size={16} className="text-blue-600" />
+                  <span className="text-sm">{profile.years_experience} years</span>
+                </div>
+              )}
+              {profile.availability && (
+                <div className="flex items-center gap-2">
+                  <Calendar size={16} className="text-blue-600" />
+                  <span className="text-sm">{profile.availability}</span>
+                </div>
+              )}
+              {profile.expertise && profile.expertise.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Award size={16} className="text-blue-600" />
+                  <span className="text-sm">{profile.expertise.length} skills</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ================= STATS CARDS ================= */}
