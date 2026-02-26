@@ -58,7 +58,7 @@ const MessagesPage: React.FC = () => {
   useEffect(() => {
     if (!currentUser?.email) return;
 
-    const socketUrl = `http://${window.location.hostname}:5001`;
+    const socketUrl = `http://${window.location.hostname}:5000`;
     const newSocket = io(socketUrl, {
       auth: {
         email: currentUser.email,
@@ -324,11 +324,10 @@ const MessagesPage: React.FC = () => {
                       console.log("📌 Booking clicked:", b);
                       setSelectedBooking(b);
                     }}
-                    className={`w-full p-6 flex items-start space-x-4 border-b border-gray-50 transition-all ${
-                      selectedBooking?.id === b.id
+                    className={`w-full p-6 flex items-start space-x-4 border-b border-gray-50 transition-all ${selectedBooking?.id === b.id
                         ? "bg-blue-50/50"
                         : "hover:bg-gray-50"
-                    }`}
+                      }`}
                   >
                     <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-sm">
                       #{b.id}
@@ -393,11 +392,10 @@ const MessagesPage: React.FC = () => {
                 <button
                   onClick={startVideoCall}
                   disabled={!selectedBooking || !isConnected}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                    !selectedBooking || !isConnected
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${!selectedBooking || !isConnected
                       ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                       : "bg-green-600 text-white hover:bg-green-700"
-                  }`}
+                    }`}
                 >
                   <Video size={18} />
                   <span>Start Call</span>
@@ -419,16 +417,14 @@ const MessagesPage: React.FC = () => {
                 return (
                   <div
                     key={m.id || i}
-                    className={`flex ${
-                      isMyMessage ? "justify-end" : "justify-start"
-                    }`}
+                    className={`flex ${isMyMessage ? "justify-end" : "justify-start"
+                      }`}
                   >
                     <div
-                      className={`max-w-md p-4 rounded-2xl shadow ${
-                        isMyMessage
+                      className={`max-w-md p-4 rounded-2xl shadow ${isMyMessage
                           ? "bg-blue-600 text-white rounded-br-none"
                           : "bg-white text-gray-700 rounded-bl-none"
-                      } ${isTempMessage && isMyMessage ? "opacity-70" : ""}`}
+                        } ${isTempMessage && isMyMessage ? "opacity-70" : ""}`}
                     >
                       {!isMyMessage && m.sender && (
                         <p className="text-xs font-medium text-gray-500 mb-1">
@@ -437,9 +433,8 @@ const MessagesPage: React.FC = () => {
                       )}
                       <p className="text-sm">{m.content}</p>
                       <p
-                        className={`text-xs mt-1 ${
-                          isMyMessage ? "text-blue-200" : "text-gray-400"
-                        }`}
+                        className={`text-xs mt-1 ${isMyMessage ? "text-blue-200" : "text-gray-400"
+                          }`}
                       >
                         {formatMessageTime(m.created_at)}
                         {isTempMessage && isMyMessage && " • Sending..."}
@@ -489,11 +484,10 @@ const MessagesPage: React.FC = () => {
                 <button
                   onClick={sendMessage}
                   disabled={!newMessage.trim() || !isConnected}
-                  className={`p-4 rounded-2xl shadow-lg transition-all ${
-                    !newMessage.trim() || !isConnected
+                  className={`p-4 rounded-2xl shadow-lg transition-all ${!newMessage.trim() || !isConnected
                       ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                       : "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-100"
-                  }`}
+                    }`}
                 >
                   <Send size={20} />
                 </button>

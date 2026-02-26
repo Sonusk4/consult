@@ -14,6 +14,13 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
 require("dotenv").config();
+
+// ✅ Configure Cloudinary globally from .env (applies to all upload endpoints)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 const http = require("http");
 const { Server } = require("socket.io");
 const nodemailer = require("nodemailer");
@@ -174,7 +181,7 @@ app.get("/auth/debug", verifyFirebaseToken, async (req, res) => {
 });
 app.post("/auth/me", async (req, res) => {
   try {
-    const { role, name } = req.body;
+    const { role, name, phone, bio, location, firebase_uid } = req.body;
     let userEmail = req.body.email;
     let user;
 
@@ -202,9 +209,26 @@ app.post("/auth/me", async (req, res) => {
         data: {
           role: role || user.role,
           name: name || user.name,
+          phone: phone !== undefined ? phone : user.phone,
           is_verified: true,
         },
       });
+
+      // Update or create user profile for bio and location
+      if (bio !== undefined || location !== undefined) {
+        await prisma.userProfile.upsert({
+          where: { userId: user.id },
+          update: {
+            bio: bio !== undefined ? bio : undefined,
+            location: location !== undefined ? location : undefined,
+          },
+          create: {
+            userId: user.id,
+            bio: bio || null,
+            location: location || null,
+          },
+        });
+      }
     } else {
       // Create new user
       console.log(`✨ Creating new user: ${userEmail}`);
@@ -213,9 +237,22 @@ app.post("/auth/me", async (req, res) => {
           email: userEmail,
           role: role || "USER",
           name: name || null,
+          phone: phone || null,
           is_verified: true,
+          firebase_uid: firebase_uid || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, // fallback if not provided
         },
       });
+
+      // Create user profile for new user
+      if (bio || location) {
+        await prisma.userProfile.create({
+          data: {
+            userId: user.id,
+            bio: bio || null,
+            location: location || null,
+          },
+        });
+      }
     }
 
     console.log(`✅ User synced: ${user.email} with role ${user.role}`);
@@ -341,9 +378,15 @@ if (
   console.log("⚠️ Resend API key not configured. Using test mode.");
 }
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "dhtfjzu6l",
+  api_key: process.env.CLOUDINARY_API_KEY || "336399692592491",
+  api_secret: process.env.CLOUDINARY_API_SECRET || "28_kUZNQg2G5iTuT9JxVzx66qYU",
+});
+
+console.log("🔧 Cloudinary config:", {
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "dhtfjzu6l",
+  api_key: process.env.CLOUDINARY_API_KEY || "336399692592491",
+  has_secret: !!process.env.CLOUDINARY_API_SECRET || !!"28_kUZNQg2G5iTuT9JxVzx66qYU"
 });
 
 /**
@@ -502,9 +545,8 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
     }
 
     // Create invite link
-    const inviteLink = `${
-      process.env.FRONTEND_URL || "http://localhost:3000"
-    }/#/enterprise/invite/${inviteToken}`;
+    const inviteLink = `${process.env.FRONTEND_URL || "http://localhost:3000"
+      }/#/enterprise/invite/${inviteToken}`;
 
     // Send invite email with credentials
     try {
@@ -758,7 +800,7 @@ app.post("/auth/send-otp", async (req, res) => {
 
     if (existingUser && existingUser.role === "ENTERPRISE_MEMBER") {
       // Team members can only login with username/password
-      return res.status(403).json({ 
+      return res.status(403).json({
         error: "Enterprise team members must login with their provided credentials",
         hint: "Use the Team Member login option with your username and password"
       });
@@ -766,7 +808,7 @@ app.post("/auth/send-otp", async (req, res) => {
 
     // Prevent team members from signing up fresh with ENTERPRISE_MEMBER role
     if (type === "SIGNUP" && req.body.role === "ENTERPRISE_MEMBER") {
-      return res.status(403).json({ 
+      return res.status(403).json({
         error: "Enterprise team members cannot sign up independently",
         hint: "Please request an invitation from your enterprise administrator"
       });
@@ -840,8 +882,7 @@ app.post("/auth/send-otp", async (req, res) => {
           message: err.message,
         });
         console.error(
-          `🔧 Configuration check: EMAIL_USER="${
-            process.env.EMAIL_USER
+          `🔧 Configuration check: EMAIL_USER="${process.env.EMAIL_USER
           }", EMAIL_PASS set: ${!!process.env.EMAIL_PASS}`
         );
         console.log(`📝 OTP saved to database for testing: ${otp}`);
@@ -1654,7 +1695,7 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
     // Combine consultant and profile data
     const kycDocuments = user.consultant.kyc_documents || [];
     const certificates = user.consultant.certificates || [];
-    
+
     const profileData = {
       ...user.consultant,
       bio: user.profile?.bio || null,
@@ -1684,10 +1725,18 @@ app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
   const { type, domain, bio, languages, hourly_price, full_name, phone } = req.body;
 
   try {
-    const user = await prisma.user.findUnique({
+    // Bug 3 fix: try firebase_uid first, then fall back to req.user.id (dev JWT tokens)
+    let user = await prisma.user.findUnique({
       where: { firebase_uid: req.user.firebase_uid },
       include: { consultant: true },
-    });
+    }).catch(() => null);
+
+    if (!user && req.user.id) {
+      user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        include: { consultant: true },
+      });
+    }
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
@@ -1730,7 +1779,7 @@ app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
     if (full_name || phone !== undefined) {
       await prisma.user.update({
         where: { id: user.id },
-        data: { 
+        data: {
           name: full_name || user.name,
           phone: phone !== undefined ? phone : user.phone,
         },
@@ -1753,7 +1802,7 @@ app.get(
       });
 
       if (!consultant) {
-       return res.json([]);
+        return res.json([]);
       }
 
       const totalSessions = await prisma.booking.count({
@@ -1996,11 +2045,18 @@ app.post(
       const uploadResult = await uploadPromise;
       const imageUrl = uploadResult.secure_url;
 
-      // Get user
-      const user = await prisma.user.findUnique({
+      // Fix: try firebase_uid first, then fall back to req.user.id (dev JWT tokens)
+      let user = await prisma.user.findUnique({
         where: { firebase_uid: req.user.firebase_uid },
         include: { consultant: true },
-      });
+      }).catch(() => null);
+
+      if (!user && req.user.id) {
+        user = await prisma.user.findUnique({
+          where: { id: req.user.id },
+          include: { consultant: true },
+        });
+      }
 
       if (!user || !user.consultant) {
         return res.status(404).json({ error: "Consultant profile not found" });
@@ -2041,6 +2097,7 @@ app.post(
         return res.status(400).json({ error: "No file provided" });
       }
 
+      // Cloudinary is configured globally at startup — no need to re-configure here
       const uploadResult = await new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
           { folder: "consultancy-platform/user-profile-pics" },
@@ -2054,15 +2111,21 @@ app.post(
 
       const imageUrl = uploadResult.secure_url;
 
-      const user = await prisma.user.findUnique({
+      // Find user by firebase_uid or id (dev mode)
+      let user = await prisma.user.findUnique({
         where: { firebase_uid: req.user.firebase_uid },
-      });
+      }).catch(() => null);
+
+      if (!user && req.user.id) {
+        user = await prisma.user.findUnique({ where: { id: req.user.id } });
+      }
 
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
 
-      // ✅ Update UserProfile, not User
+      // Bug 2 fix: update ONLY UserProfile.avatar (User model has no avatar column)
+      // UserProfile is the canonical location for the avatar after the migration
       await prisma.userProfile.upsert({
         where: { userId: user.id },
         update: { avatar: imageUrl },
@@ -2072,15 +2135,9 @@ app.post(
         },
       });
 
-      const updatedUser = await prisma.user.findUnique({
-        where: { id: user.id },
-        include: { profile: true },
-      });
-
       res.status(200).json({
         message: "Profile picture uploaded successfully",
         avatar: imageUrl,
-        user: updatedUser,
       });
     } catch (error) {
       console.error("Upload Error:", error);
@@ -2088,6 +2145,105 @@ app.post(
     }
   }
 );
+
+/**
+ * PUT /user/profile
+ * Update regular user's name and phone (Bug 4 fix)
+ */
+app.put("/user/profile", verifyFirebaseToken, async (req, res) => {
+  const { full_name, phone } = req.body;
+
+  try {
+    // Find user by firebase_uid or id (dev mode)
+    let user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+    }).catch(() => null);
+
+    if (!user && req.user.id) {
+      user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        name: full_name || user.name,
+        phone: phone !== undefined ? phone : user.phone,
+      },
+    });
+
+    console.log(`✓ User profile updated for ${user.email}`);
+    res.status(200).json({
+      id: updatedUser.id,
+      email: updatedUser.email,
+      name: updatedUser.name,
+      phone: updatedUser.phone,
+      role: updatedUser.role,
+    });
+  } catch (error) {
+    console.error("Update User Profile Error:", error.message);
+    res.status(500).json({ error: "Failed to update user profile: " + error.message });
+  }
+});
+
+/**
+ * GET /user/profile
+ * Get current user's profile
+ */
+app.get("/user/profile", verifyFirebaseToken, async (req, res) => {
+  try {
+    let user;
+
+    // Check if this is a dev token by looking at the user object structure
+    if (req.user.email && !req.user.firebase_uid) {
+      // Dev token - find by email
+      user = await prisma.user.findUnique({
+        where: { email: req.user.email },
+        include: {
+          profile: true,
+          wallet: true,
+        },
+      });
+    } else {
+      // Firebase token - find by firebase_uid
+      user = await prisma.user.findUnique({
+        where: { firebase_uid: req.user.firebase_uid },
+        include: {
+          profile: true,
+          wallet: true,
+        },
+      });
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Combine user and profile data
+    const profileData = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      phone: user.phone,
+      role: user.role,
+      // Bug 2 fix: return avatar from UserProfile (User has no avatar column)
+      avatar: user.profile?.avatar || null,
+      bio: user.profile?.bio || null,
+      languages: user.profile?.languages || null,
+      wallet: user.wallet,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+    };
+
+    res.json(profileData);
+  } catch (err) {
+    console.error("Get User Profile Error:", err);
+    res.status(500).json({ error: "Failed to fetch user profile" });
+  }
+});
 
 /**
  * POST /consultant/upload-kyc
@@ -2116,7 +2272,7 @@ app.post(
       const uploadPromises = req.files.map((file) => {
         return new Promise((resolve, reject) => {
           const uploadStream = cloudinary.uploader.upload_stream(
-            { 
+            {
               folder: "consultancy-platform/kyc-documents",
               resource_type: "auto"
             },
@@ -2130,7 +2286,7 @@ app.post(
       });
 
       const uploadResults = await Promise.all(uploadPromises);
-      
+
       // Format documents for storage
       const documents = uploadResults.map((result, index) => ({
         id: index + 1,
@@ -2192,7 +2348,7 @@ app.post(
       const uploadPromises = req.files.map((file) => {
         return new Promise((resolve, reject) => {
           const uploadStream = cloudinary.uploader.upload_stream(
-            { 
+            {
               folder: "consultancy-platform/certificates",
               resource_type: "auto"
             },
@@ -2206,7 +2362,7 @@ app.post(
       });
 
       const uploadResults = await Promise.all(uploadPromises);
-      
+
       // Format certificates for storage
       const certificates = uploadResults.map((result, index) => ({
         id: Date.now() + index, // Generate unique ID
@@ -2294,7 +2450,7 @@ app.get("/consultant/certificates", verifyFirebaseToken, async (req, res) => {
     }
 
     const certificates = consultant.certificates || [];
-    
+
     // For backward compatibility, return array of URLs
     const certificateUrls = certificates.map(cert => cert.url);
 
@@ -2324,10 +2480,10 @@ app.delete("/consultant/certificate/:id", verifyFirebaseToken, async (req, res) 
 
     const certificateId = parseInt(req.params.id);
     const certificates = consultant.certificates || [];
-    
+
     // Find the certificate to delete
     const certificateToDelete = certificates.find(cert => cert.id === certificateId);
-    
+
     if (!certificateToDelete) {
       return res.status(404).json({ error: "Certificate not found" });
     }
@@ -2339,7 +2495,7 @@ app.delete("/consultant/certificate/:id", verifyFirebaseToken, async (req, res) 
 
     // Remove from database
     const updatedCertificates = certificates.filter(cert => cert.id !== certificateId);
-    
+
     await prisma.consultant.update({
       where: { id: consultant.id },
       data: {
@@ -2370,10 +2526,10 @@ app.delete("/consultant/kyc-document/:id", verifyFirebaseToken, async (req, res)
 
     const documentId = parseInt(req.params.id);
     const kycDocuments = consultant.kyc_documents || [];
-    
+
     // Find the document to delete
     const documentToDelete = kycDocuments.find(doc => doc.id === documentId);
-    
+
     if (!documentToDelete) {
       return res.status(404).json({ error: "KYC document not found" });
     }
@@ -2385,7 +2541,7 @@ app.delete("/consultant/kyc-document/:id", verifyFirebaseToken, async (req, res)
 
     // Remove from database
     const updatedDocuments = kycDocuments.filter(doc => doc.id !== documentId);
-    
+
     await prisma.consultant.update({
       where: { id: consultant.id },
       data: {
@@ -2548,10 +2704,22 @@ app.get("/consultants/online", async (req, res) => {
  */
 app.get("/wallet", verifyFirebaseToken, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { firebase_uid: req.user.firebase_uid },
-      include: { wallet: true },
-    });
+    let user;
+
+    // Check if this is a dev token by looking at the user object structure
+    if (req.user.email && !req.user.firebase_uid) {
+      // Dev token - find by email
+      user = await prisma.user.findUnique({
+        where: { email: req.user.email },
+        include: { wallet: true },
+      });
+    } else {
+      // Firebase token - find by firebase_uid
+      user = await prisma.user.findUnique({
+        where: { firebase_uid: req.user.firebase_uid },
+        include: { wallet: true },
+      });
+    }
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
@@ -2813,7 +2981,7 @@ var options = {
     document.getElementById('payBtn').disabled = true;
     document.getElementById('payBtn').innerText = 'Verifying...';
 
-    fetch('http://localhost:5001/payment/verify', {
+    fetch('http://localhost:5000/payment/verify', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2961,9 +3129,8 @@ app.post("/payment/verify", async (req, res) => {
           userId: user.id,
           type: "CREDIT",
           amount: totalCredits,
-          description: `Added ${creditsToAdd} credits${
-            bonusAmount > 0 ? ` with ${bonusAmount} bonus` : ""
-          } via Razorpay (Order: ${razorpay_order_id})`,
+          description: `Added ${creditsToAdd} credits${bonusAmount > 0 ? ` with ${bonusAmount} bonus` : ""
+            } via Razorpay (Order: ${razorpay_order_id})`,
           payment_method: "RAZORPAY",
           status: "SUCCESS",
         },
@@ -3050,14 +3217,13 @@ app.post("/payment/verify", async (req, res) => {
                     <td>${creditsToAdd} Credits</td>
                     <td style="text-align: right;">₹${orderRecord.amount}</td>
                   </tr>
-                  ${
-                    bonusAmount > 0
-                      ? `<tr>
+                  ${bonusAmount > 0
+        ? `<tr>
                     <td>${bonusAmount} Bonus Credits</td>
                     <td style="text-align: right; color: #16a34a;">FREE</td>
                   </tr>`
-                      : ""
-                  }
+        : ""
+      }
                 </tbody>
               </table>
 
@@ -3189,9 +3355,8 @@ app.post("/wallet/add-credits", verifyFirebaseToken, async (req, res) => {
         userId: user.id,
         type: "CREDIT",
         amount: totalCredits,
-        description: `Added ₹${amount} credits${
-          bonusAmount > 0 ? ` with ₹${bonusAmount} bonus` : ""
-        }`,
+        description: `Added ₹${amount} credits${bonusAmount > 0 ? ` with ₹${bonusAmount} bonus` : ""
+          }`,
         payment_method: "CREDIT_CARD",
         status: "SUCCESS",
       },
@@ -3760,7 +3925,7 @@ app.put("/bookings/:id/status", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-app.get("/agora/token", async (req, res) => {
+app.get("/agora/token", verifyFirebaseToken, async (req, res) => {
   const { channelName, userId } = req.query;
 
   if (!channelName || !userId) {
@@ -3789,9 +3954,21 @@ app.get("/agora/token", async (req, res) => {
     const isConsultant = booking.consultant?.userId === dbUserId;
     const isEnterpriseMember = booking.enterpriseMemberId === dbUserId;
 
-    if (!isClient && !isConsultant && !isEnterpriseMember) {
+    // Additional check: maybe dbUserId was passed as consultant.id instead of consultant.userId
+    const isConsultantById = booking.consultant?.id === dbUserId;
+
+    // Fallback: Check if the authenticated req.user matches any of the roles for this booking
+    const authUserId = req.user?.id;
+    const isAuthClient = booking.userId === authUserId;
+    const isAuthConsultant = booking.consultant?.userId === authUserId;
+    const isAuthEnterprise = booking.enterpriseMemberId === authUserId;
+
+    if (!isClient && !isConsultant && !isEnterpriseMember && !isConsultantById && !isAuthClient && !isAuthConsultant && !isAuthEnterprise) {
+      console.log(`❌ Agora Auth Failed: dbUserId=${dbUserId}, authUserId=${authUserId}, booking: client=${booking.userId}, consultantUser=${booking.consultant?.userId}, consultantId=${booking.consultant?.id}`);
       return res.status(403).json({ error: "Not authorized" });
     }
+
+    console.log(`✅ Agora Auth Success for user ${dbUserId || authUserId} on booking ${bookingId}`);
 
     // ✅ Generate unique Agora UID HERE
     const agoraUid = Math.floor(Math.random() * 1000000);
@@ -4480,6 +4657,490 @@ app.get(
     }
   }
 );
+
+
+/* ============================================================ */
+/* ==================== ADMIN ROUTES ========================== */
+/* ============================================================ */
+
+const verifyAdminToken = require("./middleware/adminAuthMiddleware");
+const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET || "admin-secret-key";
+
+/**
+ * POST /admin/signup
+ * Create a new admin account
+ */
+app.post("/admin/signup", async (req, res) => {
+  const { email, password, name } = req.body;
+  if (!email || !password || !name) {
+    return res.status(400).json({ error: "Email, password and name are required" });
+  }
+  try {
+    const existing = await prisma.admin.findUnique({ where: { email } });
+    if (existing) return res.status(409).json({ error: "Admin with this email already exists" });
+
+    const hashed = await bcrypt.hash(password, 10);
+    const admin = await prisma.admin.create({ data: { email, password: hashed, name } });
+
+    const token = jwt.sign({ adminId: admin.id, email: admin.email }, ADMIN_JWT_SECRET, { expiresIn: "7d" });
+    res.json({ token, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role } });
+  } catch (err) {
+    console.error("Admin signup error:", err.message);
+    res.status(500).json({ error: "Failed to create admin account" });
+  }
+});
+
+/**
+ * POST /admin/signin
+ * Login with email + password → returns JWT
+ */
+app.post("/admin/signin", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+  try {
+    const admin = await prisma.admin.findUnique({ where: { email } });
+    if (!admin) return res.status(401).json({ error: "Invalid credentials" });
+
+    const valid = await bcrypt.compare(password, admin.password);
+    if (!valid) return res.status(401).json({ error: "Invalid credentials" });
+
+    const token = jwt.sign({ adminId: admin.id, email: admin.email }, ADMIN_JWT_SECRET, { expiresIn: "7d" });
+    res.json({ token, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role, avatar: admin.avatar } });
+  } catch (err) {
+    console.error("Admin signin error:", err.message);
+    res.status(500).json({ error: "Failed to sign in" });
+  }
+});
+
+/**
+ * GET /admin/profile
+ * Get current admin profile
+ */
+app.get("/admin/profile", verifyAdminToken, async (req, res) => {
+  const { password: _, ...safeAdmin } = req.admin;
+  res.json(safeAdmin);
+});
+
+/**
+ * POST /admin/profile/upload
+ * Upload admin avatar
+ */
+app.post("/admin/profile/upload", verifyAdminToken, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file provided" });
+
+    const uploadResult = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "consultancy-platform/admin-avatars" },
+        (err, result) => { if (err) reject(err); else resolve(result); }
+      );
+      stream.end(req.file.buffer);
+    });
+
+    const updated = await prisma.admin.update({
+      where: { id: req.admin.id },
+      data: { avatar: uploadResult.secure_url },
+    });
+    const { password: _, ...safe } = updated;
+    res.json(safe);
+  } catch (err) {
+    console.error("Admin avatar upload error:", err.message);
+    res.status(500).json({ error: "Failed to upload avatar" });
+  }
+});
+
+/* ─── Dashboard ─────────────────────────────────────────────── */
+
+/**
+ * GET /admin/dashboard/stats
+ */
+app.get("/admin/dashboard/stats", verifyAdminToken, async (req, res) => {
+  try {
+    const [totalUsers, totalConsultants, pendingKyc, totalBookings, totalEnterprises, totalRevenue] = await Promise.all([
+      prisma.user.count({ where: { role: "USER" } }),
+      prisma.consultant.count(),
+      prisma.consultant.count({ where: { kyc_status: "SUBMITTED" } }),
+      prisma.booking.count(),
+      prisma.enterprise.count(),
+      prisma.payment.aggregate({ _sum: { amount: true } }),
+    ]);
+
+    res.json({
+      totalUsers,
+      totalConsultants,
+      pendingKyc,
+      totalBookings,
+      totalEnterprises,
+      totalRevenue: totalRevenue._sum.amount || 0,
+    });
+  } catch (err) {
+    console.error("Admin dashboard stats error:", err.message);
+    res.status(500).json({ error: "Failed to fetch stats" });
+  }
+});
+
+/**
+ * GET /admin/dashboard/activity
+ */
+app.get("/admin/dashboard/activity", verifyAdminToken, async (req, res) => {
+  try {
+    const [recentUsers, recentBookings, recentConsultants] = await Promise.all([
+      prisma.user.findMany({ orderBy: { created_at: "desc" }, take: 5, select: { id: true, name: true, email: true, role: true, created_at: true } }),
+      prisma.booking.findMany({ orderBy: { created_at: "desc" }, take: 5, include: { user: { select: { name: true, email: true } } } }),
+      prisma.consultant.findMany({ orderBy: { id: "desc" }, take: 5, include: { user: { select: { name: true, email: true, created_at: true } } } }),
+    ]);
+    res.json({ recentUsers, recentBookings, recentConsultants });
+  } catch (err) {
+    console.error("Admin activity error:", err.message);
+    res.status(500).json({ error: "Failed to fetch activity" });
+  }
+});
+
+/* ─── Consultants ────────────────────────────────────────────── */
+
+/**
+ * GET /admin/consultants/pending
+ * Return consultants whose KYC is SUBMITTED (awaiting admin review)
+ */
+app.get("/admin/consultants/pending", verifyAdminToken, async (req, res) => {
+  try {
+    const consultantList = await prisma.consultant.findMany({
+      where: { kyc_status: { in: ["SUBMITTED", "PENDING"] } },
+      include: {
+        user: { select: { id: true, email: true, name: true, created_at: true } },
+      },
+      orderBy: { id: "desc" },
+    });
+
+    // Shape documents to match what the admin UI expects
+    const shaped = consultantList.map((c) => {
+      const docs = (c.kyc_documents || []).map((doc, idx) => ({
+        id: doc.id || idx + 1,
+        userId: c.userId,
+        documentType: doc.name || "KYC Document",
+        documentUrl: doc.url,
+        status: doc.status || c.kyc_status,
+        uploadedAt: doc.uploaded_at || new Date().toISOString(),
+      }));
+      return {
+        id: c.id,
+        userId: c.userId,
+        type: c.type,
+        domain: c.domain,
+        hourly_price: c.hourly_price,
+        is_verified: c.is_verified,
+        kyc_status: c.kyc_status,
+        bio: c.bio,
+        profile_pic: c.profile_pic,
+        user: c.user,
+        documents: docs,
+      };
+    });
+
+    res.json(shaped);
+  } catch (err) {
+    console.error("Admin pending consultants error:", err.message);
+    res.status(500).json({ error: "Failed to fetch pending consultants" });
+  }
+});
+
+/**
+ * GET /admin/consultants
+ * Return ALL consultants
+ */
+app.get("/admin/consultants", verifyAdminToken, async (req, res) => {
+  try {
+    const consultantList = await prisma.consultant.findMany({
+      include: { user: { select: { id: true, email: true, name: true, created_at: true } } },
+      orderBy: { id: "desc" },
+    });
+    res.json(consultantList);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch consultants" });
+  }
+});
+
+/**
+ * PUT /admin/consultants/:id/verify
+ * Approve consultant KYC — set is_verified=true, kyc_status=APPROVED
+ */
+app.put("/admin/consultants/:id/verify", verifyAdminToken, async (req, res) => {
+  const consultantId = parseInt(req.params.id);
+  try {
+    const consultant = await prisma.consultant.findUnique({ where: { id: consultantId } });
+    if (!consultant) return res.status(404).json({ error: "Consultant not found" });
+
+    // Mark all docs as APPROVED
+    const updatedDocs = (consultant.kyc_documents || []).map((doc) => ({ ...doc, status: "APPROVED" }));
+
+    const updated = await prisma.consultant.update({
+      where: { id: consultantId },
+      data: { is_verified: true, kyc_status: "APPROVED", kyc_documents: updatedDocs },
+      include: { user: { select: { name: true, email: true } } },
+    });
+
+    console.log(`✅ Consultant ${consultantId} verified by admin ${req.admin.email}`);
+    res.json({ message: "Consultant verified successfully", consultant: updated });
+  } catch (err) {
+    console.error("Admin verify consultant error:", err.message);
+    res.status(500).json({ error: "Failed to verify consultant" });
+  }
+});
+
+/**
+ * PUT /admin/consultants/:id/reject
+ * Reject consultant KYC
+ */
+app.put("/admin/consultants/:id/reject", verifyAdminToken, async (req, res) => {
+  const consultantId = parseInt(req.params.id);
+  const { rejectionReason } = req.body;
+  try {
+    const consultant = await prisma.consultant.findUnique({ where: { id: consultantId } });
+    if (!consultant) return res.status(404).json({ error: "Consultant not found" });
+
+    const updatedDocs = (consultant.kyc_documents || []).map((doc) => ({
+      ...doc, status: "REJECTED", rejection_reason: rejectionReason,
+    }));
+
+    const updated = await prisma.consultant.update({
+      where: { id: consultantId },
+      data: { is_verified: false, kyc_status: "REJECTED", kyc_documents: updatedDocs },
+    });
+
+    res.json({ message: "Consultant KYC rejected", consultant: updated });
+  } catch (err) {
+    console.error("Admin reject consultant error:", err.message);
+    res.status(500).json({ error: "Failed to reject consultant" });
+  }
+});
+
+/* ─── Documents (KYC doc-level operations) ───────────────────── */
+
+/**
+ * GET /documents
+ * All KYC documents across all consultants
+ */
+app.get("/documents", verifyAdminToken, async (req, res) => {
+  try {
+    const { status, documentType } = req.query;
+    const allConsultants = await prisma.consultant.findMany({
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+
+    let docs = [];
+    allConsultants.forEach((c) => {
+      const kyc = c.kyc_documents || [];
+      kyc.forEach((doc, idx) => {
+        const d = {
+          id: doc.id || idx + 1,
+          consultantId: c.id,
+          userId: c.userId,
+          userName: c.user.name,
+          userEmail: c.user.email,
+          documentType: doc.name || "KYC Document",
+          documentUrl: doc.url,
+          status: doc.status || c.kyc_status,
+          uploadedAt: doc.uploaded_at,
+        };
+        if (status && d.status !== status) return;
+        if (documentType && d.documentType !== documentType) return;
+        docs.push(d);
+      });
+    });
+
+    res.json(docs);
+  } catch (err) {
+    console.error("Admin get documents error:", err.message);
+    res.status(500).json({ error: "Failed to fetch documents" });
+  }
+});
+
+/**
+ * PUT /documents/:id/verify
+ * Approve a specific KYC document (by its array-index id in the consultant JSON)
+ */
+app.put("/documents/:id/verify", verifyAdminToken, async (req, res) => {
+  const docId = parseInt(req.params.id);
+  const { notes } = req.body;
+  try {
+    // Find the consultant that has this document
+    const allConsultants = await prisma.consultant.findMany();
+    let targetConsultant = null;
+    let targetDocIndex = -1;
+
+    for (const c of allConsultants) {
+      const docs = c.kyc_documents || [];
+      const idx = docs.findIndex((d, i) => (d.id || i + 1) === docId);
+      if (idx !== -1) { targetConsultant = c; targetDocIndex = idx; break; }
+    }
+
+    if (!targetConsultant) return res.status(404).json({ error: "Document not found" });
+
+    const docs = [...(targetConsultant.kyc_documents || [])];
+    docs[targetDocIndex] = { ...docs[targetDocIndex], status: "APPROVED", notes };
+
+    // Check if all docs are APPROVED → mark consultant verified
+    const allApproved = docs.every((d) => d.status === "APPROVED");
+
+    await prisma.consultant.update({
+      where: { id: targetConsultant.id },
+      data: {
+        kyc_documents: docs,
+        kyc_status: allApproved ? "APPROVED" : "SUBMITTED",
+        is_verified: allApproved,
+      },
+    });
+
+    res.json({ message: "Document approved", allConsultantVerified: allApproved });
+  } catch (err) {
+    console.error("Admin doc verify error:", err.message);
+    res.status(500).json({ error: "Failed to verify document" });
+  }
+});
+
+/**
+ * PUT /documents/:id/reject
+ * Reject a specific KYC document
+ */
+app.put("/documents/:id/reject", verifyAdminToken, async (req, res) => {
+  const docId = parseInt(req.params.id);
+  const { rejectionReason } = req.body;
+  try {
+    const allConsultants = await prisma.consultant.findMany();
+    let targetConsultant = null;
+    let targetDocIndex = -1;
+
+    for (const c of allConsultants) {
+      const docs = c.kyc_documents || [];
+      const idx = docs.findIndex((d, i) => (d.id || i + 1) === docId);
+      if (idx !== -1) { targetConsultant = c; targetDocIndex = idx; break; }
+    }
+
+    if (!targetConsultant) return res.status(404).json({ error: "Document not found" });
+
+    const docs = [...(targetConsultant.kyc_documents || [])];
+    docs[targetDocIndex] = { ...docs[targetDocIndex], status: "REJECTED", rejection_reason: rejectionReason };
+
+    await prisma.consultant.update({
+      where: { id: targetConsultant.id },
+      data: { kyc_documents: docs, kyc_status: "REJECTED" },
+    });
+
+    res.json({ message: "Document rejected" });
+  } catch (err) {
+    console.error("Admin doc reject error:", err.message);
+    res.status(500).json({ error: "Failed to reject document" });
+  }
+});
+
+/* ─── Enterprises ────────────────────────────────────────────── */
+
+app.get("/admin/enterprises", verifyAdminToken, async (req, res) => {
+  try {
+    const enterprises = await prisma.enterprise.findMany({
+      include: {
+        owner: { select: { id: true, name: true, email: true } },
+        _count: { select: { members: true } },
+      },
+      orderBy: { created_at: "desc" },
+    });
+    res.json(enterprises);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch enterprises" });
+  }
+});
+
+app.get("/admin/enterprises/stats", verifyAdminToken, async (req, res) => {
+  try {
+    const [total, active] = await Promise.all([
+      prisma.enterprise.count(),
+      prisma.enterprise.count({ where: { status: "OPEN" } }),
+    ]);
+    res.json({ total, active, pending: total - active });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch enterprise stats" });
+  }
+});
+
+app.get("/admin/enterprises/pending", verifyAdminToken, async (req, res) => {
+  try {
+    // Enterprises without a verified owner are treated as pending
+    const enterprises = await prisma.enterprise.findMany({
+      include: { owner: { select: { id: true, name: true, email: true, is_verified: true } } },
+      orderBy: { created_at: "desc" },
+    });
+    res.json(enterprises);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch pending enterprises" });
+  }
+});
+
+app.put("/admin/enterprises/:id/verify", verifyAdminToken, async (req, res) => {
+  const id = parseInt(req.params.id);
+  try {
+    const enterprise = await prisma.enterprise.update({
+      where: { id },
+      data: { status: "VERIFIED" },
+    });
+    // also verify the owner
+    await prisma.user.update({ where: { id: enterprise.ownerId }, data: { is_verified: true } });
+    res.json({ message: "Enterprise verified", enterprise });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to verify enterprise" });
+  }
+});
+
+app.put("/admin/enterprises/:id/reject", verifyAdminToken, async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { rejectionReason } = req.body;
+  try {
+    const enterprise = await prisma.enterprise.update({
+      where: { id },
+      data: { status: "REJECTED", description: rejectionReason || enterprise.description },
+    });
+    res.json({ message: "Enterprise rejected", enterprise });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to reject enterprise" });
+  }
+});
+
+/* ─── Invoices ───────────────────────────────────────────────── */
+
+app.get("/admin/invoices", verifyAdminToken, async (req, res) => {
+  try {
+    const { status } = req.query;
+    const where = status ? { status } : {};
+    const orders = await prisma.paymentOrder.findMany({
+      where,
+      include: { user: { select: { name: true, email: true } } },
+      orderBy: { created_at: "desc" },
+    });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch invoices" });
+  }
+});
+
+app.get("/admin/invoices/stats", verifyAdminToken, async (req, res) => {
+  try {
+    const [total, successful, pending] = await Promise.all([
+      prisma.paymentOrder.aggregate({ _sum: { amount: true }, _count: { id: true } }),
+      prisma.paymentOrder.aggregate({ where: { status: "PAID" }, _sum: { amount: true }, _count: { id: true } }),
+      prisma.paymentOrder.count({ where: { status: "PENDING" } }),
+    ]);
+    res.json({
+      totalAmount: total._sum.amount || 0,
+      totalCount: total._count.id,
+      successAmount: successful._sum.amount || 0,
+      successCount: successful._count.id,
+      pendingCount: pending,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch invoice stats" });
+  }
+});
+
+/* ============================================================ */
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);

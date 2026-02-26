@@ -29,6 +29,30 @@ const UserProfilePage: React.FC = () => {
   /* ================= LOAD USER ================= */
   useEffect(() => {
     if (user) {
+      fetchUserProfile();
+      fetchWallet();
+    }
+  }, [user]);
+
+  const fetchUserProfile = async () => {
+    try {
+      const res = await api.get("/user/profile");
+      const profileData = res.data;
+      
+      const userData = {
+        name: profileData.name || "",
+        email: profileData.email || "",
+        phone: profileData.phone || "",
+        bio: profileData.bio || "",
+        location: profileData.location || "",
+      };
+
+      setFormData(userData);
+      setOriginalData(userData);
+      setPreviewImage(profileData.avatar || null);
+    } catch (err) {
+      console.error("Profile fetch failed:", err);
+      // Fallback to cached user data
       const userData = {
         name: user.name || "",
         email: user.email || "",
@@ -41,9 +65,7 @@ const UserProfilePage: React.FC = () => {
       setOriginalData(userData);
       setPreviewImage(user.avatar || null);
     }
-
-    fetchWallet();
-  }, [user]);
+  };
 
   const fetchWallet = async () => {
     try {

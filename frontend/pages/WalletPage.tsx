@@ -69,7 +69,7 @@ const WalletPage: React.FC = () => {
 
   const handleAddCredits = async (packageId: number, amount: number) => {
     setPaymentProcessing(true);
-    
+
     try {
       // Step 1: Create Razorpay order
       const orderResponse = await api.post('/payment/create-order', {
@@ -78,15 +78,15 @@ const WalletPage: React.FC = () => {
       });
 
       const orderData = orderResponse.data;
-      
+
       if (!orderData?.order_id) {
         throw new Error(orderData?.error || 'Failed to create payment order');
       }
 
       // Step 2: Redirect to backend payment page
       // Backend will handle Razorpay checkout and redirect back after payment
-      window.location.href = `http://localhost:5001/payment-page?order_id=${orderData.order_id}&amount=${amount}&credits=${packageId}`;
-      
+      window.location.href = `http://localhost:5000/payment-page?order_id=${orderData.order_id}&amount=${amount}&credits=${packageId}`;
+
     } catch (error) {
       console.error('Payment error:', error);
       alert('Failed to initiate payment. Please try again.');
@@ -208,11 +208,10 @@ const WalletPage: React.FC = () => {
                     <button
                       onClick={() => handleAddCredits(pkg.id, pkg.amount)}
                       disabled={paymentProcessing}
-                      className={`w-full py-2 rounded-lg font-bold transition-all flex items-center justify-center ${
-                        paymentProcessing
-                          ? 'bg-gray-300 text-gray-500 cursor-wait'
-                          : 'bg-blue-600 text-white hover:bg-blue-700'
-                      }`}
+                      className={`w-full py-2 rounded-lg font-bold transition-all flex items-center justify-center ${paymentProcessing
+                        ? 'bg-gray-300 text-gray-500 cursor-wait'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
                     >
                       {paymentProcessing ? (
                         <>

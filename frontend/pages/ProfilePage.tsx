@@ -3,7 +3,11 @@ import Layout from '../components/Layout';
 import { useAuth } from '../App';
 import { consultants as consultantsApi, users } from '../services/api';
 import { Consultant } from '../types';
-import { Camera, Mail, Phone, Globe, Lock, Bell, User as UserIcon, Save, Loader, Upload, FileText, Shield, Award, X, Check, AlertCircle, Eye } from 'lucide-react';
+import {
+  Camera, Mail, Phone, User as UserIcon, Save, Loader,
+  Upload, FileText, Shield, Award, X, Check, AlertCircle,
+  Eye, Edit2, CheckCircle, Clock, PlusCircle
+} from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 
 const ProfilePage: React.FC = () => {
@@ -14,15 +18,13 @@ const ProfilePage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  
+
   // KYC and Certificate states
   const [kycStatus, setKycStatus] = useState<any>(null);
   const [certificates, setCertificates] = useState<any[]>([]);
   const [uploadingKyc, setUploadingKyc] = useState(false);
-  const [uploadingCertificates, setUploadingCertificates] = useState(false);
-  const [showKycModal, setShowKycModal] = useState(false);
-  const [showCertificateModal, setShowCertificateModal] = useState(false);
-  
+  const [uploadingCert, setUploadingCert] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '',
     domain: '',
@@ -30,102 +32,15 @@ const ProfilePage: React.FC = () => {
     bio: '',
     languages: '',
     phone: '',
-    location: 'Remote' // Default for now
   });
-const handleUserImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (e.target.files && e.target.files[0]) {
-    const file = e.target.files[0];
 
-    setUploadingImage(true);
-    try {
-      const result = await users.uploadProfilePic(file);
+  const isConsultant = user?.role === 'CONSULTANT' || user?.role === 'ENTERPRISE_ADMIN';
 
-      if (!user) return;
-
-      const updatedUser = {
-        ...user,
-        avatar: result.avatar
-      };
-
-      // ✅ Update React state
-      setUser(updatedUser);
-
-      // ✅ Update localStorage
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-
-      addToast("Profile picture updated!", "success");
-
-    } catch (err: any) {
-      console.error('Upload error:', err);
-      addToast("Failed to update profile picture", "error");
-    } finally {
-      setUploadingImage(false);
-    }
-  }
-};
-
-  
-const handleConsultantImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (e.target.files && e.target.files[0]) {
-    const file = e.target.files[0];
-
-    setUploadingImage(true);
-    try {
-      const result = await consultantsApi.uploadProfilePic(file);
-
-      if (!user) return;
-
-      const updatedUser = {
-        ...user,
-        avatar: result.profile_pic   // 
-      };
-
-      // Update React state
-      setUser(updatedUser);
-
-      // Update localStorage
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-
-      // Refresh profile data to get updated profile_pic
-      fetchProfile();
-
-      addToast("Profile picture updated!", "success");
-
-    } catch (err: any) {
-      console.error('Consultant upload error:', err);
-      addToast("Failed to upload image", "error");
-    } finally {
-      setUploadingImage(false);
-    }
-  }
-};
-
-
-  useEffect(() => {
-    if (user) {
-      fetchProfile();
-      fetchKycAndCertificates();
-    }
-  }, [user]);
-
-  const fetchKycAndCertificates = async () => {
-    try {
-      if (user?.role === 'CONSULTANT' || user?.role === 'ENTERPRISE_ADMIN') {
-        const [kycData, certificatesData] = await Promise.all([
-          consultantsApi.getKycStatus(),
-          consultantsApi.getCertificates()
-        ]);
-        setKycStatus(kycData);
-        setCertificates(certificatesData.certificates || []);
-      }
-    } catch (err) {
-      console.error("Failed to load KYC/Certificates", err);
-    }
-  };
+  // ------ Data Fetching ------
 
   const fetchProfile = async () => {
     try {
-      if (user?.role === 'CONSULTANT' || user?.role === 'ENTERPRISE_ADMIN') {
+      if (isConsultant) {
         const data = await consultantsApi.getProfile();
         setProfile(data);
         setFormData({
@@ -135,10 +50,8 @@ const handleConsultantImageUpload = async (e: React.ChangeEvent<HTMLInputElement
           bio: data.bio || '',
           languages: data.languages || '',
           phone: user?.phone || '',
-          location: 'Remote'
         });
       } else {
-        // For regular users, load from user data
         setFormData({
           name: user?.name || user?.email?.split('@')[0] || '',
           domain: '',
@@ -146,15 +59,37 @@ const handleConsultantImageUpload = async (e: React.ChangeEvent<HTMLInputElement
           bio: '',
           languages: '',
           phone: user?.phone || '',
-          location: 'Remote'
         });
       }
     } catch (err) {
-      console.error("Failed to load profile", err);
+      console.error('Failed to load profile', err);
     } finally {
       setLoading(false);
     }
   };
+
+  const fetchKycAndCertificates = async () => {
+    if (!isConsultant) return;
+    try {
+      const [kycData, certData] = await Promise.all([
+        consultantsApi.getKycStatus(),
+        consultantsApi.getCertificates(),
+      ]);
+      setKycStatus(kycData);
+      setCertificates(certData.certificates || []);
+    } catch (err) {
+      console.error('Failed to load KYC/Certificates', err);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchProfile();
+      fetchKycAndCertificates();
+    }
+  }, [user]);
+
+  // ------ Handlers ------
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -163,33 +98,31 @@ const handleConsultantImageUpload = async (e: React.ChangeEvent<HTMLInputElement
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (user?.role === 'CONSULTANT' || user?.role === 'ENTERPRISE_ADMIN') {
+      if (isConsultant) {
         await consultantsApi.updateProfile({
           domain: formData.domain,
           hourly_price: formData.hourly_price,
           bio: formData.bio,
           languages: formData.languages,
           full_name: formData.name,
-          phone: formData.phone
+          phone: formData.phone,
         });
+        // Refresh profile data to show latest
+        const fresh = await consultantsApi.getProfile();
+        setProfile(fresh);
       } else {
-        // For regular users, update name and phone via a separate user update API
-        // We'll need to add this endpoint to the backend
-        await consultantsApi.updateProfile({
+        await users.updateProfile({
           full_name: formData.name,
-          phone: formData.phone
+          phone: formData.phone,
         });
       }
-      
-      // Refresh user data to get updated name and phone
       if (setUser) {
         const updatedUser = { ...user, name: formData.name, phone: formData.phone };
         setUser(updatedUser);
-        sessionStorage.setItem("user", JSON.stringify(updatedUser));
+        localStorage.setItem('user', JSON.stringify(updatedUser));
       }
-      
-      addToast('Profile updated successfully', 'success');
-       setIsEditing(false);
+      addToast('Profile updated successfully ✓', 'success');
+      setIsEditing(false);
     } catch (err) {
       addToast('Failed to update profile', 'error');
     } finally {
@@ -197,495 +130,484 @@ const handleConsultantImageUpload = async (e: React.ChangeEvent<HTMLInputElement
     }
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+    const file = e.target.files[0];
+    setUploadingImage(true);
+    try {
+      if (isConsultant) {
+        const result = await consultantsApi.uploadProfilePic(file);
+        // Refresh consultant profile to get updated profile_pic from DB
+        const fresh = await consultantsApi.getProfile();
+        setProfile(fresh);
+        // Also update localStorage avatar for navbar display
+        if (setUser && user) {
+          const updated = { ...user, avatar: result.profile_pic };
+          setUser(updated);
+          localStorage.setItem('user', JSON.stringify(updated));
+        }
+      } else {
+        const result = await users.uploadProfilePic(file);
+        if (setUser && user) {
+          const updated = { ...user, avatar: result.avatar };
+          setUser(updated);
+          localStorage.setItem('user', JSON.stringify(updated));
+        }
+      }
+      addToast('Profile photo updated!', 'success');
+    } catch (err: any) {
+      addToast('Failed to upload photo', 'error');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const handleKycUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setUploadingKyc(true);
-      try {
-        await consultantsApi.uploadKycDoc(e.target.files[0]);
-        await fetchKycAndCertificates();
-        addToast("KYC documents uploaded successfully!", "success");
-        setShowKycModal(false);
-      } catch (err: any) {
-        console.error('KYC upload error:', err);
-        addToast("Failed to upload KYC documents", "error");
-      } finally {
-        setUploadingKyc(false);
-      }
-    }
-  };
-
-  const handleCertificateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setUploadingCertificates(true);
-      try {
-        await consultantsApi.uploadCertificate(e.target.files[0]);
-        await fetchKycAndCertificates();
-        addToast("Certificates uploaded successfully!", "success");
-        setShowCertificateModal(false);
-      } catch (err: any) {
-        console.error('Certificate upload error:', err);
-        addToast("Failed to upload certificates", "error");
-      } finally {
-        setUploadingCertificates(false);
-      }
-    }
-  };
-
-  const handleDeleteCertificate = async (certificateId: number) => {
+    if (!e.target.files?.[0]) return;
+    setUploadingKyc(true);
     try {
-      await consultantsApi.deleteCertificate(certificateId);
+      await consultantsApi.uploadKycDoc(e.target.files[0]);
       await fetchKycAndCertificates();
-      addToast("Certificate deleted successfully", "success");
-    } catch (err: any) {
-      console.error('Delete certificate error:', err);
-      addToast("Failed to delete certificate", "error");
+      addToast('KYC document uploaded successfully!', 'success');
+    } catch (err) {
+      addToast('Failed to upload KYC document', 'error');
+    } finally {
+      setUploadingKyc(false);
     }
   };
 
-  const handleDeleteKycDocument = async (documentId: number) => {
+  const handleCertUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+    setUploadingCert(true);
     try {
-      await consultantsApi.deleteKycDocument(documentId);
+      await consultantsApi.uploadCertificate(e.target.files[0]);
       await fetchKycAndCertificates();
-      addToast("KYC document deleted successfully", "success");
-    } catch (err: any) {
-      console.error('Delete KYC document error:', err);
-      addToast("Failed to delete KYC document", "error");
+      addToast('Certificate uploaded successfully!', 'success');
+    } catch (err) {
+      addToast('Failed to upload certificate', 'error');
+    } finally {
+      setUploadingCert(false);
     }
   };
 
-  const getKycStatusColor = (status: string) => {
-    switch (status) {
-      case 'APPROVED': return 'text-green-600 bg-green-50';
-      case 'SUBMITTED': return 'text-blue-600 bg-blue-50';
-      case 'REJECTED': return 'text-red-600 bg-red-50';
-      default: return 'text-gray-600 bg-gray-50';
+  const handleDeleteKyc = async (docId: number) => {
+    try {
+      await consultantsApi.deleteKycDocument(docId);
+      await fetchKycAndCertificates();
+      addToast('KYC document removed', 'success');
+    } catch (err) {
+      addToast('Failed to delete KYC document', 'error');
     }
   };
 
-  const getKycStatusIcon = (status: string) => {
-    switch (status) {
-      case 'APPROVED': return <Check size={16} />;
-      case 'SUBMITTED': return <AlertCircle size={16} />;
-      case 'REJECTED': return <X size={16} />;
-      default: return <Shield size={16} />;
+  const handleDeleteCert = async (certId: number) => {
+    try {
+      await consultantsApi.deleteCertificate(certId);
+      await fetchKycAndCertificates();
+      addToast('Certificate removed', 'success');
+    } catch (err) {
+      addToast('Failed to delete certificate', 'error');
     }
   };
 
-  // KYC Upload Modal
-  const KycUploadModal = () => {
-    if (!showKycModal) return null;
-
+  // ------ KYC Status ------
+  const kycBadge = (status: string) => {
+    const map: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
+      APPROVED: { color: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle size={14} />, label: 'Approved' },
+      SUBMITTED: { color: 'bg-blue-100 text-blue-700', icon: <Clock size={14} />, label: 'Under Review' },
+      REJECTED: { color: 'bg-red-100 text-red-700', icon: <AlertCircle size={14} />, label: 'Rejected' },
+      PENDING: { color: 'bg-amber-100 text-amber-700', icon: <Shield size={14} />, label: 'Pending Upload' },
+    };
+    const s = map[status] || map.PENDING;
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[999]">
-        <div className="bg-white p-8 rounded-3xl w-full max-w-md shadow-xl space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-black text-gray-900">Upload KYC Documents</h2>
-            <button onClick={() => setShowKycModal(false)} className="text-gray-400 hover:text-gray-600">
-              <X size={24} />
-            </button>
+      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${s.color}`}>
+        {s.icon} {s.label}
+      </span>
+    );
+  };
+
+  // ------ Rendering ------
+
+  const avatarSrc =
+    profile?.profile_pic ||
+    user?.avatar ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.email || 'U')}&background=3b82f6&color=fff&size=128`;
+
+  if (loading) {
+    return (
+      <Layout title="My Profile">
+        <div className="flex justify-center items-center min-h-[60vh]">
+          <Loader className="animate-spin text-blue-600" size={36} />
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout title="My Profile">
+      <div className="max-w-4xl mx-auto space-y-6 pb-12">
+
+        {/* ─── Hero Card ───────────────────────────────────────────────── */}
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+          {/* Gradient Cover */}
+          <div className="h-36 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 relative">
+            <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top_right,_#fff_0%,_transparent_60%)]" />
           </div>
 
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Upload your identity proof, address proof, and other verification documents. Accepted formats: PDF, JPG, PNG
-            </p>
-            
-            <label className="block">
-              <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-500 transition-colors cursor-pointer">
-                <Upload className="mx-auto text-gray-400 mb-3" size={32} />
-                <p className="text-sm text-gray-600">Click to upload or drag and drop</p>
-                <p className="text-xs text-gray-500 mt-1">Maximum 5 files, 10MB each</p>
+          <div className="px-6 sm:px-8 pb-8">
+            {/* Avatar + Actions row */}
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between -mt-16 mb-6 gap-4">
+              {/* Avatar */}
+              <div className="relative group w-28 h-28 shrink-0">
+                <img
+                  src={avatarSrc}
+                  alt="Profile photo"
+                  className="w-28 h-28 rounded-2xl border-4 border-white object-cover shadow-xl"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=U&background=3b82f6&color=fff&size=128`;
+                  }}
+                />
+                <label className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
+                  {uploadingImage
+                    ? <Loader className="text-white animate-spin" size={22} />
+                    : <><Camera className="text-white" size={22} /><span className="text-white text-xs mt-1 font-semibold">Change</span></>
+                  }
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    disabled={uploadingImage}
+                  />
+                </label>
+              </div>
+
+              {/* Name + email summary */}
+              <div className="flex-1 min-w-0 mt-4 sm:mt-0 sm:ml-4">
+                <h2 className="text-2xl font-black text-gray-900 truncate">
+                  {formData.name || user?.email?.split('@')[0] || 'Your Name'}
+                </h2>
+                <p className="text-gray-500 text-sm">{user?.email}</p>
+                {isConsultant && profile?.domain && (
+                  <p className="text-blue-600 font-semibold text-sm mt-0.5">{profile.domain}</p>
+                )}
+              </div>
+
+              {/* Edit/Save */}
+              <div className="flex gap-2">
+                {isEditing ? (
+                  <>
+                    <button
+                      onClick={() => { setIsEditing(false); fetchProfile(); }}
+                      className="px-4 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 font-bold hover:bg-gray-50 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 disabled:opacity-60"
+                    >
+                      {saving ? <Loader className="animate-spin" size={16} /> : <Save size={16} />}
+                      Save
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gray-900 text-white font-bold hover:bg-gray-700 transition-all"
+                  >
+                    <Edit2 size={16} /> Edit Profile
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Profile Form */}
+            <div className="grid md:grid-cols-2 gap-5">
+              {/* Full Name */}
+              <Field label="Full Name" icon={<UserIcon size={16} />}>
+                <input
+                  name="name"
+                  type="text"
+                  value={formData.name}
+                  onChange={handleChange}
+                  disabled={!isEditing}
+                  placeholder="Your full name"
+                  className={inputClass(isEditing)}
+                />
+              </Field>
+
+              {/* Email */}
+              <Field label="Email Address" icon={<Mail size={16} />}>
+                <input
+                  type="email"
+                  readOnly
+                  value={user?.email || ''}
+                  className="w-full bg-gray-100 rounded-xl px-4 py-3 text-gray-500 font-medium cursor-not-allowed"
+                />
+              </Field>
+
+              {/* Phone */}
+              <Field label="Phone Number" icon={<Phone size={16} />}>
+                <input
+                  name="phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  disabled={!isEditing}
+                  placeholder="+91 98765 43210"
+                  className={inputClass(isEditing)}
+                />
+              </Field>
+
+              {/* Consultant-specific */}
+              {isConsultant && (
+                <>
+                  <Field label="Domain / Expertise">
+                    <input
+                      name="domain"
+                      type="text"
+                      value={formData.domain}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      placeholder="e.g. Legal, Medical, Tech"
+                      className={inputClass(isEditing)}
+                    />
+                  </Field>
+
+                  <Field label="Hourly Rate (₹)">
+                    <input
+                      name="hourly_price"
+                      type="number"
+                      value={formData.hourly_price}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      placeholder="e.g. 1500"
+                      className={inputClass(isEditing)}
+                    />
+                  </Field>
+
+                  <Field label="Languages Spoken">
+                    <input
+                      name="languages"
+                      type="text"
+                      value={formData.languages}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      placeholder="e.g. English, Hindi"
+                      className={inputClass(isEditing)}
+                    />
+                  </Field>
+
+                  <div className="md:col-span-2">
+                    <Field label="Bio / Introduction">
+                      <textarea
+                        name="bio"
+                        rows={3}
+                        value={formData.bio}
+                        onChange={handleChange}
+                        disabled={!isEditing}
+                        placeholder="Tell clients about your expertise and experience..."
+                        className={`${inputClass(isEditing)} resize-none`}
+                      />
+                    </Field>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ─── KYC + Certificates (Consultant only) ────────────────────── */}
+        {isConsultant && (
+          <div className="grid md:grid-cols-2 gap-6">
+
+            {/* KYC Card */}
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="bg-blue-100 p-2 rounded-xl">
+                    <Shield className="text-blue-600" size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">KYC Verification</h3>
+                    <p className="text-xs text-gray-500">Identity proof documents</p>
+                  </div>
+                </div>
+                {kycStatus && kycBadge(kycStatus.kyc_status)}
+              </div>
+
+              {/* Existing KYC docs */}
+              {kycStatus?.documents?.length > 0 ? (
+                <div className="space-y-2">
+                  {kycStatus.documents.map((doc: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl group">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="bg-blue-50 p-1.5 rounded-lg shrink-0">
+                          <FileText className="text-blue-500" size={14} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 truncate">{doc.name}</p>
+                          <p className="text-xs text-gray-400">{new Date(doc.uploaded_at).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0 ml-2">
+                        <button
+                          onClick={() => window.open(doc.url, '_blank')}
+                          className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="View"
+                        >
+                          <Eye size={15} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteKyc(doc.id)}
+                          className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 bg-gray-50 rounded-2xl">
+                  <Shield className="mx-auto text-gray-300 mb-2" size={32} />
+                  <p className="text-sm text-gray-500">No documents uploaded yet</p>
+                  <p className="text-xs text-gray-400 mt-1">Upload your ID proof to get verified</p>
+                </div>
+              )}
+
+              {/* Upload button — always enabled */}
+              <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm transition-all cursor-pointer ${uploadingKyc
+                  ? 'bg-blue-100 text-blue-400 cursor-wait'
+                  : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-100'
+                }`}>
+                {uploadingKyc
+                  ? <><Loader className="animate-spin" size={16} /> Uploading...</>
+                  : <><PlusCircle size={16} /> Upload KYC Document</>
+                }
                 <input
                   type="file"
-                  multiple
                   accept=".pdf,.jpg,.jpeg,.png"
                   onChange={handleKycUpload}
                   disabled={uploadingKyc}
                   className="hidden"
                 />
+              </label>
+              <p className="text-xs text-gray-400 text-center">Accepted: PDF, JPG, PNG</p>
+            </div>
+
+            {/* Certificates Card */}
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="bg-purple-100 p-2 rounded-xl">
+                    <Award className="text-purple-600" size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">Certificates</h3>
+                    <p className="text-xs text-gray-500">{certificates.length} uploaded</p>
+                  </div>
+                </div>
+                {certificates.length > 0 && (
+                  <span className="bg-purple-100 text-purple-700 text-xs font-bold px-2.5 py-1 rounded-full">
+                    {certificates.length}
+                  </span>
+                )}
               </div>
-            </label>
 
-            {uploadingKyc && (
-              <div className="flex items-center justify-center py-4">
-                <Loader className="animate-spin text-blue-600 mr-2" />
-                <span className="text-sm text-gray-600">Uploading...</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
+              {/* Existing certs */}
+              {certificates.length > 0 ? (
+                <div className="space-y-2">
+                  {certificates.map((cert: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="bg-purple-50 p-1.5 rounded-lg shrink-0">
+                          <Award className="text-purple-500" size={14} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 truncate">{cert.name}</p>
+                          <p className="text-xs text-gray-400">
+                            {cert.issuer !== 'Not specified' ? `${cert.issuer} · ` : ''}
+                            {new Date(cert.uploaded_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0 ml-2">
+                        <button
+                          onClick={() => window.open(cert.url, '_blank')}
+                          className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="View"
+                        >
+                          <Eye size={15} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCert(cert.id)}
+                          className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 bg-gray-50 rounded-2xl">
+                  <Award className="mx-auto text-gray-300 mb-2" size={32} />
+                  <p className="text-sm text-gray-500">No certificates uploaded yet</p>
+                  <p className="text-xs text-gray-400 mt-1">Add your qualifications and achievements</p>
+                </div>
+              )}
 
-  // Certificate Upload Modal
-  const CertificateUploadModal = () => {
-    if (!showCertificateModal) return null;
-
-    return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[999]">
-        <div className="bg-white p-8 rounded-3xl w-full max-w-md shadow-xl space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-black text-gray-900">Upload Certificates</h2>
-            <button onClick={() => setShowCertificateModal(false)} className="text-gray-400 hover:text-gray-600">
-              <X size={24} />
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Upload your professional certificates, qualifications, and achievements. Accepted formats: PDF, JPG, PNG
-            </p>
-            
-            <label className="block">
-              <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-purple-500 transition-colors cursor-pointer">
-                <Award className="mx-auto text-gray-400 mb-3" size={32} />
-                <p className="text-sm text-gray-600">Click to upload or drag and drop</p>
-                <p className="text-xs text-gray-500 mt-1">Maximum 10 files, 10MB each</p>
+              {/* Upload button — always enabled */}
+              <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm transition-all cursor-pointer ${uploadingCert
+                  ? 'bg-purple-100 text-purple-400 cursor-wait'
+                  : 'bg-purple-600 text-white hover:bg-purple-700 shadow-sm shadow-purple-100'
+                }`}>
+                {uploadingCert
+                  ? <><Loader className="animate-spin" size={16} /> Uploading...</>
+                  : <><PlusCircle size={16} /> Upload Certificate</>
+                }
                 <input
                   type="file"
-                  multiple
                   accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={handleCertificateUpload}
-                  disabled={uploadingCertificates}
+                  onChange={handleCertUpload}
+                  disabled={uploadingCert}
                   className="hidden"
                 />
-              </div>
-            </label>
-
-            {uploadingCertificates && (
-              <div className="flex items-center justify-center py-4">
-                <Loader className="animate-spin text-purple-600 mr-2" />
-                <span className="text-sm text-gray-600">Uploading...</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  if (loading) return <Layout title="My Profile"><div className="flex justify-center p-12"><Loader className="animate-spin" /></div></Layout>;
-
-  return (
-    <Layout title="My Profile">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-          {/* Header/Cover */}
-          <div className="h-32 bg-gradient-to-r from-blue-500 to-indigo-600"></div>
-
-          <div className="px-8 pb-8">
-            <div className="relative -mt-16 mb-8 flex items-end justify-between">
-              <div className="relative group">
-                  <img 
-                  src={profile?.profile_pic || user?.avatar || `https://ui-avatars.com/api/?name=${user?.name || user?.email}&background=3b82f6&color=fff&size=128`} 
-                  className="w-32 h-32 rounded-3xl border-8 border-white object-cover shadow-lg" 
-                  alt="Avatar" 
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.src = `https://ui-avatars.com/api/?name=${user?.name || user?.email}&background=3b82f6&color=fff&size=128`;
-                  }}
-                />
-
-                {/* Upload overlay - show for all users */}
-                <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl cursor-pointer">
-                  {uploadingImage ? <Loader className="text-white animate-spin" /> : <Camera className="text-white" />}
-                  <input 
-                    type="file" 
-                    className="hidden" 
-                    accept="image/*" 
-                    onChange={
-                      (user?.role === 'CONSULTANT' || user?.role === 'ENTERPRISE_ADMIN')
-                        ? handleConsultantImageUpload
-                        : handleUserImageUpload
-                    }
-                    disabled={uploadingImage} 
-                  />
-                </label>
-              </div>
-              <div className="flex space-x-3 mb-2">
-                {!isEditing ? (
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="bg-gray-800 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-gray-900 transition-all"
-                  >
-                    Edit Profile
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="bg-blue-600 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center"
-                  >
-                    {saving ? (
-                      <Loader className="animate-spin mr-2" size={18} />
-                    ) : (
-                      <Save className="mr-2" size={18} />
-                    )}
-                    Save Changes
-                  </button>
-                )}
-              </div>
-
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-8">
-              <div className="md:col-span-1 space-y-2">
-                <h3 className="font-bold text-gray-900 text-lg">Profile Information</h3>
-                <p className="text-sm text-gray-500">Update your account photo and personal details here.</p>
-                {/* Navigation links for settings could go here */}
-              </div>
-
-              <div className="md:col-span-2 space-y-6">
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Full Name </label>
-                    <input 
-                    name="name"
-                    type="text"
-                    value={formData.name}
-                    onChange={handleChange}
-                    disabled={!isEditing}
-
-                    className="w-full bg-gray-50 rounded-2xl px-5 py-3.5"
-                  />
-
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Email Address (Read Only)</label>
-                    <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                      <input type="email" readOnly defaultValue={user?.email} className="w-full bg-gray-100 border-none rounded-2xl pl-12 pr-5 py-3.5 text-gray-500 font-medium outline-none" disabled={!isEditing} />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Contact Number</label>
-                    <div className="relative">
-                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                      <input 
-                        name="phone"
-                        type="tel"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        disabled={!isEditing}
-                        placeholder="+91 1234567890"
-                        className="w-full bg-gray-50 border-none rounded-2xl pl-12 pr-5 py-3.5 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Consultant Specific Fields */}
-                {(user?.role === 'CONSULTANT' || user?.role === 'ENTERPRISE_ADMIN') && (
-                  <>
-                    <div className="grid sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Hourly Price ($)</label>
-                        <input
-                          name="hourly_price"
-                          type="number"
-                          value={formData.hourly_price}
-                          onChange={handleChange}
-                          disabled={!isEditing}
-                          className="w-full bg-gray-50 border-none rounded-2xl px-5 py-3.5 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Domain / Expertise</label>
-                        <input
-                          name="domain"
-                          type="text"
-                          value={formData.domain}
-                          onChange={handleChange}
-                          disabled={!isEditing}
-
-                          className="w-full bg-gray-50 border-none rounded-2xl px-5 py-3.5 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Bio</label>
-                      <textarea
-                        name="bio"
-                        rows={4}
-                        value={formData.bio}
-                        onChange={handleChange}
-                        disabled={!isEditing}
-                        className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                        placeholder="Tell clients about your experience..."
-                      ></textarea>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Languages</label>
-                      <input
-                        name="languages"
-                        type="text"
-                        value={formData.languages}
-                        onChange={handleChange}
-                        disabled={!isEditing}
-
-                        className="w-full bg-gray-50 border-none rounded-2xl px-5 py-3.5 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                  </>
-                )}
-
-                {/* KYC Section */}
-                {(user?.role === 'CONSULTANT' || user?.role === 'ENTERPRISE_ADMIN') && (
-                  <div className="border-t pt-6 mt-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center space-x-2">
-                        <Shield className="text-blue-600" size={20} />
-                        <h3 className="font-bold text-gray-900 text-lg">KYC Verification</h3>
-                      </div>
-                      {kycStatus && (
-                        <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${getKycStatusColor(kycStatus.kyc_status)}`}>
-                          {getKycStatusIcon(kycStatus.kyc_status)}
-                          <span>{kycStatus.kyc_status}</span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-3">
-                      {kycStatus?.documents && kycStatus.documents.length > 0 ? (
-                        <div className="space-y-2">
-                          {kycStatus.documents.map((doc: any, index: number) => (
-                            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                              <div className="flex items-center space-x-3">
-                                <FileText className="text-gray-400" size={16} />
-                                <div>
-                                  <p className="text-sm font-medium text-gray-900">{doc.name}</p>
-                                  <p className="text-xs text-gray-500">Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <button
-                                  onClick={() => window.open(doc.url, '_blank')}
-                                  disabled={!isEditing}
-                                  className={`p-1 ${!isEditing ? 'text-gray-300 cursor-not-allowed' : 'text-blue-500 hover:text-blue-700'}`}
-                                  title="View Document"
-                                >
-                                  <Eye size={16} />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteKycDocument(doc.id)}
-                                  disabled={!isEditing}
-                                  className={`p-1 ${!isEditing ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:text-red-700'}`}
-                                  title="Delete Document"
-                                >
-                                  <X size={16} />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 bg-gray-50 rounded-xl">
-                          <Shield className="mx-auto text-gray-400 mb-3" size={32} />
-                          <p className="text-sm text-gray-500 mb-4">No KYC documents uploaded yet</p>
-                        </div>
-                      )}
-                      
-                      <button
-                        onClick={() => setShowKycModal(true)}
-                        disabled={!isEditing}
-                        className={`w-full py-3 rounded-xl font-medium transition-colors flex items-center justify-center space-x-2 ${
-                          !isEditing 
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                            : 'bg-blue-600 text-white hover:bg-blue-700'
-                        }`}
-                      >
-                        <Upload size={18} />
-                        <span>Upload KYC Documents</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Certificates Section */}
-                {(user?.role === 'CONSULTANT' || user?.role === 'ENTERPRISE_ADMIN') && (
-                  <div className="border-t pt-6 mt-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center space-x-2">
-                        <Award className="text-purple-600" size={20} />
-                        <h3 className="font-bold text-gray-900 text-lg">Certificates & Qualifications</h3>
-                      </div>
-                      <span className="text-sm text-gray-500">{certificates.length} uploaded</span>
-                    </div>
-                    
-                    <div className="space-y-3">
-                      {certificates.length > 0 ? (
-                        <div className="space-y-2">
-                          {certificates.map((cert: any, index: number) => (
-                            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                              <div className="flex items-center space-x-3">
-                                <Award className="text-purple-400" size={16} />
-                                <div>
-                                  <p className="text-sm font-medium text-gray-900">{cert.name}</p>
-                                  <p className="text-xs text-gray-500">
-                                    {cert.issuer !== "Not specified" && `${cert.issuer} • `}
-                                    Uploaded {new Date(cert.uploaded_at).toLocaleDateString()}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <button
-                                  onClick={() => window.open(cert.url, '_blank')}
-                                  disabled={!isEditing}
-                                  className={`p-1 ${!isEditing ? 'text-gray-300 cursor-not-allowed' : 'text-blue-500 hover:text-blue-700'}`}
-                                  title="View Certificate"
-                                >
-                                  <Eye size={16} />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteCertificate(cert.id)}
-                                  disabled={!isEditing}
-                                  className={`p-1 ${!isEditing ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:text-red-700'}`}
-                                  title="Delete Certificate"
-                                >
-                                  <X size={16} />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 bg-gray-50 rounded-xl">
-                          <Award className="mx-auto text-gray-400 mb-3" size={32} />
-                          <p className="text-sm text-gray-500 mb-4">No certificates uploaded yet</p>
-                        </div>
-                      )}
-                      
-                      <button
-                        onClick={() => setShowCertificateModal(true)}
-                        disabled={!isEditing}
-                        className={`w-full py-3 rounded-xl font-medium transition-colors flex items-center justify-center space-x-2 ${
-                          !isEditing 
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                            : 'bg-purple-600 text-white hover:bg-purple-700'
-                        }`}
-                      >
-                        <Upload size={18} />
-                        <span>Upload Certificates</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              </label>
+              <p className="text-xs text-gray-400 text-center">Accepted: PDF, JPG, PNG</p>
             </div>
           </div>
-        </div>
+        )}
       </div>
-
-      {/* Modals */}
-      <KycUploadModal />
-      <CertificateUploadModal />
     </Layout>
   );
 };
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+const inputClass = (editing: boolean) =>
+  `w-full rounded-xl px-4 py-3 font-medium outline-none transition-all ${editing
+    ? 'bg-white border-2 border-blue-300 focus:border-blue-500 text-gray-900'
+    : 'bg-gray-50 text-gray-700 cursor-default'
+  }`;
+
+const Field: React.FC<{ label: string; icon?: React.ReactNode; children: React.ReactNode }> = ({
+  label,
+  icon,
+  children,
+}) => (
+  <div className="space-y-1.5">
+    <label className="flex items-center gap-1.5 text-xs font-black text-gray-400 uppercase tracking-widest">
+      {icon}
+      {label}
+    </label>
+    {children}
+  </div>
+);
 
 export default ProfilePage;

@@ -47,10 +47,10 @@ const ConsultantDetailsPage: React.FC = () => {
 
   const fetchAvailableSlots = async () => {
     if (!bookingDate) return;
-    
+
     setLoadingSlots(true);
     try {
-      const response = await fetch(`http://localhost:5001/consultants/${id}/availability?date=${bookingDate}`);
+      const response = await fetch(`http://localhost:5000/consultants/${id}/availability?date=${bookingDate}`);
       const slots = await response.json();
       setAvailableSlots(slots);
     } catch (error) {
@@ -72,7 +72,7 @@ const ConsultantDetailsPage: React.FC = () => {
         date: bookingDate,
         time_slot: selectedSlot,
       });
-      
+
       alert('Booking request sent successfully! Waiting for consultant confirmation.');
       setBookingDate('');
       setSelectedSlot('');
@@ -114,7 +114,7 @@ const ConsultantDetailsPage: React.FC = () => {
   return (
     <Layout title={`${consultant.name} - Consultant Details`}>
       <div className="max-w-6xl mx-auto space-y-8">
-        
+
         {/* Back Button */}
         <button
           onClick={() => navigate('/search')}
@@ -127,7 +127,7 @@ const ConsultantDetailsPage: React.FC = () => {
         {/* Consultant Profile */}
         <div className="bg-white rounded-3xl p-8 border shadow-lg">
           <div className="flex flex-col md:flex-row gap-8">
-            
+
             {/* Profile Image */}
             <div className="flex-shrink-0">
               <img
@@ -141,7 +141,7 @@ const ConsultantDetailsPage: React.FC = () => {
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-800 mb-2">{consultant.name}</h1>
               <p className="text-xl text-blue-600 font-semibold mb-4">{consultant.domain}</p>
-              
+
               <div className="flex items-center gap-4 mb-4">
                 <div className="flex items-center">
                   <Star size={16} className="text-yellow-500 mr-1" />
@@ -155,7 +155,7 @@ const ConsultantDetailsPage: React.FC = () => {
                   <DollarSign size={16} className="mr-2" />
                   <span className="font-semibold">₹{consultant.hourly_price} / session</span>
                 </div>
-                
+
                 {consultant.languages && (
                   <div className="flex items-center text-gray-600">
                     <MessageCircle size={16} className="mr-2" />
@@ -178,7 +178,7 @@ const ConsultantDetailsPage: React.FC = () => {
         {/* Booking Section */}
         <div className="bg-white rounded-3xl p-8 border shadow-lg">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Book a Consultation</h2>
-          
+
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -192,7 +192,7 @@ const ConsultantDetailsPage: React.FC = () => {
                 className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Available Time Slots
@@ -212,13 +212,12 @@ const ConsultantDetailsPage: React.FC = () => {
                       key={slot.id}
                       onClick={() => setSelectedSlot(slot.available_time)}
                       disabled={slot.is_booked}
-                      className={`p-3 border rounded-lg text-sm font-medium transition-all ${
-                        selectedSlot === slot.available_time
+                      className={`p-3 border rounded-lg text-sm font-medium transition-all ${selectedSlot === slot.available_time
                           ? 'bg-blue-600 text-white border-blue-600'
                           : slot.is_booked
-                          ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                          : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer'
-                      }`}
+                            ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                            : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer'
+                        }`}
                     >
                       <Clock size={14} className="mb-1" />
                       <div>{slot.available_time}</div>
@@ -236,16 +235,15 @@ const ConsultantDetailsPage: React.FC = () => {
             <button
               onClick={handleBookConsultation}
               disabled={!selectedSlot}
-              className={`flex-1 py-3 rounded-xl font-semibold transition flex items-center justify-center ${
-                selectedSlot
+              className={`flex-1 py-3 rounded-xl font-semibold transition flex items-center justify-center ${selectedSlot
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
+                }`}
             >
               <Calendar size={20} className="mr-2" />
               {selectedSlot ? 'Book Selected Slot' : 'Select a Time Slot'}
             </button>
-            
+
             <button
               className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition flex items-center justify-center"
             >

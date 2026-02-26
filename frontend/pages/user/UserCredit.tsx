@@ -69,8 +69,8 @@ const UserCredit: React.FC = () => {
 
       // Redirect to backend payment page
       // Backend will handle Razorpay and redirect back after payment
-      window.location.href = `http://localhost:5001/payment-page?order_id=${orderResponse.data.order_id}&amount=${packPrice}&credits=${packAmount}`;
-      
+      window.location.href = `http://localhost:5000/payment-page?order_id=${orderResponse.data.order_id}&amount=${packPrice}&credits=${packAmount}`;
+
     } catch (error) {
       console.error('Payment error:', error);
       addToast('Failed to initiate payment. Please try again.', "error");
@@ -174,11 +174,10 @@ const UserCredit: React.FC = () => {
                   </div>
 
                   <span
-                    className={`font-bold ${
-                      txn.type === "CREDIT"
+                    className={`font-bold ${txn.type === "CREDIT"
                         ? "text-emerald-600"
                         : "text-red-600"
-                    }`}
+                      }`}
                   >
                     {txn.type === "CREDIT" ? "+" : "-"}
                     {txn.amount}

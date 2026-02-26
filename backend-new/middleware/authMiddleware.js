@@ -35,19 +35,19 @@ const verifyFirebaseToken = async (req, res, next) => {
       isDevToken = true;
     } catch (devError) {
       console.log("Dev JWT verification failed:", devError.message);
-      
+
       // Try Firebase token
       console.log("Trying Firebase verification...");
-      
+
       try {
         decodedToken = await admin.auth().verifyIdToken(token);
         console.log("✅ Firebase token verified for UID:", decodedToken.uid);
       } catch (firebaseError) {
         console.log("Firebase verification failed:", firebaseError.message);
-        
+
         // In dev mode, try to extract email from token payload (fallback)
         console.log("Trying dev mode fallback decoder...");
-        
+
         try {
           // Try to decode the token manually (without verification) to extract email
           const parts = token.split(".");
@@ -96,13 +96,34 @@ const verifyFirebaseToken = async (req, res, next) => {
 
     // Find user in database by firebase_uid (for Firebase tokens) or by email (for dev tokens)
     let user;
-    
+
     if (isDevToken) {
       // For dev tokens, find by email
       user = await prisma.user.findUnique({
         where: { email },
         include: { consultant: true },
       });
+
+      // If user not found (e.g. after DB clear), create them from token data
+      if (!user) {
+        console.log("⚠️ Dev token user not found in DB, creating fresh user for:", email);
+        try {
+          user = await prisma.user.create({
+            data: {
+              firebase_uid: `dev_${email}_${Date.now()}`,
+              email,
+              name: decodedToken.name || email.split('@')[0],
+              role: decodedToken.role || "USER",
+              is_verified: true,
+            },
+            include: { consultant: true },
+          });
+          console.log("✅ Created fresh user for dev token:", user.email, "Role:", user.role);
+        } catch (createErr) {
+          console.error("❌ Failed to create user for dev token:", createErr.message);
+          return res.status(401).json({ error: "User not found. Please log in again." });
+        }
+      }
     } else {
       // For Firebase tokens, find by firebase_uid
       user = await prisma.user.findUnique({
@@ -143,6 +164,11 @@ const verifyFirebaseToken = async (req, res, next) => {
         });
         console.log("✅ Created new user for Firebase UID:", user.id);
       }
+    }
+
+    // Final null guard
+    if (!user) {
+      return res.status(401).json({ error: "User not found. Please log in again." });
     }
 
     // Attach user to request object

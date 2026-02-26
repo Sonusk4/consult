@@ -78,6 +78,8 @@ const ConsultantDashboard: React.FC = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [kycFile, setKycFile] = useState<File | null>(null);
+  const [kycFileName, setKycFileName] = useState<string>('');
 
   useEffect(() => {
     fetchProfile();
@@ -116,20 +118,20 @@ const ConsultantDashboard: React.FC = () => {
         const emptyData =
           timePeriod === "7days"
             ? [
-                { name: "Mon", revenue: 0 },
-                { name: "Tue", revenue: 0 },
-                { name: "Wed", revenue: 0 },
-                { name: "Thu", revenue: 0 },
-                { name: "Fri", revenue: 0 },
-                { name: "Sat", revenue: 0 },
-                { name: "Sun", revenue: 0 },
-              ]
+              { name: "Mon", revenue: 0 },
+              { name: "Tue", revenue: 0 },
+              { name: "Wed", revenue: 0 },
+              { name: "Thu", revenue: 0 },
+              { name: "Fri", revenue: 0 },
+              { name: "Sat", revenue: 0 },
+              { name: "Sun", revenue: 0 },
+            ]
             : [
-                { name: "Week 1", revenue: 0 },
-                { name: "Week 2", revenue: 0 },
-                { name: "Week 3", revenue: 0 },
-                { name: "Week 4", revenue: 0 },
-              ];
+              { name: "Week 1", revenue: 0 },
+              { name: "Week 2", revenue: 0 },
+              { name: "Week 3", revenue: 0 },
+              { name: "Week 4", revenue: 0 },
+            ];
         setRevenueData(emptyData);
         return;
       }
@@ -271,6 +273,17 @@ const ConsultantDashboard: React.FC = () => {
             uploadErr
           );
           addToast("Profile created, but image upload failed", "warning");
+        }
+      }
+
+      // 3. Upload KYC document if selected
+      if (kycFile) {
+        try {
+          await consultantsApi.uploadKycDoc(kycFile);
+          console.log("KYC document uploaded successfully");
+        } catch (kycErr) {
+          console.error("Failed to upload KYC document", kycErr);
+          addToast("Profile created, but KYC upload failed", "warning");
         }
       }
 
@@ -444,6 +457,36 @@ const ConsultantDashboard: React.FC = () => {
                 />
               </div>
 
+              {/* KYC Document Upload */}
+              <div className="border-t pt-6">
+                <label className="block text-sm font-bold text-gray-700 mb-1">
+                  KYC Document <span className="text-gray-400 font-normal">(Optional – Identity proof)</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-3">Upload your identity proof, address proof, or any verification document. Accepted: PDF, JPG, PNG</p>
+                <label className="flex items-center justify-center gap-3 border-2 border-dashed border-gray-300 rounded-xl p-4 cursor-pointer hover:border-blue-400 transition-colors">
+                  <Upload size={20} className="text-gray-400" />
+                  <span className="text-sm text-gray-500">
+                    {kycFileName ? kycFileName : 'Click to upload KYC document'}
+                  </span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setKycFile(e.target.files[0]);
+                        setKycFileName(e.target.files[0].name);
+                      }
+                    }}
+                  />
+                </label>
+                {kycFileName && (
+                  <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+                    <span>✓</span> {kycFileName} ready to upload
+                  </p>
+                )}
+              </div>
+
               <button
                 type="submit"
                 disabled={submitting}
@@ -535,80 +578,79 @@ const ConsultantDashboard: React.FC = () => {
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {statsLoading
             ? // Loading skeleton for stats
-              Array.from({ length: 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"
-                >
-                  <div className="animate-pulse">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="bg-gray-200 p-3 rounded-2xl w-12 h-12"></div>
-                      <div className="bg-gray-200 px-3 py-1 rounded-full w-16 h-6"></div>
-                    </div>
-                    <div className="bg-gray-200 h-8 w-20 rounded mb-2"></div>
-                    <div className="bg-gray-200 h-4 w-24 rounded"></div>
-                  </div>
-                </div>
-              ))
-            : [
-                {
-                  label: "Today's Earnings",
-                  value: `₹${
-                    revenueData[revenueData.length - 1]?.revenue || 0
-                  }`,
-                  change: "+12%",
-                  icon: <span className="text-2xl text-emerald-600">₹</span>,
-                  color: "bg-emerald-50",
-                },
-                {
-                  label: "Total Sessions",
-                  value: dashboardStats.totalSessions,
-                  change: "100% success",
-                  icon: <Video className="text-blue-600" />,
-                  color: "bg-blue-50",
-                },
-                {
-                  label: "Active Clients",
-                  value: dashboardStats.activeClients,
-                  change: "+8%",
-                  icon: <Users className="text-amber-600" />,
-                  color: "bg-amber-50",
-                },
-                {
-                  label: "Avg. Rating",
-                  value:
-                    profile.rating > 0
-                      ? profile.rating.toFixed(1)
-                      : dashboardStats.averageRating,
-                  change:
-                    profile.total_reviews > 0
-                      ? `${profile.total_reviews} reviews`
-                      : "No reviews",
-                  icon: <Clock className="text-purple-600" />,
-                  color: "bg-purple-50",
-                },
-              ].map((stat, i) => (
-                <div
-                  key={i}
-                  className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"
-                >
+            Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"
+              >
+                <div className="animate-pulse">
                   <div className="flex items-center justify-between mb-4">
-                    <div className={`${stat.color} p-3 rounded-2xl`}>
-                      {stat.icon}
-                    </div>
-                    <div className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
-                      <ArrowUpRight size={14} className="mr-0.5" />{" "}
-                      {stat.change}
-                    </div>
+                    <div className="bg-gray-200 p-3 rounded-2xl w-12 h-12"></div>
+                    <div className="bg-gray-200 px-3 py-1 rounded-full w-16 h-6"></div>
                   </div>
-                  <p className="text-2xl font-black text-gray-900">
-                    {stat.value}
-                  </p>
-                  <p className="text-sm text-gray-500 font-medium uppercase tracking-wider mt-1">
-                    {stat.label}
-                  </p>
+                  <div className="bg-gray-200 h-8 w-20 rounded mb-2"></div>
+                  <div className="bg-gray-200 h-4 w-24 rounded"></div>
                 </div>
-              ))}
+              </div>
+            ))
+            : [
+              {
+                label: "Today's Earnings",
+                value: `₹${revenueData[revenueData.length - 1]?.revenue || 0
+                  }`,
+                change: "+12%",
+                icon: <span className="text-2xl text-emerald-600">₹</span>,
+                color: "bg-emerald-50",
+              },
+              {
+                label: "Total Sessions",
+                value: dashboardStats.totalSessions,
+                change: "100% success",
+                icon: <Video className="text-blue-600" />,
+                color: "bg-blue-50",
+              },
+              {
+                label: "Active Clients",
+                value: dashboardStats.activeClients,
+                change: "+8%",
+                icon: <Users className="text-amber-600" />,
+                color: "bg-amber-50",
+              },
+              {
+                label: "Avg. Rating",
+                value:
+                  profile.rating > 0
+                    ? profile.rating.toFixed(1)
+                    : dashboardStats.averageRating,
+                change:
+                  profile.total_reviews > 0
+                    ? `${profile.total_reviews} reviews`
+                    : "No reviews",
+                icon: <Clock className="text-purple-600" />,
+                color: "bg-purple-50",
+              },
+            ].map((stat, i) => (
+              <div
+                key={i}
+                className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className={`${stat.color} p-3 rounded-2xl`}>
+                    {stat.icon}
+                  </div>
+                  <div className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
+                    <ArrowUpRight size={14} className="mr-0.5" />{" "}
+                    {stat.change}
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-gray-900">
+                  {stat.value}
+                </p>
+                <p className="text-sm text-gray-500 font-medium uppercase tracking-wider mt-1">
+                  {stat.label}
+                </p>
+              </div>
+            ))}
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
@@ -692,11 +734,10 @@ const ConsultantDashboard: React.FC = () => {
                         {slot.time}
                       </span>
                       <span
-                        className={`text-xs px-2 py-1 rounded-full font-medium ${
-                          slot.status === "available"
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${slot.status === "available"
                             ? "bg-green-100 text-green-700"
                             : "bg-blue-100 text-blue-700"
-                        }`}
+                          }`}
                       >
                         {slot.status === "available" ? "Available" : "Booked"}
                       </span>
@@ -762,11 +803,10 @@ const ConsultantDashboard: React.FC = () => {
                         </p>
                       </div>
                       <div
-                        className={`text-xs px-2 py-1 rounded-full font-medium ${
-                          session.status === "UPCOMING"
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${session.status === "UPCOMING"
                             ? "bg-blue-100 text-blue-700"
                             : "bg-gray-100 text-gray-700"
-                        }`}
+                          }`}
                       >
                         {session.status}
                       </div>

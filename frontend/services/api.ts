@@ -5,7 +5,7 @@ import { UserRole } from "../types";
 /* ================= AXIOS INSTANCE ================= */
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5001",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5000",
   headers: {
     "Content-Type": "application/json",
   },
@@ -22,15 +22,26 @@ api.interceptors.response.use(
 
     console.error("API Error:", message);
 
-    // Only auto-logout on 401 if it's not during OTP verification
-    // This prevents accidental logouts from other 401 errors
-    if (error.response?.status === 401) {
-      const isOtpEndpoint = error.config?.url?.includes("/auth/verify-otp");
-      const isLoginEndpoint = error.config?.url?.includes("/auth/me");
-      
-      // Don't auto-logout during these operations
-      if (!isOtpEndpoint && !isLoginEndpoint) {
-        console.warn("⚠️ Authentication failed - user may need to re-login");
+    const isAuthEndpoint =
+      error.config?.url?.includes("/auth/verify-otp") ||
+      error.config?.url?.includes("/auth/me") ||
+      error.config?.url?.includes("/auth/send-otp");
+
+    // Auto-logout when session is invalid (stale token / user deleted from DB)
+    const isUserNotFound =
+      typeof message === "string" &&
+      (message.includes("User not found") ||
+        message.includes("Please log in again") ||
+        message.includes("Cannot read properties of null"));
+
+    if (!isAuthEndpoint && (error.response?.status === 401 || isUserNotFound)) {
+      console.warn("⚠️ Stale session detected — clearing tokens and redirecting to login");
+      localStorage.removeItem("user");
+      localStorage.removeItem("devToken");
+      sessionStorage.clear();
+      // Redirect to login (only if not already there)
+      if (!window.location.pathname.includes("/login") && !window.location.pathname.includes("/signup")) {
+        window.location.href = "/login";
       }
     }
 
@@ -53,7 +64,7 @@ api.interceptors.request.use(
   async (config) => {
     // Check for dev mode token first (stored in localStorage)
     let devToken = localStorage.getItem("devToken");
-    
+
     if (devToken) {
       config.headers.Authorization = `Bearer ${devToken}`;
       console.log("✅ Added dev token to request");
@@ -68,8 +79,8 @@ api.interceptors.request.use(
         // Create a mock JWT-like token that the backend can identify
         // Format: base64(header).base64(payload).base64(signature)
         const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-        const payload = btoa(JSON.stringify({ 
-          email: user.email, 
+        const payload = btoa(JSON.stringify({
+          email: user.email,
           uid: user.id,
           iat: Math.floor(Date.now() / 1000),
           exp: Math.floor(Date.now() / 1000) + 86400 // 24 hours
@@ -201,6 +212,7 @@ export const consultants = {
 
     return response.data;
   },
+
   getDashboardStats: async () => {
     const response = await api.get("/consultant/dashboard-stats");
     return response.data;
@@ -222,13 +234,63 @@ export const consultants = {
     });
     return response.data;
   },
+
+  // KYC / Certificates
+  getKycStatus: async () => {
+    const response = await api.get("/consultant/kyc-status");
+    return response.data;
+  },
+
+  getCertificates: async () => {
+    const response = await api.get("/consultant/certificates");
+    return response.data;
+  },
+
+  uploadKycDoc: async (file: File) => {
+    const formData = new FormData();
+    formData.append("files", file);
+    const response = await api.post("/consultant/upload-kyc", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  },
+
+  uploadCertificate: async (file: File) => {
+    const formData = new FormData();
+    formData.append("files", file);
+    const response = await api.post("/consultant/upload-certificates", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  },
+
+  deleteKycDocument: async (documentId: number) => {
+    const response = await api.delete(`/consultant/kyc-document/${documentId}`);
+    return response.data;
+  },
+
+  deleteCertificate: async (certificateId: number) => {
+    const response = await api.delete(`/consultant/certificate/${certificateId}`);
+    return response.data;
+  },
 };
+
 
 /* ========================================================= */
 /* ========================= USERS ========================== */
 /* ========================================================= */
 
 export const users = {
+  getProfile: async () => {
+    const response = await api.get("/user/profile");
+    return response.data;
+  },
+
+  updateProfile: async (data: any) => {
+    const response = await api.put("/user/profile", data);
+    return response.data;
+  },
+
   uploadProfilePic: async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);

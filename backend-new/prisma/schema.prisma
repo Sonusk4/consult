@@ -45,6 +45,7 @@ model UserProfile {
   bio        String?
   headline   String?
   languages  String?
+  location   String?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -255,4 +256,15 @@ model EnterpriseInvite {
   created_at   DateTime @default(now())
 
   enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+}
+
+model Admin {
+  id         Int      @id @default(autoincrement())
+  email      String   @unique
+  password   String
+  name       String
+  avatar     String?
+  role       String   @default("ADMIN")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 }
