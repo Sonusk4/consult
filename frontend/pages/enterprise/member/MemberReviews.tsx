@@ -46,7 +46,7 @@ const MemberReviews: React.FC = () => {
   }, []);
 
   return (
-    <Layout>
+    <Layout title="My Reviews">
       <div className="p-8">
         <h1 className="text-2xl font-bold mb-6">My Reviews</h1>
 

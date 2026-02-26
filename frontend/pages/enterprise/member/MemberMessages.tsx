@@ -37,13 +37,13 @@ interface Booking {
 }
 
 interface Message {
-  id: number;
+  id: number | string;
   bookingId: number;
-  senderId: number;
+  senderId: number | string;
   content: string;
   created_at: string;
   sender?: {
-    id: number;
+    id: number | string;
     email: string;
     name?: string;
     role?: string;
@@ -458,7 +458,7 @@ const MemberMessages: React.FC = () => {
                       isMyMessage
                         ? "bg-blue-600 text-white rounded-br-none"
                         : "bg-white text-gray-700 rounded-bl-none"
-                    } ${msg.id < 0 ? "opacity-70" : ""}`}
+                    } ${typeof msg.id === 'number' && msg.id < 0 ? "opacity-70" : ""}`}
                   >
                     {!isMyMessage && msg.sender && (
                       <p className="text-xs font-medium text-gray-500 mb-1">
@@ -472,7 +472,7 @@ const MemberMessages: React.FC = () => {
                       }`}
                     >
                       {formatMessageTime(msg.created_at)}
-                      {msg.id < 0 && " • Sending..."}
+                      {typeof msg.id === 'number' && msg.id < 0 && " • Sending..."}
                     </p>
                   </div>
                 </div>
@@ -559,7 +559,7 @@ const MemberMessages: React.FC = () => {
       {isCalling && selectedBooking && socket && user && (
         <VideoCallModal
           bookingId={selectedBooking.id}
-          userId={user.id}
+          userId={Number(user.id)}
           socket={socket}
           onClose={() => setIsCalling(false)}
           startAgora={isCalling}

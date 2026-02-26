@@ -81,12 +81,11 @@ const EnterpriseDashboard: React.FC = () => {
     try {
       // TODO: Implement notifications endpoint
       // const res = await api.get("/notifications");
-
-      const data = Array.isArray(res.data)
-        ? res.data
-        : res.data?.notifications || [];
-
-      setNotifications(data.slice(0, 3));
+      // const data = Array.isArray(res.data)
+      //   ? res.data
+      //   : res.data?.notifications || [];
+      // setNotifications(data.slice(0, 3));
+      setNotifications([]);
     } catch {
       setNotifications([]);
     }
@@ -268,12 +267,6 @@ const EnterpriseDashboard: React.FC = () => {
         <div className="bg-white p-8 rounded-3xl border shadow-sm">
           <div className="flex justify-between mb-6">
             <h2 className="text-2xl font-bold">Notifications</h2>
-            <button
-              onClick={() => navigate("/enterprise/messages")}
-              className="text-blue-600"
-            >
-              View All
-            </button>
           </div>
 
           {notifications.length === 0 ? (

@@ -23,6 +23,28 @@ export interface User {
   is_verified?: boolean;
   avatar?: string;
   name?: string;
+  bio?: string | null;
+  expertise?: string[] | string | null;
+  availability?: any;
+  profile_photo?: string | null;
+  profile_pic?: string | null;
+  designation?: string | null;
+  verification_status?: string | null;
+  enterpriseId?: number | null;
+  location?: string | null;
+  profile?: {
+    avatar?: string | null;
+    bio?: string | null;
+    location?: string | null;
+    headline?: string | null;
+    languages?: string | null;
+    expertise?: any | null;
+    hourly_rate?: number | null;
+    availability?: string | null;
+    designation?: string | null;
+    years_experience?: number | null;
+    education?: string | null;
+  };
 }
 
 export interface Consultant {
@@ -37,6 +59,7 @@ export interface Consultant {
   profile_pic?: string | null;
   rating: number;
   total_reviews: number;
+  availability?: any;
   user?: {
     email: string;
   };
@@ -55,6 +78,12 @@ export interface Booking {
   payment_status?: string;
   meeting_link?: string;
   consultant?: Consultant;
+  price?: number;
+  type?: string;
+  user?: User;
+  review?: any;
+  chat_started?: boolean;
+  is_paid?: boolean;
 }
 
 export interface Session {

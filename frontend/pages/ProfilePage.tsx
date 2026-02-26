@@ -22,6 +22,7 @@ const ProfilePage: React.FC = () => {
   const [uploadingCertificates, setUploadingCertificates] = useState(false);
   const [showKycModal, setShowKycModal] = useState(false);
   const [showCertificateModal, setShowCertificateModal] = useState(false);
+  const [tempExpertise, setTempExpertise] = useState("");
   
   const [formData, setFormData] = useState({
     name: '',
@@ -30,7 +31,12 @@ const ProfilePage: React.FC = () => {
     bio: '',
     languages: '',
     phone: '',
-    location: 'Remote' // Default for now
+    location: 'Remote',
+    expertise: [] as string[],
+    availability: 'Full-time',
+    designation: '',
+    years_experience: '',
+    education: '',
   });
 const handleUserImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   if (e.target.files && e.target.files[0]) {
@@ -135,7 +141,12 @@ const handleConsultantImageUpload = async (e: React.ChangeEvent<HTMLInputElement
           bio: data.bio || '',
           languages: data.languages || '',
           phone: user?.phone || '',
-          location: 'Remote'
+          location: 'Remote',
+          expertise: data.expertise || [],
+          availability: data.availability || 'Full-time',
+          designation: data.designation || '',
+          years_experience: data.years_experience?.toString() || '',
+          education: data.education || '',
         });
       } else {
         // For regular users, load from user data
@@ -146,7 +157,12 @@ const handleConsultantImageUpload = async (e: React.ChangeEvent<HTMLInputElement
           bio: '',
           languages: '',
           phone: user?.phone || '',
-          location: 'Remote'
+          location: 'Remote',
+          expertise: [],
+          availability: 'Full-time',
+          designation: '',
+          years_experience: '',
+          education: '',
         });
       }
     } catch (err) {
@@ -156,8 +172,26 @@ const handleConsultantImageUpload = async (e: React.ChangeEvent<HTMLInputElement
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+  };
+
+  const handleAddExpertise = () => {
+    if (tempExpertise.trim() && formData.expertise.length < 15) {
+      setFormData({
+        ...formData,
+        expertise: [...formData.expertise, tempExpertise.trim()]
+      });
+      setTempExpertise("");
+    }
+  };
+
+  const handleRemoveExpertise = (index: number) => {
+    setFormData({
+      ...formData,
+      expertise: formData.expertise.filter((_, i) => i !== index)
+    });
   };
 
   const handleSave = async () => {
@@ -170,14 +204,24 @@ const handleConsultantImageUpload = async (e: React.ChangeEvent<HTMLInputElement
           bio: formData.bio,
           languages: formData.languages,
           full_name: formData.name,
-          phone: formData.phone
+          phone: formData.phone,
+          expertise: formData.expertise,
+          availability: formData.availability,
+          designation: formData.designation,
+          years_experience: formData.years_experience ? parseInt(formData.years_experience) : null,
+          education: formData.education
         });
       } else {
         // For regular users, update name and phone via a separate user update API
         // We'll need to add this endpoint to the backend
         await consultantsApi.updateProfile({
           full_name: formData.name,
-          phone: formData.phone
+          phone: formData.phone,
+          expertise: formData.expertise,
+          availability: formData.availability,
+          designation: formData.designation,
+          years_experience: formData.years_experience ? parseInt(formData.years_experience) : null,
+          education: formData.education
         });
       }
       
@@ -530,6 +574,122 @@ const handleConsultantImageUpload = async (e: React.ChangeEvent<HTMLInputElement
 
                         className="w-full bg-gray-50 border-none rounded-2xl px-5 py-3.5 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
                       />
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Designation</label>
+                        <input
+                          name="designation"
+                          type="text"
+                          value={formData.designation}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          placeholder="e.g., Senior Consultant"
+                          className="w-full bg-gray-50 border-none rounded-2xl px-5 py-3.5 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Years of Experience</label>
+                        <input
+                          name="years_experience"
+                          type="number"
+                          value={formData.years_experience}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          placeholder="e.g., 5"
+                          min="0"
+                          className="w-full bg-gray-50 border-none rounded-2xl px-5 py-3.5 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Education</label>
+                        <input
+                          name="education"
+                          type="text"
+                          value={formData.education}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          placeholder="e.g., MBA, IIT Delhi"
+                          className="w-full bg-gray-50 border-none rounded-2xl px-5 py-3.5 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Availability</label>
+                        <select
+                          name="availability"
+                          value={formData.availability}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          className="w-full bg-gray-50 border-none rounded-2xl px-5 py-3.5 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                        >
+                          <option value="Full-time">Full-time</option>
+                          <option value="Part-time">Part-time</option>
+                          <option value="Flexible">Flexible</option>
+                          <option value="Weekends">Weekends</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Areas of Expertise</label>
+                      {isEditing ? (
+                        <div className="space-y-3">
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={tempExpertise}
+                              onChange={(e) => setTempExpertise(e.target.value)}
+                              onKeyPress={(e) => e.key === "Enter" && handleAddExpertise()}
+                              placeholder="Add a skill (press Enter or click Add)"
+                              className="flex-1 bg-gray-50 border-none rounded-2xl px-5 py-3.5 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAddExpertise}
+                              disabled={!tempExpertise.trim() || formData.expertise.length >= 15}
+                              className="bg-blue-600 text-white px-6 py-3.5 rounded-2xl font-bold hover:bg-blue-700 transition-all disabled:bg-gray-300"
+                            >
+                              Add
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {formData.expertise.map((skill, index) => (
+                              <span
+                                key={index}
+                                className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2"
+                              >
+                                {skill}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveExpertise(index)}
+                                  className="hover:bg-blue-200 rounded-full p-1"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {formData.expertise.length > 0 ? (
+                            formData.expertise.map((skill, index) => (
+                              <span
+                                key={index}
+                                className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium"
+                              >
+                                {skill}
+                              </span>
+                            ))
+                          ) : (
+                            <p className="text-gray-500 text-sm">No expertise added yet.</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}

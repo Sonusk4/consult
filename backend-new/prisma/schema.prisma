@@ -8,46 +8,64 @@ datasource db {
 }
 
 model User {
-  id                    Int             @id @default(autoincrement())
-  firebase_uid          String          @unique
-  email                 String          @unique
-  phone                 String?
-  name                  String?  
-  role                  String          @default("USER")
-  is_verified           Boolean         @default(false)
-  otp_code              String?
-  otp_expiry            DateTime?
-  invite_token          String?         @unique
-  invite_token_expiry   DateTime?
-  temp_username         String?
-  temp_password         String?
-  created_at            DateTime        @default(now())
-  updated_at            DateTime?       @updatedAt
-  bookings              Booking[]
-  consultant            Consultant?
-  enterpriseId          Int?
-  enterprise            Enterprise?     @relation("EnterpriseMembers", fields: [enterpriseId], references: [id])
-  ownedEnterprise       Enterprise?     @relation("EnterpriseOwner")
-  messages              Message[]
-  paymentOrders         PaymentOrder[]
-  reviews               Review[]
-  supportTickets        SupportTicket[]
-  transactions          Transaction[]
-  profile               UserProfile?
-  wallet                Wallet?
-  enterpriseBookings Booking[] @relation("EnterpriseMemberBookings")
+  id                        Int             @id @default(autoincrement())
+  firebase_uid              String          @unique
+  email                     String          @unique
+  phone                     String?
+  name                      String?  
+  role                      String          @default("USER")
+  is_verified               Boolean         @default(false)
+  otp_code                  String?
+  otp_expiry                DateTime?
+  invite_token              String?         @unique
+  invite_token_expiry       DateTime?
+  temp_username             String?
+  temp_password             String?
+  permanent_username        String?         @unique
+  permanent_password        String?
+  password_reset_token      String?
+  password_reset_expiry     DateTime?
+  password_changed          Boolean         @default(false)
+  created_at                DateTime        @default(now())
+  updated_at                DateTime?       @updatedAt
+  bookings                  Booking[]
+  consultant                Consultant?
+  enterpriseId              Int?
+  enterprise                Enterprise?     @relation("EnterpriseMembers", fields: [enterpriseId], references: [id])
+  ownedEnterprise           Enterprise?     @relation("EnterpriseOwner")
+  messages                  Message[]
+  paymentOrders             PaymentOrder[]
+  reviews                   Review[]
+  supportTickets            SupportTicket[]
+  transactions              Transaction[]
+  profile                   UserProfile?
+  wallet                    Wallet?
+  enterpriseBookings        Booking[] @relation("EnterpriseMemberBookings")
 }
 
 model UserProfile {
-  id         Int      @id @default(autoincrement())
-  userId     Int      @unique
-  avatar     String?
-  bio        String?
-  headline   String?
-  languages  String?
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               Int      @id @default(autoincrement())
+  userId           Int      @unique
+  avatar           String?
+  bio              String?
+  headline         String?
+  location         String?
+  languages        String?
+  expertise        Json?           // Array of expertise/skills
+  hourly_rate      Float?
+  availability     String?
+  designation      String?
+  years_experience Int?
+  education        String?
+  // KYC Fields
+  kyc_status       String?         // PENDING, SUBMITTED, APPROVED, REJECTED
+  id_proof_url     String?         // URL to ID proof document (PDF/Image)
+  address_proof_url String?        // URL to address proof document (PDF/Image)
+  kyc_documents    Json?           // Array of additional KYC documents with metadata
+  kyc_submitted_at DateTime?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Consultant {
@@ -61,6 +79,13 @@ model Consultant {
   total_reviews  Int             @default(0)
   is_verified    Boolean         @default(false)
   
+  // Professional Fields
+  expertise       Json?           // Array of skills/expertise
+  availability    String?         // Full-time, Part-time, Flexible, Weekends
+  designation     String?
+  years_experience Int?
+  education       String?
+  
   // KYC Fields
   kyc_status      String          @default("PENDING") // PENDING, SUBMITTED, APPROVED, REJECTED
   kyc_documents   Json?           // Store KYC document URLs and metadata
@@ -68,7 +93,7 @@ model Consultant {
   // Certificate Fields
   certificates    Json?           // Store certificate URLs and metadata
   
-  availability   Availability[]
+  availabilitySlots Availability[]
   bookings       Booking[]
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   reviews        Review[]

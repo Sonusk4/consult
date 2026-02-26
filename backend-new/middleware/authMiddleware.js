@@ -27,6 +27,7 @@ const verifyFirebaseToken = async (req, res, next) => {
     // First try to verify as dev JWT token
     let decodedToken;
     let isDevToken = false;
+    let isCustomToken = false;
 
     try {
       const devSecret = process.env.JWT_SECRET || "dev-secret-key-for-testing-only";
@@ -34,44 +35,56 @@ const verifyFirebaseToken = async (req, res, next) => {
       console.log("✅ Dev JWT token verified for user:", decodedToken.email);
       isDevToken = true;
     } catch (devError) {
-      console.log("Dev JWT verification failed:", devError.message);
+      console.log("Dev JWT verification failed, trying to decode without verification...");
       
-      // Try Firebase token
-      console.log("Trying Firebase verification...");
-      
+      // Try to decode JWT without verification (for dev mode with unsecured tokens)
       try {
-        decodedToken = await admin.auth().verifyIdToken(token);
-        console.log("✅ Firebase token verified for UID:", decodedToken.uid);
-      } catch (firebaseError) {
-        console.log("Firebase verification failed:", firebaseError.message);
-        
-        // In dev mode, try to extract email from token payload (fallback)
-        console.log("Trying dev mode fallback decoder...");
-        
-        try {
-          // Try to decode the token manually (without verification) to extract email
-          const parts = token.split(".");
-          if (parts.length === 3) {
-            // Decode the payload part
-            const payloadStr = Buffer.from(parts[1], "base64").toString();
-            console.log("Decoded payload:", payloadStr);
-            const decoded = JSON.parse(payloadStr);
-            if (decoded.email) {
-              console.log("✅ Dev mode fallback: extracted email from token:", decoded.email);
-              decodedToken = decoded;
-              isDevToken = true;
-            } else {
-              throw new Error("No email in token payload");
-            }
-          } else {
-            throw new Error("Invalid token format (parts: " + parts.length + ")");
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          // This looks like a JWT, try to decode the payload
+          const decoded = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+          console.log("✅ JWT decoded (without verification) for user:", decoded.email);
+          
+          // Check if token has expired
+          if (decoded.exp && Date.now() / 1000 > decoded.exp) {
+            throw new Error("Token expired");
           }
-        } catch (fallbackError) {
-          console.error("❌ All token verifications failed");
-          console.error("Dev JWT error:", devError.message);
-          console.error("Firebase error:", firebaseError.message);
-          console.error("Fallback error:", fallbackError.message);
-          return res.status(401).json({ error: "Invalid or expired token" });
+          
+          decodedToken = decoded;
+          isDevToken = true;
+        } else {
+          throw new Error("Not a JWT format token");
+        }
+      } catch (jwtDecodeError) {
+        console.log("Not a JWT token, trying custom base64 token...");
+        
+        // If JWT fails, try custom base64 token
+        try {
+          const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
+          
+          // Check if token has expired
+          if (decoded.exp && Date.now() > decoded.exp) {
+            throw new Error("Custom token expired");
+          }
+          
+          decodedToken = decoded;
+          console.log("✅ Custom base64 token verified for user:", decodedToken.email);
+          isCustomToken = true;
+        } catch (customError) {
+          // If custom token fails, try Firebase token
+          console.log("Not a custom token, trying Firebase verification...");
+          
+          try {
+            decodedToken = await admin.auth().verifyIdToken(token);
+            console.log("✅ Firebase token verified for UID:", decodedToken.uid);
+          } catch (firebaseError) {
+            console.error("❌ All token verifications failed");
+            console.error("Dev JWT error:", devError.message);
+            console.error("JWT decode error:", jwtDecodeError.message);
+            console.error("Custom token error:", customError.message);
+            console.error("Firebase error:", firebaseError.message);
+            return res.status(401).json({ error: "Invalid or expired token" });
+          }
         }
       }
     }
@@ -84,6 +97,11 @@ const verifyFirebaseToken = async (req, res, next) => {
       email = decodedToken.email;
       firebase_uid = decodedToken.uid; // Should be user.id from DB
       console.log("🔧 Using dev token for email:", email);
+    } else if (isCustomToken) {
+      // Handle custom base64 token
+      email = decodedToken.email;
+      firebase_uid = decodedToken.id?.toString(); // Convert to string for consistency
+      console.log("🔧 Using custom token for email:", email);
     } else {
       // Handle Firebase token
       firebase_uid = decodedToken.uid;
@@ -94,17 +112,43 @@ const verifyFirebaseToken = async (req, res, next) => {
       return res.status(400).json({ error: "Email not found in token" });
     }
 
-    // Find user in database by firebase_uid (for Firebase tokens) or by email (for dev tokens)
+    // Find user in database
     let user;
     
-    if (isDevToken) {
-      // For dev tokens, find by email
-      user = await prisma.user.findUnique({
-        where: { email },
-        include: { consultant: true },
-      });
+    if (isDevToken || isCustomToken) {
+      // For dev and custom tokens, try to find by ID first (for dev mode), then by email
+      console.log("🔍 Dev/Custom token - looking up user. Email:", email, "UID:", firebase_uid);
+      
+      // If uid looks like a database ID (numeric), try finding by ID
+      if (firebase_uid && !isNaN(firebase_uid)) {
+        console.log("   Trying to find by ID:", firebase_uid);
+        user = await prisma.user.findUnique({
+          where: { id: parseInt(firebase_uid) },
+          include: { consultant: true },
+        });
+      }
+      
+      // If not found by ID, try by email
+      if (!user && email) {
+        console.log("   Trying to find by email:", email);
+        user = await prisma.user.findUnique({
+          where: { email },
+          include: { consultant: true },
+        });
+      }
+      
+      // If found by email and we have a firebase_uid, update it
+      if (user && firebase_uid && !user.firebase_uid) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { firebase_uid },
+          include: { consultant: true },
+        });
+        console.log("✅ Updated user with firebase_uid:", user.id);
+      }
     } else {
       // For Firebase tokens, find by firebase_uid
+      console.log("🔍 Firebase token - finding user by UID:", firebase_uid);
       user = await prisma.user.findUnique({
         where: { firebase_uid },
         include: { consultant: true },
@@ -112,7 +156,7 @@ const verifyFirebaseToken = async (req, res, next) => {
     }
 
     // If not found by firebase_uid, try to find by email and link
-    if (!user && !isDevToken) {
+    if (!user && !isDevToken && !isCustomToken) {
       console.log("User not found by firebase_uid, checking by email:", email);
 
       const existingUser = await prisma.user.findUnique({
@@ -143,6 +187,10 @@ const verifyFirebaseToken = async (req, res, next) => {
         });
         console.log("✅ Created new user for Firebase UID:", user.id);
       }
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
     }
 
     // Attach user to request object

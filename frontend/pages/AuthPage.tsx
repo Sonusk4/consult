@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../App";
 import { UserRole } from "../types";
-import { ArrowRight, Mail, Shield, ChevronLeft, Info } from "lucide-react";
+import { ArrowRight, Mail, Shield, ChevronLeft, Info, Eye, EyeOff } from "lucide-react";
 import { auth } from "../services/api";
 
-type AuthStep = "ROLE" | "EMAIL" | "OTP" | "PASSWORD" | "MEMBER_LOGIN";
+type AuthStep = "ROLE" | "EMAIL" | "OTP" | "PASSWORD" | "SIGNUP_PASSWORD" | "FORGOT_PASSWORD" | "RESET_PASSWORD";
 
 interface AuthPageProps {
   type: "LOGIN" | "SIGNUP";
@@ -18,15 +18,356 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.USER);
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showLoginRedirect, setShowLoginRedirect] = useState(false);
+  const [signupEmail, setSignupEmail] = useState(""); // Email that needs OTP verification
+  const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false); // First-time password change
+  const [changedPassword, setChangedPassword] = useState("");
+  const [changedConfirmPassword, setChangedConfirmPassword] = useState("");
+  const [showChangedPassword, setShowChangedPassword] = useState(false);
+  const [showChangedConfirmPassword, setShowChangedConfirmPassword] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  // Password validation
+  const validatePassword = (pwd: string) => {
+    const hasMinLength = pwd.length >= 8;
+    const hasUpperCase = /[A-Z]/.test(pwd);
+    const hasLowerCase = /[a-z]/.test(pwd);
+    const hasNumber = /\d/.test(pwd);
+    const hasSpecialChar = /[!@#$%^&*]/.test(pwd);
+    
+    return {
+      isValid: hasMinLength && hasUpperCase && hasLowerCase && hasNumber && hasSpecialChar,
+      hasMinLength,
+      hasUpperCase,
+      hasLowerCase,
+      hasNumber,
+      hasSpecialChar,
+    };
+  };
+
+  const handleSignupWithPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!fullName || !email || !phone || !password || !confirmPassword) {
+      setError("Please fill in all fields");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      setError("Password must contain: 8+ characters, uppercase, lowercase, number, and special character (!@#$%^&*)");
+      return;
+    }
+
+    setError("");
+    setIsLoading(true);
+
+    try {
+      console.log("Signing up with password:", email);
+      
+      const signupRes = await auth.signupWithPassword({
+        email,
+        fullName,
+        phone,
+        password,
+        role: selectedRole,
+      });
+
+      console.log("Signup response:", signupRes);
+
+      // Check if OTP verification is required
+      if (signupRes.requiresOtp) {
+        console.log("OTP verification required, showing OTP step");
+        setSignupEmail(email);
+        setEmail(""); // Clear email for OTP form
+        setOtp(["", "", "", "", "", ""]);
+        setError("");
+        setStep("OTP");
+        setIsLoading(false);
+        return;
+      }
+
+      if (!signupRes.customToken) {
+        throw new Error("No custom token received from server");
+      }
+
+      console.log("Signup successful, token received");
+
+      if (signupRes.devMode) {
+        console.log("Dev mode detected - storing JWT token");
+        localStorage.setItem("devToken", signupRes.customToken);
+      } else {
+        console.log("Production mode - signing in with Firebase");
+        const { signInWithCustomToken } = await import("firebase/auth");
+        const { auth: firebaseAuth } = await import("../src/services/firebase");
+        await signInWithCustomToken(firebaseAuth, signupRes.customToken);
+      }
+
+      if (signupRes.user) {
+        localStorage.setItem("user", JSON.stringify(signupRes.user));
+      }
+
+      const user = await login(signupRes.user?.email || email, selectedRole, fullName);
+      console.log("User synced successfully:", user);
+
+      if (user.role === "USER") {
+        navigate("/user/dashboard");
+      } else if (user.role === "CONSULTANT") {
+        navigate("/consultant/dashboard");
+      } else if (user.role === "ENTERPRISE_ADMIN") {
+        navigate("/enterprise/dashboard");
+      } else {
+        navigate("/");
+      }
+    } catch (err: any) {
+      console.error("Signup failed:", err);
+      const message = err.response?.data?.error || err.message || "Signup failed. Please try again.";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!email || !password) {
+      setError("Please enter your email and password");
+      return;
+    }
+
+    setError("");
+    setIsLoading(true);
+
+    try {
+      console.log("Logging in with password:", email);
+      
+      const loginRes = await auth.loginWithPassword(email, password);
+
+      // Check if first-time password change is required
+      if (loginRes.requiresPasswordChange) {
+        console.log("First-time password change required");
+        setShowPasswordChangeModal(true);
+        setIsLoading(false);
+        return;
+      }
+
+      if (!loginRes.customToken) {
+        throw new Error("No token received from server");
+      }
+
+      console.log("Password login successful");
+
+      if (loginRes.devMode) {
+        console.log("Dev mode detected - storing JWT token");
+        localStorage.setItem("devToken", loginRes.customToken);
+      } else {
+        console.log("Production mode - signing in with Firebase");
+        const { signInWithCustomToken } = await import("firebase/auth");
+        const { auth: firebaseAuth } = await import("../src/services/firebase");
+        await signInWithCustomToken(firebaseAuth, loginRes.customToken);
+      }
+
+      if (loginRes.user) {
+        localStorage.setItem("user", JSON.stringify(loginRes.user));
+      }
+
+      const user = await login(loginRes.user?.email);
+      console.log("User synced successfully:", user);
+
+      if (user.role === "USER") {
+        navigate("/user/dashboard");
+      } else if (user.role === "CONSULTANT") {
+        navigate("/consultant/dashboard");
+      } else if (user.role === "ENTERPRISE_ADMIN") {
+        navigate("/enterprise/dashboard");
+      } else if (user.role === "ENTERPRISE_MEMBER") {
+        navigate("/member/dashboard");
+      } else {
+        navigate("/");
+      }
+    } catch (err: any) {
+      console.error("Password login failed:", err);
+      const message = err.response?.data?.error || err.message || "Invalid email or password";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!resetEmail) {
+      setError("Please enter your email");
+      return;
+    }
+
+    setError("");
+    setIsLoading(true);
+
+    try {
+      console.log("Sending reset password email:", resetEmail);
+      
+      await auth.forgotPassword(resetEmail);
+
+      // In a real app, user would receive email with reset link
+      // For now, we show a success message
+      setError(""); // Clear error
+      alert("If an account exists with this email, you will receive password reset instructions.");
+      setStep("ROLE");
+      setResetEmail("");
+    } catch (err: any) {
+      console.error("Forgot password failed:", err);
+      const message = err.response?.data?.error || err.message || "Failed to send reset email";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!resetToken || !newPassword) {
+      setError("Please enter reset token and new password");
+      return;
+    }
+
+    const passwordValidation = validatePassword(newPassword);
+    if (!passwordValidation.isValid) {
+      setError("Password must contain: 8+ characters, uppercase, lowercase, number, and special character");
+      return;
+    }
+
+    setError("");
+    setIsLoading(true);
+
+    try {
+      console.log("Resetting password with token");
+      
+      const resetRes = await auth.resetPassword(resetToken, newPassword);
+
+      if (!resetRes.customToken) {
+        throw new Error("No token received from server");
+      }
+
+      console.log("Password reset successful");
+
+      if (resetRes.devMode) {
+        localStorage.setItem("devToken", resetRes.customToken);
+      } else {
+        const { signInWithCustomToken } = await import("firebase/auth");
+        const { auth: firebaseAuth } = await import("../src/services/firebase");
+        await signInWithCustomToken(firebaseAuth, resetRes.customToken);
+      }
+
+      if (resetRes.user) {
+        localStorage.setItem("user", JSON.stringify(resetRes.user));
+      }
+
+      const user = await login(resetRes.user?.email);
+      navigate("/user/dashboard");
+    } catch (err: any) {
+      console.error("Password reset failed:", err);
+      const message = err.response?.data?.error || err.message || "Password reset failed";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleChangePasswordFirstLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!changedPassword || !changedConfirmPassword) {
+      setError("Please enter your new password");
+      return;
+    }
+
+    if (changedPassword !== changedConfirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    const passwordValidation = validatePassword(changedPassword);
+    if (!passwordValidation.isValid) {
+      setError("Password must contain: 8+ characters, uppercase, lowercase, number, and special character");
+      return;
+    }
+
+    setError("");
+    setIsLoading(true);
+
+    try {
+      console.log("Setting new password on first login");
+      
+      const changeRes = await auth.changePasswordFirstLogin(changedPassword);
+
+      if (!changeRes.customToken) {
+        throw new Error("No token received from server");
+      }
+
+      console.log("Password changed successfully");
+
+      if (changeRes.devMode) {
+        localStorage.setItem("devToken", changeRes.customToken);
+      } else {
+        const { signInWithCustomToken } = await import("firebase/auth");
+        const { auth: firebaseAuth } = await import("../src/services/firebase");
+        await signInWithCustomToken(firebaseAuth, changeRes.customToken);
+      }
+
+      if (changeRes.user) {
+        localStorage.setItem("user", JSON.stringify(changeRes.user));
+      }
+
+      const user = await login(changeRes.user?.email);
+      console.log("User synced successfully:", user);
+
+      // Close modal and navigate based on role
+      setShowPasswordChangeModal(false);
+      setChangedPassword("");
+      setChangedConfirmPassword("");
+      
+      if (user.role === "USER") {
+        navigate("/user/dashboard");
+      } else if (user.role === "CONSULTANT") {
+        navigate("/consultant/dashboard");
+      } else if (user.role === "ENTERPRISE_ADMIN") {
+        navigate("/enterprise/dashboard");
+      } else if (user.role === "ENTERPRISE_MEMBER") {
+        navigate("/member/dashboard");
+      } else {
+        navigate("/");
+      }
+    } catch (err: any) {
+      console.error("Password change failed:", err);
+      const message = err.response?.data?.error || err.message || "Failed to change password";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Reset step if type changes
   React.useEffect(() => {
@@ -37,22 +378,17 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
     
-    // Team members can only login with username/password
-    if (role === UserRole.ENTERPRISE_MEMBER) {
-      if (type === "SIGNUP") {
-        setError("Enterprise team members cannot sign up independently. Please request an invitation from your enterprise administrator.");
-        setShowLoginRedirect(true);
-        return;
-      }
-      setStep("MEMBER_LOGIN");
-    } else {
-      setStep("EMAIL");
-    }
+    // No separate login for enterprise members - they use email+password like everyone else
+    setStep("EMAIL");
   };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.includes("@")) {
+    
+    // Use signupEmail if in signup flow, otherwise use email from login flow
+    const emailToUse = signupEmail || email;
+    
+    if (!emailToUse.includes("@")) {
       setError("Please enter a valid email address");
       return;
     }
@@ -60,70 +396,15 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
     setIsLoading(true);
 
     try {
-      console.log("📧 Sending OTP to:", email, "Type:", type);
+      console.log("📧 Sending OTP to:", emailToUse, "Type:", type);
       // Send OTP via API
-      const response = await auth.sendOtp(email, type);
+      const response = await auth.sendOtp(emailToUse, type);
       console.log("✅ OTP send response:", response);
       setStep("OTP");
     } catch (err: any) {
       console.error("❌ OTP send error:", err);
       const message =
         err.response?.data?.error || "Failed to send OTP. Please try again.";
-      setError(message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleMemberLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username || !password) {
-      setError("Please enter your username and password");
-      return;
-    }
-    setError("");
-    setIsLoading(true);
-
-    try {
-      console.log("Logging in team member:", username);
-      const loginRes = await auth.loginMember(username, password);
-
-      if (!loginRes.customToken) {
-        throw new Error("No token received from server");
-      }
-
-      console.log("Team member login successful");
-
-      // Check if in dev mode
-      if (loginRes.devMode) {
-        console.log("Dev mode detected - storing JWT token");
-        localStorage.setItem("devToken", loginRes.customToken);
-      } else {
-        // Production: Sign in with Firebase custom token
-        console.log("Production mode - signing in with Firebase");
-        const { signInWithCustomToken } = await import("firebase/auth");
-        const { auth: firebaseAuth } = await import("../src/services/firebase");
-        await signInWithCustomToken(firebaseAuth, loginRes.customToken);
-      }
-
-      // Store user data
-      if (loginRes.user) {
-        localStorage.setItem("user", JSON.stringify(loginRes.user));
-      }
-
-      // Call login to sync with backend
-      const user = await login(loginRes.user?.email);
-
-      console.log("Team member synced successfully:", user);
-
-      // Redirect to member dashboard
-      navigate("/member/dashboard");
-    } catch (err: any) {
-      console.error("Team member login failed:", err);
-      const message =
-        err.response?.data?.error ||
-        err.message ||
-        "Invalid username or password";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -139,12 +420,22 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
     setIsLoading(true);
 
     const otpString = otp.map(d => d.trim()).join("");
+    
+    // Determine which email to use: signupEmail (from signup flow) or email (from login flow)
+    const emailToVerify = signupEmail || email;
+    
+    if (!emailToVerify) {
+      setError("Email information missing. Please start over.");
+      setIsLoading(false);
+      return;
+    }
 
     try {
       // Step 1: Verify OTP with backend
-      console.log("Verifying OTP for:", email);
+      console.log("Verifying OTP for:", emailToVerify);
       console.log("OTP String:", otpString);
-      const verifyRes = await auth.verifyOtp(email, otpString);
+      console.log("Signup flow:", !!signupEmail);
+      const verifyRes = await auth.verifyOtp(emailToVerify, otpString);
 
       if (!verifyRes.customToken) {
         throw new Error("No custom token received from server");
@@ -172,13 +463,22 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
       // Step 3: Sync user with backend
       console.log("Syncing user with backend...");
+      
+      // For signup flow (via OTP), include role and fullName
+      // For login flow, don't include them
+      const isSignupFlow = !!signupEmail;
       const user = await login(
-        email,
-        type === "SIGNUP" ? selectedRole : undefined,
-        type === "SIGNUP" ? fullName : undefined
+        emailToVerify,
+        isSignupFlow ? selectedRole : undefined,
+        isSignupFlow ? fullName : undefined
       );
 
       console.log("User synced successfully:", user);
+      
+      // Clear signup state if we were in signup flow
+      if (isSignupFlow) {
+        setSignupEmail("");
+      }
 
       // Step 4: Redirect based on user role
       if (user.role === "USER") {
@@ -232,7 +532,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
     EMAIL: type === "LOGIN" ? 50 : 66,
     OTP: 100,
     PASSWORD: 100,
-    MEMBER_LOGIN: 50,
   }[step];
 
   return (
@@ -289,14 +588,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                 onClick={() => handleRoleSelect(UserRole.ENTERPRISE_ADMIN)}
               />
 
-              {type === "LOGIN" && (
-                <RoleButton
-                  title="Enterprise Team Member"
-                  subtitle="I am part of an enterprise team"
-                  onClick={() => handleRoleSelect(UserRole.ENTERPRISE_MEMBER)}
-                />
-              )}
-
               <div className="pt-4 text-center">
                 <p className="text-sm text-gray-500">
                   {type === "LOGIN" ? "New here? " : "Already have an account? "}
@@ -310,7 +601,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
               </div>
             </div>
           ) : step === "EMAIL" ? (
-            <form onSubmit={handleEmailSubmit} className="space-y-6">
+            <form onSubmit={type === "SIGNUP" ? handleSignupWithPassword : handlePasswordLogin} className="space-y-6">
               {type === "SIGNUP" && (
                 <BackButton onClick={() => { setStep("ROLE"); setError(""); }} />
               )}
@@ -319,7 +610,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                   {type === "LOGIN" ? "Login" : "Registration"}
                 </h3>
                 <p className="text-gray-500 text-sm leading-relaxed">
-                  Enter your professional email to receive a verification code.
+                  {type === "LOGIN" ? "Enter your email and password to login." : "Enter your details to create an account."}
                 </p>
               </div>
 
@@ -340,6 +631,24 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                     />
                   </div>
                 )}
+
+                {type === "SIGNUP" && (
+                  <div>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      required={type === "SIGNUP"}
+                      placeholder="+1 (555) 123-4567"
+                      className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      disabled={isLoading}
+                    />
+                  </div>
+                )}
+
                 <div className="relative">
                   <Mail
                     className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
@@ -355,16 +664,120 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                     disabled={isLoading}
                   />
                 </div>
+
+                {type === "SIGNUP" && (
+                  <div>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                      Create Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required={type === "SIGNUP"}
+                        placeholder="Enter a strong password"
+                        className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-12 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        disabled={isLoading}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                      </button>
+                    </div>
+                    {password && (
+                      <div className="mt-3 p-3 bg-gray-50 rounded-xl text-sm">
+                        <p className="text-xs font-bold text-gray-600 mb-2">Password Requirements:</p>
+                        <div className="space-y-1 text-xs">
+                          <p className={validatePassword(password).hasMinLength ? "text-green-600" : "text-red-600"}>
+                            ✓ At least 8 characters
+                          </p>
+                          <p className={validatePassword(password).hasUpperCase ? "text-green-600" : "text-red-600"}>
+                            ✓ One uppercase letter
+                          </p>
+                          <p className={validatePassword(password).hasLowerCase ? "text-green-600" : "text-red-600"}>
+                            ✓ One lowercase letter
+                          </p>
+                          <p className={validatePassword(password).hasNumber ? "text-green-600" : "text-red-600"}>
+                            ✓ One number
+                          </p>
+                          <p className={validatePassword(password).hasSpecialChar ? "text-green-600" : "text-red-600"}>
+                            ✓ One special character (!@#$%^&*)
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {type === "SIGNUP" && (
+                  <div>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                      Confirm Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPassword ? "text" : "password"}
+                        required={type === "SIGNUP"}
+                        placeholder="Re-enter your password"
+                        className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-12 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        disabled={isLoading}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                      </button>
+                    </div>
+                    {confirmPassword && password !== confirmPassword && (
+                      <p className="mt-2 text-sm text-red-600 font-medium">Passwords do not match</p>
+                    )}
+                  </div>
+                )}
+
+                {type === "LOGIN" && (
+                  <div>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required={type === "LOGIN"}
+                        placeholder="Enter your password"
+                        className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-12 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        disabled={isLoading}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <button
                   type="submit"
                   disabled={isLoading}
                   className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center group disabled:opacity-50"
                 >
                   {isLoading ? (
-                    "Sending..."
+                    type === "SIGNUP" ? "Creating Account..." : "Logging in..."
                   ) : (
                     <>
-                      Send Verification Code{" "}
+                      {type === "SIGNUP" ? "Create Account" : "Login"}{" "}
                       <ArrowRight
                         className="ml-2 group-hover:translate-x-1 transition-transform"
                         size={20}
@@ -375,15 +788,41 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
               </div>
 
               {type === "LOGIN" && (
-                <div className="pt-2 text-center">
-                  <p className="text-sm text-gray-500">
-                    New here?{" "}
+                <div className="space-y-3">
+                  <div className="pt-2 text-center">
                     <button
                       type="button"
-                      onClick={() => navigate("/signup")}
+                      onClick={() => { setStep("FORGOT_PASSWORD"); setError(""); setResetEmail(email); }}
+                      className="text-sm text-blue-600 font-bold hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <div className="pt-2 text-center border-t border-gray-100">
+                    <p className="text-sm text-gray-500">
+                      New here?{" "}
+                      <button
+                        type="button"
+                        onClick={() => navigate("/signup")}
+                        className="text-blue-600 font-bold hover:underline"
+                      >
+                        Create an account
+                      </button>
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {type === "SIGNUP" && (
+                <div className="pt-2 text-center">
+                  <p className="text-sm text-gray-500">
+                    Already have an account?{" "}
+                    <button
+                      type="button"
+                      onClick={() => navigate("/login")}
                       className="text-blue-600 font-bold hover:underline"
                     >
-                      Create an account
+                      Login here
                     </button>
                   </p>
                 </div>
@@ -391,14 +830,22 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
             </form>
           ) : step === "OTP" ? (
             <div className="space-y-6">
-              <BackButton onClick={() => setStep("EMAIL")} />
+              <BackButton onClick={() => {
+                // If in signup flow, restore the email that was cleared
+                if (signupEmail) {
+                  setEmail(signupEmail);
+                  setSignupEmail("");
+                }
+                setStep("EMAIL");
+                setError("");
+              }} />
               <div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">
                   Verify it's you
                 </h3>
                 <p className="text-gray-500 text-sm">
                   We've sent a 6-digit code to{" "}
-                  <span className="text-gray-900 font-bold">{email}</span>
+                  <span className="text-gray-900 font-bold">{signupEmail || email}</span>
                 </p>
               </div>
 
@@ -444,45 +891,31 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                 </p>
               </div>
             </div>
-          ) : step === "MEMBER_LOGIN" ? (
-            <form onSubmit={handleMemberLogin} className="space-y-6">
-              <BackButton onClick={() => { setStep("ROLE"); setError(""); }} />
+          ) : step === "FORGOT_PASSWORD" ? (
+            <form onSubmit={handleForgotPassword} className="space-y-6">
+              <BackButton onClick={() => { setStep("EMAIL"); setError(""); setResetEmail(""); }} />
               <div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">
-                  Team Member Login
+                  Reset Your Password
                 </h3>
                 <p className="text-gray-500 text-sm leading-relaxed">
-                  Enter your username and password provided by your enterprise administrator.
+                  Enter your email address and we'll send you a link to reset your password.
                 </p>
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                    Username
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Enter your username"
-                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    disabled={isLoading}
+                <div className="relative">
+                  <Mail
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                    size={20}
                   />
-                </div>
-
-                <div>
-                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                    Password
-                  </label>
                   <input
-                    type="password"
+                    type="email"
                     required
-                    placeholder="Enter your password"
-                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="name@company.com"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-12 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
                     disabled={isLoading}
                   />
                 </div>
@@ -493,10 +926,103 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                   className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center group disabled:opacity-50"
                 >
                   {isLoading ? (
-                    "Logging in..."
+                    "Sending..."
                   ) : (
                     <>
-                      Login{" "}
+                      Send Reset Link{" "}
+                      <ArrowRight
+                        className="ml-2 group-hover:translate-x-1 transition-transform"
+                        size={20}
+                      />
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          ) : step === "RESET_PASSWORD" ? (
+            <form onSubmit={handleResetPassword} className="space-y-6">
+              <BackButton onClick={() => { setStep("FORGOT_PASSWORD"); setError(""); }} />
+              <div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">
+                  Create New Password
+                </h3>
+                <p className="text-gray-500 text-sm leading-relaxed">
+                  Enter your reset token and create a new password.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                    Reset Token
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter reset token from email"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={resetToken}
+                    onChange={(e) => setResetToken(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                    New Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      placeholder="Enter a strong password"
+                      className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-12 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      disabled={isLoading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
+                  {newPassword && (
+                    <div className="mt-3 p-3 bg-gray-50 rounded-xl text-sm">
+                      <p className="text-xs font-bold text-gray-600 mb-2">Password Requirements:</p>
+                      <div className="space-y-1 text-xs">
+                        <p className={validatePassword(newPassword).hasMinLength ? "text-green-600" : "text-red-600"}>
+                          ✓ At least 8 characters
+                        </p>
+                        <p className={validatePassword(newPassword).hasUpperCase ? "text-green-600" : "text-red-600"}>
+                          ✓ One uppercase letter
+                        </p>
+                        <p className={validatePassword(newPassword).hasLowerCase ? "text-green-600" : "text-red-600"}>
+                          ✓ One lowercase letter
+                        </p>
+                        <p className={validatePassword(newPassword).hasNumber ? "text-green-600" : "text-red-600"}>
+                          ✓ One number
+                        </p>
+                        <p className={validatePassword(newPassword).hasSpecialChar ? "text-green-600" : "text-red-600"}>
+                          ✓ One special character (!@#$%^&*)
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center group disabled:opacity-50"
+                >
+                  {isLoading ? (
+                    "Resetting..."
+                  ) : (
+                    <>
+                      Reset Password{" "}
                       <ArrowRight
                         className="ml-2 group-hover:translate-x-1 transition-transform"
                         size={20}
@@ -526,15 +1052,122 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
           <h4 className="text-sm font-bold text-blue-900 mb-1">
             Testing Information
           </h4>
-          <p className="text-xs text-blue-700 leading-relaxed">
-            Backend Integration Active.
-            <br />• Enter a valid email found in backend (or any new email to
-            register).
-            <br />• Check backend logs for OTP if email sending fails locally.
-            <br />• Team members use the credentials provided by their admin.
-          </p>
+          <div className="text-xs text-blue-700 leading-relaxed space-y-1">
+            <p>Backend Integration Active.</p>
+            <p>• Enter a valid email found in backend (or any new email to register).</p>
+            <p>• Check backend logs for OTP if email sending fails locally.</p>
+            <p>• Team members use the credentials provided by their admin.</p>
+          </div>
         </div>
       </div>
+
+      {/* First-Time Password Change Modal */}
+      {showPasswordChangeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 max-h-screen overflow-y-auto">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Change Password</h2>
+            <p className="text-gray-600 text-sm mb-6">
+              This is your first login. Please set a permanent password for your account.
+            </p>
+
+            {error && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleChangePasswordFirstLogin} className="space-y-6">
+              <div>
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                  New Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showChangedPassword ? "text" : "password"}
+                    required
+                    placeholder="Enter a strong password"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-12 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={changedPassword}
+                    onChange={(e) => setChangedPassword(e.target.value)}
+                    disabled={isLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowChangedPassword(!showChangedPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showChangedPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+                {changedPassword && (
+                  <div className="mt-3 p-3 bg-gray-50 rounded-xl text-sm">
+                    <p className="text-xs font-bold text-gray-600 mb-2">Password Requirements:</p>
+                    <div className="space-y-1 text-xs">
+                      <p className={validatePassword(changedPassword).hasMinLength ? "text-green-600" : "text-red-600"}>
+                        ✓ At least 8 characters
+                      </p>
+                      <p className={validatePassword(changedPassword).hasUpperCase ? "text-green-600" : "text-red-600"}>
+                        ✓ One uppercase letter
+                      </p>
+                      <p className={validatePassword(changedPassword).hasLowerCase ? "text-green-600" : "text-red-600"}>
+                        ✓ One lowercase letter
+                      </p>
+                      <p className={validatePassword(changedPassword).hasNumber ? "text-green-600" : "text-red-600"}>
+                        ✓ One number
+                      </p>
+                      <p className={validatePassword(changedPassword).hasSpecialChar ? "text-green-600" : "text-red-600"}>
+                        ✓ One special character (!@#$%^&*)
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showChangedConfirmPassword ? "text" : "password"}
+                    required
+                    placeholder="Confirm your password"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-12 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={changedConfirmPassword}
+                    onChange={(e) => setChangedConfirmPassword(e.target.value)}
+                    disabled={isLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowChangedConfirmPassword(!showChangedConfirmPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showChangedConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center group disabled:opacity-50"
+              >
+                {isLoading ? (
+                  "Setting Password..."
+                ) : (
+                  <>
+                    Set Password{" "}
+                    <ArrowRight
+                      className="ml-2 group-hover:translate-x-1 transition-transform"
+                      size={20}
+                    />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

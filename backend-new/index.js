@@ -12,11 +12,14 @@ const Razorpay = require("razorpay");
 const generateAgoraToken = require("./agora");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const path = require("path");
+const { v4: uuidv4 } = require("uuid");
 
-require("dotenv").config();
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 const http = require("http");
 const { Server } = require("socket.io");
 const nodemailer = require("nodemailer");
+const { generateInvoicePDF } = require("./invoice-generator");
 const app = express();
 // Initialize Firebase Admin SDK
 let firebaseAdminInitialized = false;
@@ -50,7 +53,8 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 const server = http.createServer(app);
 
@@ -174,7 +178,7 @@ app.get("/auth/debug", verifyFirebaseToken, async (req, res) => {
 });
 app.post("/auth/me", async (req, res) => {
   try {
-    const { role, name } = req.body;
+    const { role, name, phone, bio, location } = req.body;
     let userEmail = req.body.email;
     let user;
 
@@ -192,6 +196,7 @@ app.post("/auth/me", async (req, res) => {
     // Find or create user
     user = await prisma.user.findUnique({
       where: { email: userEmail },
+      include: { profile: true },
     });
 
     if (user) {
@@ -202,8 +207,10 @@ app.post("/auth/me", async (req, res) => {
         data: {
           role: role || user.role,
           name: name || user.name,
+          phone: phone !== undefined ? phone : user.phone,
           is_verified: true,
         },
+        include: { profile: true },
       });
     } else {
       // Create new user
@@ -213,8 +220,32 @@ app.post("/auth/me", async (req, res) => {
           email: userEmail,
           role: role || "USER",
           name: name || null,
+          phone: phone || null,
           is_verified: true,
         },
+        include: { profile: true },
+      });
+    }
+
+    // Update or create profile if bio or location provided
+    if (bio !== undefined || location !== undefined) {
+      await prisma.userProfile.upsert({
+        where: { userId: user.id },
+        update: {
+          bio: bio !== undefined ? bio : undefined,
+          location: location !== undefined ? location : undefined,
+        },
+        create: {
+          userId: user.id,
+          bio: bio || null,
+          location: location || null,
+        },
+      });
+
+      // Fetch updated user with profile
+      user = await prisma.user.findUnique({
+        where: { id: user.id },
+        include: { profile: true },
       });
     }
 
@@ -224,8 +255,10 @@ app.post("/auth/me", async (req, res) => {
       id: user.id,
       email: user.email,
       name: user.name,
+      phone: user.phone,
       role: user.role,
       is_verified: user.is_verified,
+      profile: user.profile,
     });
   } catch (error) {
     console.error("❌ Sync user error:", error.message);
@@ -346,6 +379,25 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// Helper function to ensure Cloudinary is configured (hoisted function)
+function ensureCloudinaryConfigured() {
+  const current = cloudinary.config();
+  if (!current.api_key || !current.api_secret || !current.cloud_name) {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+  }
+  return cloudinary.config();
+}
+
+if (process.env.CLOUDINARY_API_KEY) {
+  console.log("✅ Cloudinary configured:", process.env.CLOUDINARY_CLOUD_NAME);
+} else {
+  console.log("⚠️ Cloudinary API key not configured!");
+}
+
 /**
  * Multer configuration for handling file uploads
  */
@@ -435,6 +487,7 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
     let admin = await prisma.user
       .findUnique({
         where: { firebase_uid: req.user.firebase_uid },
+        include: { enterprise: true, ownedEnterprise: true },
       })
       .catch(() => null);
 
@@ -443,6 +496,7 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
       admin = await prisma.user
         .findUnique({
           where: { email: req.user.email },
+          include: { enterprise: true, ownedEnterprise: true },
         })
         .catch(() => null);
 
@@ -454,6 +508,8 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
         .status(404)
         .json({ error: "Admin not found. Please login first." });
     }
+
+    const adminEnterpriseId = admin.enterpriseId || admin.ownedEnterprise?.id || null;
 
     // Generate credentials
     const username = generateUsername();
@@ -478,6 +534,9 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
           firebase_uid: `invite-${inviteToken}`,
           name: name || existingUser.name,
           role: "ENTERPRISE_MEMBER",
+          ...(existingUser.enterpriseId || adminEnterpriseId
+            ? { enterpriseId: existingUser.enterpriseId || adminEnterpriseId }
+            : {}),
           invite_token: inviteToken,
           invite_token_expiry: inviteTokenExpiry,
           temp_username: username,
@@ -493,6 +552,7 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
           name: name || null,
           role: "ENTERPRISE_MEMBER",
           is_verified: false,
+          ...(adminEnterpriseId ? { enterpriseId: adminEnterpriseId } : {}),
           invite_token: inviteToken,
           invite_token_expiry: inviteTokenExpiry,
           temp_username: username,
@@ -618,11 +678,17 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
         email: newMember.email,
         name: newMember.name,
         username: username,
+        password: password,
         role: "ENTERPRISE_MEMBER",
         status: "PENDING_ACCEPTANCE",
         invite_expires_at: inviteTokenExpiry,
       },
     });
+
+    console.log(`✅ Member invited successfully:`);
+    console.log(`   Email: ${newMember.email}`);
+    console.log(`   Username: ${username}`);
+    console.log(`   Password: ${password}`);
   } catch (error) {
     console.error("Invite error:", error);
     res
@@ -667,16 +733,22 @@ app.get("/enterprise/invite/:token", async (req, res) => {
 
 /**
  * POST /enterprise/accept-invite
- * Accept invitation and complete onboarding
+ * Accept invitation and create consultant profile with auto-generated password
  */
 app.post("/enterprise/accept-invite", async (req, res) => {
   try {
-    const { token, firebase_uid, phone, profile_bio, name } = req.body;
+    const { token, firebase_uid, phone, name, password } = req.body;
 
     if (!token || !firebase_uid) {
       return res
         .status(400)
         .json({ error: "Token and firebase_uid are required" });
+    }
+
+    if (!password || password.length < 8) {
+      return res
+        .status(400)
+        .json({ error: "Password must be at least 8 characters long" });
     }
 
     const invitedUser = await prisma.user.findUnique({
@@ -692,7 +764,16 @@ app.post("/enterprise/accept-invite", async (req, res) => {
       return res.status(400).json({ error: "Invitation has expired" });
     }
 
-    // Update user to complete onboarding
+    // Get enterprise from invite record
+    const inviteRecord = await prisma.enterpriseInvite
+      .findUnique({ where: { token } })
+      .catch(() => null);
+    const enterpriseIdFromInvite = inviteRecord?.enterpriseId || invitedUser.enterpriseId;
+
+    // Hash the user-provided password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Update user - becomes consultant connected to enterprise
     const updatedUser = await prisma.user.update({
       where: { id: invitedUser.id },
       data: {
@@ -700,35 +781,172 @@ app.post("/enterprise/accept-invite", async (req, res) => {
         name: name || invitedUser.name,
         phone: phone || invitedUser.phone,
         is_verified: true,
+        role: "CONSULTANT", // Consultant role (with individual type consultant profile)
+        permanent_password: hashedPassword,
+        password_changed: true, // Password already set by user
+        enterpriseId: enterpriseIdFromInvite || invitedUser.enterpriseId,
         invite_token: null,
         invite_token_expiry: null,
-        temp_username: null,
-        temp_password: null,
       },
     });
 
-    // Create profile if not exists
-    if (profile_bio) {
-      await prisma.userProfile.upsert({
-        where: { userId: updatedUser.id },
-        update: { bio: profile_bio },
-        create: {
-          userId: updatedUser.id,
-          bio: profile_bio,
-        },
-      });
-    }
+    // Create consultant profile
+    await prisma.consultant.upsert({
+      where: { userId: updatedUser.id },
+      update: {},
+      create: {
+        userId: updatedUser.id,
+        type: "individual",
+        is_verified: false,
+      },
+    });
+
+    // Create user profile if not exists
+    await prisma.userProfile.upsert({
+      where: { userId: updatedUser.id },
+      update: {},
+      create: {
+        userId: updatedUser.id,
+      },
+    });
 
     console.log(`✓ Invitation accepted by ${updatedUser.email}`);
+    console.log(`✓ Consultant profile created for ${updatedUser.email}`);
+    console.log(`✓ Password set by user`);
+
     res.status(200).json({
-      message: "Invitation accepted successfully",
-      user: updatedUser,
+      message: "Invitation accepted successfully. You can now login with your email and password.",
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        phone: updatedUser.phone,
+      },
     });
   } catch (error) {
     console.error("Accept invite error:", error);
     res
       .status(500)
       .json({ error: "Failed to accept invitation: " + error.message });
+  }
+});
+
+/**
+ * POST /auth/check-username
+ * Check if a username is available
+ */
+app.post("/auth/check-username", async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: "Username is required" });
+    }
+
+    // Check if username exists in permanent_username or temp_username
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { permanent_username: username },
+          { temp_username: username },
+        ],
+      },
+    });
+
+    res.json({ 
+      available: !existingUser,
+      message: existingUser ? "Username is already taken" : "Username is available"
+    });
+  } catch (error) {
+    console.error("Check username error:", error);
+    res.status(500).json({ error: "Failed to check username availability" });
+  }
+});
+
+/**
+ * POST /auth/set-permanent-credentials
+ * Set permanent username and password after accepting invitation
+ */
+app.post("/auth/set-permanent-credentials", async (req, res) => {
+  try {
+    const { email, permanent_username, permanent_password } = req.body;
+
+    if (!email || !permanent_username || !permanent_password) {
+      return res.status(400).json({ 
+        error: "Email, username, and password are required" 
+      });
+    }
+
+    // Validate password strength
+    if (permanent_password.length < 8) {
+      return res.status(400).json({ 
+        error: "Password must be at least 8 characters long" 
+      });
+    }
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (user.role !== "ENTERPRISE_MEMBER") {
+      return res.status(400).json({ error: "Only enterprise members can set credentials" });
+    }
+
+    if (!user.is_verified) {
+      return res.status(400).json({ error: "Please accept invitation first" });
+    }
+
+    // Check if username is already taken
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        permanent_username: permanent_username,
+        NOT: { id: user.id },
+      },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ 
+        error: "Username already taken. Please choose another one." 
+      });
+    }
+
+    // Hash the permanent password
+    const hashedPassword = await bcrypt.hash(permanent_password, 10);
+
+    // Update user with permanent credentials
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        permanent_username: permanent_username,
+        permanent_password: hashedPassword,
+        password_changed: true,
+        // Keep temp credentials for reference but they won't be used for login anymore
+      },
+    });
+
+    console.log(`✅ Permanent credentials set for: ${updatedUser.email}`);
+    console.log(`   New username: ${permanent_username}`);
+
+    res.status(200).json({
+      message: "Permanent credentials set successfully",
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        username: updatedUser.permanent_username,
+        password_changed: updatedUser.password_changed,
+      },
+    });
+  } catch (error) {
+    console.error("Set credentials error:", error);
+    res.status(500).json({ 
+      error: "Failed to set credentials: " + error.message 
+    });
   }
 });
 
@@ -1010,42 +1228,246 @@ app.get("/auth/test-firebase", async (req, res) => {
 });
 
 /**
- * POST /auth/login-member
- * Login for enterprise team members using username and temporary password
+ * DEPRECATED - Replaced with unified email + password login
+ * This endpoint is no longer used
  */
-app.post("/auth/login-member", async (req, res) => {
-  const { username, password } = req.body;
+// app.post("/auth/login-member", ...)
 
-  if (!username || !password) {
-    return res.status(400).json({ error: "Username and password are required" });
-  }
-
+/**
+ * GET /auth/member-debug/:email
+ * Debug endpoint - Check if a member exists and their verification status
+ */
+app.get("/auth/member-debug/:email", async (req, res) => {
   try {
-    // Find user by temp_username
-    const user = await prisma.user.findFirst({
-      where: {
-        temp_username: username,
-        role: "ENTERPRISE_MEMBER",
+    const { email } = req.params;
+    
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        temp_username: true,
+        is_verified: true,
+        invite_token_expiry: true,
       },
     });
 
     if (!user) {
-      return res.status(401).json({ error: "Invalid username or password" });
+      return res.status(404).json({ error: "User not found" });
     }
 
-    // Verify password (comparing plain text - should use bcrypt in production)
-    if (user.temp_password !== password) {
-      return res.status(401).json({ error: "Invalid username or password" });
+    if (user.role !== "ENTERPRISE_MEMBER") {
+      return res.status(400).json({ error: "User is not an enterprise member" });
     }
 
-    // Check if not yet accepted the invitation
-    if (!user.is_verified) {
-      return res.status(403).json({ error: "Please accept the invitation first" });
+    res.json({
+      found: true,
+      email: user.email,
+      name: user.name,
+      username: user.temp_username,
+      isVerified: user.is_verified,
+      inviteExpiry: user.invite_token_expiry,
+      status: !user.is_verified ? "NOT_VERIFIED - Member needs to accept invitation" : "READY_TO_LOGIN",
+      instructions: user.is_verified 
+        ? `Use username: ${user.temp_username} to login`
+        : "Member must accept the invitation first before login",
+    });
+  } catch (error) {
+    console.error("Debug check error:", error);
+    res.status(500).json({ error: "Debug check failed: " + error.message });
+  }
+});
+
+/**
+ * POST /auth/signup
+ * Register a new user with email, password, name, and phone
+ * Requires OTP verification after signup
+ */
+app.post("/auth/signup", async (req, res) => {
+  const { email, password, fullName, phone, role } = req.body;
+
+  if (!email || !password || !fullName || !phone) {
+    return res.status(400).json({
+      error: "Email, password, full name, and phone are required",
+    });
+  }
+
+  try {
+    console.log(`📝 Signup attempt: ${email}`);
+
+    // Check if user already exists
+    let existingUser = await prisma.user.findUnique({ where: { email } });
+
+    if (existingUser) {
+      return res
+        .status(400)
+        .json({ error: "User with this email already exists" });
     }
 
-    console.log(`✅ Team member logged in: ${username} (${user.email})`);
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Generate JWT token
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Create new user with OTP (not verified yet)
+    const newUser = await prisma.user.create({
+      data: {
+        email,
+        name: fullName,
+        phone,
+        role: role || "USER",
+        firebase_uid: uuidv4(), // Generate unique firebase_uid
+        permanent_password: hashedPassword,
+        password_changed: true,
+        is_verified: false, // User must verify with OTP
+        otp_code: otp,
+        otp_expiry: otpExpiry,
+      },
+    });
+
+    console.log(`✅ User created: ${email}, OTP sent: ${otp}`);
+
+    // Send OTP via email
+    try {
+      if (transporter) {
+        await transporter.sendMail({
+          to: email,
+          subject: "ConsultaPro - Verify Your Email",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>Welcome to ConsultaPro!</h2>
+              <p>Hi ${fullName},</p>
+              <p>Thank you for signing up. Please verify your email with the following code:</p>
+              <div style="background-color: #f0f0f0; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+                <h1 style="letter-spacing: 5px; color: #0066cc; margin: 0;">${otp}</h1>
+              </div>
+              <p>This code will expire in 10 minutes.</p>
+              <p>If you didn't create this account, please ignore this email.</p>
+              <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+              <p style="color: #666; font-size: 12px;">ConsultaPro Team</p>
+            </div>
+          `
+        });
+        console.log(`📧 OTP email sent to: ${email}`);
+      }
+    } catch (emailErr) {
+      console.error("⚠️ Failed to send OTP email:", emailErr.message);
+      // Continue anyway - user can request new OTP if needed
+    }
+
+    // Create or update user profile
+    await prisma.userProfile.upsert({
+      where: { userId: newUser.id },
+      update: {},
+      create: {
+        userId: newUser.id,
+      },
+    });
+
+    res.status(201).json({
+      message: "User registered successfully. Please verify your email with the OTP sent to your inbox.",
+      email: newUser.email,
+      requiresOtp: true,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+        phone: newUser.phone,
+        role: newUser.role,
+      },
+      instructions: "Check your email for the verification code. You will receive a 6-digit OTP.",
+    });
+  } catch (error) {
+    console.error("Signup error:", error.message);
+    res.status(500).json({ error: "Signup failed: " + error.message });
+  }
+});
+
+/**
+ * POST /auth/login-password
+ * Login with email and password
+ */
+app.post("/auth/login-password", async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res
+      .status(400)
+      .json({ error: "Email and password are required" });
+  }
+
+  try {
+    console.log(`🔐 Password login attempt: ${email}`);
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: {
+        profile: true,
+      },
+    });
+
+    if (!user) {
+      console.log(`❌ User not found: ${email}`);
+      return res
+        .status(401)
+        .json({ error: "Invalid email or password" });
+    }
+
+    // Verify password (check permanent_password)
+    let passwordValid = false;
+    if (user.permanent_password) {
+      passwordValid = await bcrypt.compare(password, user.permanent_password);
+    }
+
+    if (!passwordValid) {
+      console.log(`❌ Invalid password for: ${email}`);
+      return res
+        .status(401)
+        .json({ error: "Invalid email or password" });
+    }
+
+    console.log(`✅ Password verified for ${email}`);
+
+    // Check if first login - needs password change
+    if (!user.password_changed) {
+      console.log(`⚠️ First login detected for ${email} - password change required`);
+      
+      // Generate temporary token for password change (30 min expiry)
+      let tempToken;
+      if (!firebaseAdminInitialized) {
+        tempToken = jwt.sign(
+          {
+            email: user.email,
+            uid: user.id,
+            temp: true,
+            iat: Math.floor(Date.now() / 1000),
+            exp: Math.floor(Date.now() / 1000) + 1800, // 30 minutes
+          },
+          process.env.JWT_SECRET || "dev-secret-key-for-testing-only",
+          { algorithm: "HS256" }
+        );
+      } else {
+        tempToken = await admin.auth().createCustomToken(user.firebase_uid);
+      }
+      
+      return res.status(200).json({
+        message: "First login detected - please change your password",
+        requiresPasswordChange: true,
+        tempToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        },
+      });
+    }
+
+    // Generate token
     let token;
     if (!firebaseAdminInitialized) {
       console.log("Dev mode - generating JWT token");
@@ -1054,7 +1476,7 @@ app.post("/auth/login-member", async (req, res) => {
           email: user.email,
           uid: user.id,
           iat: Math.floor(Date.now() / 1000),
-          exp: Math.floor(Date.now() / 1000) + 86400, // 24 hours expiry
+          exp: Math.floor(Date.now() / 1000) + 86400,
         },
         process.env.JWT_SECRET || "dev-secret-key-for-testing-only",
         { algorithm: "HS256" }
@@ -1063,9 +1485,9 @@ app.post("/auth/login-member", async (req, res) => {
       // Create Firebase custom token
       let firebaseUser;
       try {
-        firebaseUser = await admin.auth().getUserByEmail(user.email);
+        firebaseUser = await admin.auth().getUserByEmail(email);
       } catch {
-        firebaseUser = await admin.auth().createUser({ email: user.email });
+        firebaseUser = await admin.auth().createUser({ email });
       }
       token = await admin.auth().createCustomToken(firebaseUser.uid);
     }
@@ -1078,12 +1500,295 @@ app.post("/auth/login-member", async (req, res) => {
         id: user.id,
         email: user.email,
         name: user.name,
+        phone: user.phone,
         role: user.role,
       },
     });
   } catch (error) {
-    console.error("Member login error:", error.message);
-    res.status(500).json({ error: "Login failed: " + error.message });
+    console.error("Password login error:", error.message);
+    res
+      .status(500)
+      .json({ error: "Login failed: " + error.message });
+  }
+});
+
+/**
+ * POST /auth/change-password-first-login
+ * Change password on first login (after accepting invitation)
+ */
+app.post("/auth/change-password-first-login", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({
+        error: "Password must be at least 8 characters long"
+      });
+    }
+
+    // Get user from token
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: { consultant: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password and mark as changed
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        permanent_password: hashedPassword,
+        password_changed: true,
+      },
+      include: { consultant: true }
+    });
+
+    // Generate permanent token
+    let token;
+    if (!firebaseAdminInitialized) {
+      token = jwt.sign(
+        {
+          email: updatedUser.email,
+          uid: updatedUser.id,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 86400,
+        },
+        process.env.JWT_SECRET || "dev-secret-key-for-testing-only",
+        { algorithm: "HS256" }
+      );
+    } else {
+      let firebaseUser;
+      try {
+        firebaseUser = await admin.auth().getUserByEmail(updatedUser.email);
+      } catch {
+        firebaseUser = await admin.auth().createUser({ email: updatedUser.email });
+      }
+      token = await admin.auth().createCustomToken(firebaseUser.uid);
+    }
+
+    console.log(`✅ Password changed successfully for ${updatedUser.email}`);
+
+    res.status(200).json({
+      message: "Password changed successfully",
+      token,
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        role: updatedUser.role,
+        isConsultant: !!updatedUser.consultant,
+      },
+    });
+  } catch (error) {
+    console.error("Change password error:", error.message);
+    res.status(500).json({ error: "Failed to change password: " + error.message });
+  }
+});
+app.post("/auth/forgot-password", async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  try {
+    console.log(`📧 Forgot password request: ${email}`);
+
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      // Don't reveal if user exists for security
+      console.log(`ℹ️ User not found: ${email}`);
+      return res.status(200).json({
+        message:
+          "If an account exists with this email, a password reset link has been sent.",
+      });
+    }
+
+    // Generate reset token
+    const resetToken = require("crypto").randomBytes(32).toString("hex");
+    const resetTokenHash = require("crypto")
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    // Save reset token (valid for 1 hour)
+    const expiryTime = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await prisma.user.update({
+      where: { email },
+      data: {
+        password_reset_token: resetTokenHash,
+        password_reset_expiry: expiryTime,
+      },
+    });
+
+    // Create reset link
+    const resetLink = `${process.env.FRONTEND_URL || "http://localhost:3000"}/#/reset-password?token=${resetToken}&email=${email}`;
+
+    console.log(`✅ Reset token generated for: ${email}`);
+    console.log(`📌 Reset link: ${resetLink}`);
+
+    // Send reset email
+    try {
+      if (transporter) {
+        await transporter.sendMail({
+          to: email,
+          subject: "ConsultaPro - Password Reset Request",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>Password Reset Request</h2>
+              <p>Hi ${user.name || 'there'},</p>
+              <p>We received a request to reset your ConsultaPro password. Click the button below to create a new password:</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetLink}" 
+                   style="background-color: #0066cc; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+                  Reset Password
+                </a>
+              </div>
+              <p style="color: #666; font-size: 13px;">Or copy this link in your browser:</p>
+              <p style="background-color: #f5f5f5; padding: 10px; border-radius: 4px; word-break: break-all; font-size: 12px;">
+                ${resetLink}
+              </p>
+              <p style="color: #999; font-size: 12px;">This link will expire in 1 hour.</p>
+              <p>If you didn't request a password reset, please ignore this email or contact support.</p>
+              <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+              <p style="color: #666; font-size: 12px;">ConsultaPro Team</p>
+            </div>
+          `
+        });
+        console.log(`📧 Password reset email sent to: ${email}`);
+      } else {
+        console.warn("⚠️ Email transporter not configured, showing link in response for development");
+      }
+    } catch (emailErr) {
+      console.error("⚠️ Failed to send reset email:", emailErr.message);
+      // Still return success - email might fail but token is saved
+    }
+
+    res.status(200).json({
+      success: true,
+      message:
+        "If an account exists with this email, a password reset link has been sent.",
+      // Development only - remove in production
+      ...(process.env.NODE_ENV === "development" && {
+        devResetLink: resetLink,
+        devResetToken: resetToken,
+      }),
+    });
+  } catch (error) {
+    console.error("Forgot password error:", error.message);
+    res.status(500).json({
+      error: "Failed to process forgot password: " + error.message,
+    });
+  }
+});
+
+/**
+ * POST /auth/reset-password
+ * Reset password using token
+ */
+app.post("/auth/reset-password", async (req, res) => {
+  const { token, newPassword, email } = req.body;
+
+  if (!token || !newPassword || !email) {
+    return res.status(400).json({
+      error: "Token, email, and new password are required",
+    });
+  }
+
+  try {
+    console.log(`🔄 Password reset attempt: ${email}`);
+
+    // Hash the provided token to compare
+    const tokenHash = require("crypto")
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    // Find user with matching reset token
+    const user = await prisma.user.findFirst({
+      where: {
+        email,
+        password_reset_token: tokenHash,
+      },
+    });
+
+    if (!user) {
+      console.log(`❌ Invalid reset token for: ${email}`);
+      return res
+        .status(400)
+        .json({ error: "Invalid or expired reset token" });
+    }
+
+    // Check if token has expired
+    if (new Date() > user.password_reset_expiry) {
+      console.log(`❌ Reset token expired for: ${email}`);
+      return res
+        .status(400)
+        .json({ error: "Reset token has expired" });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password and clear reset token
+    await prisma.user.update({
+      where: { email },
+      data: {
+        permanent_password: hashedPassword,
+        password_reset_token: null,
+        password_reset_expiry: null,
+      },
+    });
+
+    console.log(`✅ Password reset successful for: ${email}`);
+
+    // Generate token for auto-login
+    let loginToken;
+    if (!firebaseAdminInitialized) {
+      console.log("Dev mode - generating JWT token");
+      loginToken = jwt.sign(
+        {
+          email: user.email,
+          uid: user.id,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 86400,
+        },
+        process.env.JWT_SECRET || "dev-secret-key-for-testing-only",
+        { algorithm: "HS256" }
+      );
+    } else {
+      let firebaseUser;
+      try {
+        firebaseUser = await admin.auth().getUserByEmail(email);
+      } catch {
+        firebaseUser = await admin.auth().createUser({ email });
+      }
+      loginToken = await admin.auth().createCustomToken(firebaseUser.uid);
+    }
+
+    res.status(200).json({
+      message: "Password reset successful",
+      customToken: loginToken,
+      devMode: !firebaseAdminInitialized,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      },
+    });
+  } catch (error) {
+    console.error("Password reset error:", error.message);
+    res.status(500).json({
+      error: "Failed to reset password: " + error.message,
+    });
   }
 });
 
@@ -1412,17 +2117,33 @@ app.get("/enterprise/team/:id/credentials", verifyFirebaseToken, async (req, res
         .json({ error: "Not authorized. Admin role required." });
     }
 
-    // Get member details with credentials
+    // Get member details with credentials and profile
     const member = await prisma.user.findUnique({
       where: { id: Number(id) },
       select: {
         id: true,
         email: true,
         name: true,
+        phone: true,
         role: true,
         is_verified: true,
         temp_username: true,
         temp_password: true,
+        created_at: true,
+        profile: {
+          select: {
+            avatar: true,
+            bio: true,
+            designation: true,
+            years_experience: true,
+            education: true,
+            languages: true,
+            hourly_rate: true,
+            availability: true,
+            expertise: true,
+            location: true,
+          },
+        },
       },
     });
 
@@ -1434,9 +2155,12 @@ app.get("/enterprise/team/:id/credentials", verifyFirebaseToken, async (req, res
       id: member.id,
       email: member.email,
       name: member.name,
+      phone: member.phone,
       is_verified: member.is_verified,
       username: member.temp_username,
       password: member.temp_password,
+      created_at: member.created_at,
+      profile: member.profile,
     });
   } catch (error) {
     console.error("Get member credentials error:", error);
@@ -1681,11 +2405,12 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
  * Update consultant profile
  */
 app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
-  const { type, domain, bio, languages, hourly_price, full_name, phone } = req.body;
+  const { type, domain, bio, languages, hourly_price, full_name, phone, expertise, availability, designation, years_experience, education } = req.body;
 
   try {
+    // Use consistent user lookup (same as GET endpoint)
     const user = await prisma.user.findUnique({
-      where: { firebase_uid: req.user.firebase_uid },
+      where: { id: req.user.id },
       include: { consultant: true },
     });
 
@@ -1706,6 +2431,11 @@ app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
         hourly_price: hourly_price
           ? parseFloat(hourly_price)
           : user.consultant.hourly_price,
+        expertise: expertise || user.consultant.expertise,
+        availability: availability || user.consultant.availability,
+        designation: designation || user.consultant.designation,
+        years_experience: years_experience !== undefined ? parseInt(years_experience) : user.consultant.years_experience,
+        education: education || user.consultant.education,
       },
     });
 
@@ -1981,6 +2711,11 @@ app.post(
         return res.status(400).json({ error: "No file provided" });
       }
 
+      const cloudinaryConfig = ensureCloudinaryConfigured();
+      if (!cloudinaryConfig.api_key || !cloudinaryConfig.api_secret || !cloudinaryConfig.cloud_name) {
+        return res.status(500).json({ error: "Cloudinary not configured on server" });
+      }
+
       // Upload to Cloudinary
       const uploadPromise = new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
@@ -1996,9 +2731,9 @@ app.post(
       const uploadResult = await uploadPromise;
       const imageUrl = uploadResult.secure_url;
 
-      // Get user
+      // Get user - use consistent lookup with other endpoints
       const user = await prisma.user.findUnique({
-        where: { firebase_uid: req.user.firebase_uid },
+        where: { id: req.user.id },
         include: { consultant: true },
       });
 
@@ -2040,6 +2775,17 @@ app.post(
       if (!req.file) {
         return res.status(400).json({ error: "No file provided" });
       }
+
+      const cloudinaryConfig = ensureCloudinaryConfigured();
+      if (!cloudinaryConfig.api_key || !cloudinaryConfig.api_secret || !cloudinaryConfig.cloud_name) {
+        return res.status(500).json({ error: "Cloudinary not configured on server" });
+      }
+
+      console.log("🖼️ Cloudinary upload (user profile):", {
+        cloud_name: cloudinaryConfig.cloud_name ? "SET" : "NOT SET",
+        api_key: cloudinaryConfig.api_key ? "SET" : "NOT SET",
+        api_secret: cloudinaryConfig.api_secret ? "SET" : "NOT SET",
+      });
 
       const uploadResult = await new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
@@ -2084,7 +2830,8 @@ app.post(
       });
     } catch (error) {
       console.error("Upload Error:", error);
-      res.status(500).json({ error: "Failed to upload profile picture" });
+      const errorMessage = error && error.message ? error.message : String(error);
+      res.status(500).json({ error: "Failed to upload profile picture: " + errorMessage });
     }
   }
 );
@@ -3090,19 +3837,62 @@ app.post("/payment/verify", async (req, res) => {
 
     // Send email asynchronously (don't wait for it)
     if (transporter && isEmailConfigured) {
-      transporter
-        .sendMail({
-          from: process.env.EMAIL_USER,
-          to: user.email,
-          subject: "Payment Invoice - ConsultaPro Credits Purchase",
-          html: invoiceHtml,
-        })
-        .catch((err) => {
+      // Generate PDF invoice in background
+      (async () => {
+        try {
+          const invoiceData = {
+            invoiceNumber: razorpay_order_id,
+            date: new Date().toLocaleDateString("en-IN"),
+            paymentId: razorpay_payment_id,
+            userEmail: user.email,
+            status: "PAID",
+            credits: creditsToAdd,
+            amount: orderRecord.amount,
+            bonus: bonusAmount,
+            totalCredits: totalCredits,
+          };
+
+          // Generate PDF buffer
+          const pdfBuffer = await generateInvoicePDF(invoiceData);
+
+          // Send email with PDF attachment
+          await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: user.email,
+            subject: "Payment Invoice - ConsultaPro Credits Purchase",
+            html: invoiceHtml,
+            attachments: [
+              {
+                filename: `Invoice_${razorpay_order_id}.pdf`,
+                content: pdfBuffer,
+                contentType: "application/pdf",
+              },
+            ],
+          });
+
+          console.log(`✅ Invoice PDF sent successfully to ${user.email}`);
+        } catch (err) {
           console.error(
-            `Failed to send invoice email to ${user.email}:`,
+            `Failed to send invoice email with PDF to ${user.email}:`,
             err.message
           );
-        });
+          // Fallback: Try sending without PDF
+          try {
+            await transporter.sendMail({
+              from: process.env.EMAIL_USER,
+              to: user.email,
+              subject: "Payment Invoice - ConsultaPro Credits Purchase",
+              html: invoiceHtml,
+            });
+            console.log(`✅ Invoice email sent (without PDF) to ${user.email}`);
+          } catch (fallbackErr) {
+            console.error(
+              `Failed to send invoice email to ${user.email}:`,
+              fallbackErr.message
+            );
+          }
+        }
+      })();
     } else {
       console.log(
         `📧 Email not configured - skipping invoice email for ${user.email}`
@@ -3805,7 +4595,7 @@ app.get("/agora/token", async (req, res) => {
 });
 /* ================= AUTH ME ================= */
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 io.use(async (socket, next) => {
   try {
@@ -4122,6 +4912,306 @@ app.get("/dev-verify-consultant", async (req, res) => {
     res.json(e);
   }
 });
+
+/**
+ * DEV: Set a user to ENTERPRISE_MEMBER role
+ * Usage: GET /dev-set-member-role?userId=9
+ */
+app.get("/dev-set-member-role", async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId query parameter required" });
+    }
+
+    const user = await prisma.user.update({
+      where: { id: parseInt(userId) },
+      data: { role: "ENTERPRISE_MEMBER" },
+    });
+
+    res.json({
+      message: "User role updated to ENTERPRISE_MEMBER",
+      user: { id: user.id, email: user.email, role: user.role },
+    });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
+/**
+ * DEV: Check user data
+ * Usage: GET /dev-check-user?userId=9
+ */
+app.get("/dev-check-user", async (req, res) => {
+  try {
+    const { userId, email } = req.query;
+
+    let user;
+    if (userId) {
+      user = await prisma.user.findUnique({
+        where: { id: parseInt(userId) },
+      });
+    } else if (email) {
+      user = await prisma.user.findUnique({
+        where: { email },
+      });
+    } else {
+      return res.status(400).json({ error: "userId or email required" });
+    }
+
+    if (!user) {
+      return res.json({ error: "User not found" });
+    }
+
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        firebase_uid: user.firebase_uid,
+        name: user.name,
+        enterpriseId: user.enterpriseId,
+      },
+    });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
+/**
+ * DEV: List all enterprises
+ */
+app.get("/dev-enterprises", async (req, res) => {
+  try {
+    const enterprises = await prisma.enterprise.findMany({
+      select: { id: true, name: true },
+    });
+    res.json({ enterprises });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
+/**
+ * DEV: Create test enterprise
+ * Usage: GET /dev-create-enterprise?name=Test%20Corp&ownerId=1
+ */
+app.get("/dev-create-enterprise", async (req, res) => {
+  try {
+    const name = req.query.name || "Test Enterprise";
+    const ownerId = req.query.ownerId ? parseInt(req.query.ownerId) : null;
+
+    // Find a user to be the owner
+    let owner;
+    if (ownerId) {
+      owner = await prisma.user.findUnique({ where: { id: ownerId } });
+    } else {
+      // Use first ENTERPRISE_ADMIN or first user
+      owner = await prisma.user.findFirst({
+        where: { role: "ENTERPRISE_ADMIN" },
+      });
+      if (!owner) {
+        owner = await prisma.user.findFirst();
+      }
+    }
+
+    if (!owner) {
+      return res.json({
+        error: "No user found to be enterprise owner",
+      });
+    }
+
+    const enterprise = await prisma.enterprise.create({
+      data: {
+        name,
+        ownerId: owner.id,
+      },
+    });
+
+    res.json({
+      message: "Enterprise created",
+      enterprise,
+    });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
+/**
+ * DEV: Assign user to enterprise
+ * Usage: GET /dev-assign-to-enterprise?userId=9&enterpriseId=1
+ */
+app.get("/dev-assign-to-enterprise", async (req, res) => {
+  try {
+    const { userId, enterpriseId } = req.query;
+
+    if (!userId || !enterpriseId) {
+      return res
+        .status(400)
+        .json({ error: "userId and enterpriseId query parameters required" });
+    }
+
+    const user = await prisma.user.update({
+      where: { id: parseInt(userId) },
+      data: { enterpriseId: parseInt(enterpriseId) },
+    });
+
+    res.json({
+      message: "User assigned to enterprise",
+      user: { id: user.id, email: user.email, enterpriseId: user.enterpriseId },
+    });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
+/**
+ * DEV: Test member profile access (without auth)
+ * Shows what a member profile would return
+ */
+app.get("/dev-member-profile-test", async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res
+        .status(400)
+        .json({ error: "userId query parameter required" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: parseInt(userId) },
+      include: {
+        enterprise: true,
+        ownedEnterprise: true,
+        profile: true,
+      },
+    });
+
+    if (!user) {
+      return res.json({ error: "User not found", userId });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        enterpriseId: user.enterpriseId,
+        enterprise: user.enterprise
+          ? { id: user.enterprise.id, name: user.enterprise.name }
+          : null,
+      },
+      profile: user.profile,
+    });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
+/**
+ * DEV: Generate dev token for a user
+ * Usage: GET /dev-generate-token?userId=9
+ */
+app.get("/dev-generate-token", async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId query parameter required" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: parseInt(userId) },
+    });
+
+    if (!user) {
+      return res.json({ error: "User not found" });
+    }
+
+    // Create JWT-formatted token (header.payload.signature)
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString('base64');
+    const payload = Buffer.from(JSON.stringify({
+      email: user.email,
+      uid: user.id,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 86400 // 24 hours
+    })).toString('base64');
+    const signature = Buffer.from("dev-mode-signature").toString('base64');
+    const token = `${header}.${payload}.${signature}`;
+
+    res.json({
+      message: "Dev token generated",
+      user: { id: user.id, email: user.email, role: user.role },
+      token: token,
+      instructions: "Copy this token and run in browser console: localStorage.setItem('devToken', '" + token + "'); location.reload();"
+    });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
+/**
+ * DEV: Clear all data from Consultant, User, and Enterprise tables
+ * WARNING: This will delete ALL records - use with caution!
+ * Usage: GET /dev-clear-tables
+ */
+app.get("/dev-clear-tables", async (req, res) => {
+  try {
+    const confirmToken = req.query.confirm;
+
+    if (confirmToken !== "YES_DELETE_ALL_DATA") {
+      return res.status(400).json({
+        error: "SAFETY CHECK: Pass ?confirm=YES_DELETE_ALL_DATA to confirm deletion",
+        warning: "This will permanently delete all data from Consultant, User, and Enterprise tables",
+        usage: "GET /dev-clear-tables?confirm=YES_DELETE_ALL_DATA"
+      });
+    }
+
+    console.log("🗑️  CLEARING ALL DATA FROM CONSULTANT, USER, AND ENTERPRISE TABLES");
+
+    // Delete in order to avoid foreign key constraint violations
+    // Need to delete in reverse order of dependencies
+    
+    // 1. Delete all Consultant records first
+    const consultantCount = await prisma.consultant.deleteMany({});
+    console.log(`✅ Deleted ${consultantCount.count} Consultant records`);
+
+    // 2. Delete all UserProfile records
+    const profileCount = await prisma.userProfile.deleteMany({});
+    console.log(`✅ Deleted ${profileCount.count} UserProfile records`);
+
+    // 3. Delete all Enterprise records (before User, since User references Enterprise)
+    const enterpriseCount = await prisma.enterprise.deleteMany({});
+    console.log(`✅ Deleted ${enterpriseCount.count} Enterprise records`);
+
+    // 4. Finally delete all User records
+    const userCount = await prisma.user.deleteMany({});
+    console.log(`✅ Deleted ${userCount.count} User records`);
+
+    res.json({
+      success: true,
+      message: "All data cleared successfully!",
+      deleted: {
+        consultants: consultantCount.count,
+        profiles: profileCount.count,
+        enterprises: enterpriseCount.count,
+        users: userCount.count,
+      },
+      total: consultantCount.count + profileCount.count + enterpriseCount.count + userCount.count,
+      warning: "⚠️ This data has been permanently deleted from the database"
+    });
+
+  } catch (error) {
+    console.error("❌ Error clearing tables:", error.message);
+    res.status(500).json({
+      error: "Failed to clear tables: " + error.message
+    });
+  }
+});
+
 // ================= ENTERPRISE MEMBER ENDPOINTS =================
 
 /**
@@ -4130,40 +5220,403 @@ app.get("/dev-verify-consultant", async (req, res) => {
  */
 app.get("/enterprise/member/profile", verifyFirebaseToken, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({
+    console.log("🔍 Member profile endpoint called");
+    console.log("📋 req.user:", {
+      id: req.user?.id,
+      email: req.user?.email,
+      role: req.user?.role,
+      firebase_uid: req.user?.firebase_uid,
+    });
+
+    // First try to find by firebase_uid from token
+    let user = await prisma.user.findUnique({
       where: { firebase_uid: req.user.firebase_uid },
       include: {
         enterprise: true,
+        ownedEnterprise: true,
         profile: true,
       },
     });
 
-    if (!user || user.role !== "ENTERPRISE_MEMBER") {
-      return res.status(403).json({ error: "Not authorized" });
+    // If not found by firebase_uid, try by email
+    if (!user && req.user.email) {
+      console.log("⚠️ User not found by firebase_uid, trying by email:", req.user.email);
+      user = await prisma.user.findUnique({
+        where: { email: req.user.email },
+        include: {
+          enterprise: true,
+          ownedEnterprise: true,
+          profile: true,
+        },
+      });
     }
 
-    if (!user.enterprise) {
-      return res
-        .status(404)
-        .json({ error: "Enterprise not found for this member" });
+    // If still not found, try by ID if req.user has it
+    if (!user && req.user.id) {
+      console.log("⚠️ User not found by email, trying by ID:", req.user.id);
+      user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        include: {
+          enterprise: true,
+          ownedEnterprise: true,
+          profile: true,
+        },
+      });
     }
+
+    console.log("✓ User found:", { id: user?.id, role: user?.role, email: user?.email });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found in database" });
+    }
+
+    if (user.role !== "ENTERPRISE_MEMBER" && user.role !== "ENTERPRISE_ADMIN") {
+      return res.status(403).json({
+        error: "Not authorized",
+        userRole: user.role,
+        expectedRoles: ["ENTERPRISE_MEMBER", "ENTERPRISE_ADMIN"],
+      });
+    }
+
+    const enterprise = user.enterprise || user.ownedEnterprise || null;
 
     res.json({
       id: user.id,
       email: user.email,
       name: user.name,
+      user: user,
       role: user.role,
       phone: user.phone,
-      enterprise: {
-        id: user.enterprise.id,
-        name: user.enterprise.name,
-        logo: user.enterprise.logo,
-      },
+      enterprise: enterprise
+        ? {
+            id: enterprise.id,
+            name: enterprise.name,
+            logo: enterprise.logo,
+          }
+        : null,
       profile: user.profile,
     });
   } catch (error) {
     console.error("Get member profile error:", error);
     res.status(500).json({ error: "Failed to fetch member profile" });
+  }
+});
+
+/**
+ * POST /enterprise/member/kyc/upload
+ * Upload KYC documents (ID proof, address proof, additional docs)
+ */
+app.post("/enterprise/member/kyc/upload", verifyFirebaseToken, async (req, res) => {
+  try {
+    const firebaseUid = req.user.uid;
+    const { document_type, file_data, file_name } = req.body;
+
+    if (!document_type || !file_data || !file_name) {
+      return res.status(400).json({ 
+        error: "Missing required fields: document_type, file_data, file_name" 
+      });
+    }
+
+    // Validate document type
+    const validTypes = ["id_proof", "address_proof", "additional"];
+    if (!validTypes.includes(document_type)) {
+      return res.status(400).json({ 
+        error: `Invalid document type. Must be one of: ${validTypes.join(", ")}` 
+      });
+    }
+
+    // Validate file data (base64)
+    if (!file_data.startsWith("data:")) {
+      return res.status(400).json({ 
+        error: "File data must be in base64 format (data URI)" 
+      });
+    }
+
+    // Get or create user profile
+    let userProfile = await prisma.userProfile.findUnique({
+      where: { firebase_uid: firebaseUid },
+    });
+
+    if (!userProfile) {
+      return res.status(404).json({ error: "User profile not found" });
+    }
+
+    // Upload to Cloudinary
+    try {
+      const cloudinaryConfig = ensureCloudinaryConfigured();
+      if (!cloudinaryConfig.api_key || !cloudinaryConfig.api_secret || !cloudinaryConfig.cloud_name) {
+        return res.status(500).json({ error: "Cloudinary not configured on server" });
+      }
+
+      const uploadResponse = await cloudinary.uploader.upload(file_data, {
+        folder: "consultancy-platform/kyc-documents",
+        resource_type: "auto",
+        public_id: `${userProfile.id}_${document_type}_${Date.now()}`,
+        overwrite: false,
+      });
+
+      // Prepare document metadata
+      const documentMetadata = {
+        document_type,
+        url: uploadResponse.secure_url,
+        file_name,
+        public_id: uploadResponse.public_id,
+        uploaded_at: new Date().toISOString(),
+        size: uploadResponse.bytes,
+      };
+
+      // Update the appropriate field based on document type
+      const updateData = {
+        kyc_submitted_at: new Date(),
+      };
+
+      if (document_type === "id_proof") {
+        updateData.id_proof_url = uploadResponse.secure_url;
+      } else if (document_type === "address_proof") {
+        updateData.address_proof_url = uploadResponse.secure_url;
+      } else if (document_type === "additional") {
+        // Add to array of additional documents
+        const existingDocs = Array.isArray(userProfile.kyc_documents) 
+          ? userProfile.kyc_documents 
+          : [];
+        updateData.kyc_documents = [...existingDocs, documentMetadata];
+      }
+
+      // Set status to SUBMITTED if not already approved/rejected
+      if (userProfile.kyc_status !== "APPROVED" && userProfile.kyc_status !== "REJECTED") {
+        updateData.kyc_status = "SUBMITTED";
+      }
+
+      // Update the profile
+      const updatedProfile = await prisma.userProfile.update({
+        where: { id: userProfile.id },
+        data: updateData,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `${document_type} uploaded successfully`,
+        profile: updatedProfile,
+        document: documentMetadata,
+      });
+    } catch (uploadError) {
+      console.error("Cloudinary upload error:", uploadError);
+      res.status(500).json({ 
+        error: "Failed to upload document to cloud storage",
+        details: uploadError.message 
+      });
+    }
+  } catch (error) {
+    console.error("KYC upload error:", error);
+    res.status(500).json({ error: "Failed to upload KYC documents" });
+  }
+});
+
+/**
+ * POST /enterprise/member/onboarding
+ * Complete member onboarding with full profile details
+ */
+app.post("/enterprise/member/onboarding", verifyFirebaseToken, async (req, res) => {
+  try {
+    const {
+      profile_photo,
+      bio,
+      expertise,
+      languages,
+      hourly_rate,
+      availability,
+      designation,
+      years_experience,
+      education,
+    } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+      include: { profile: true },
+    });
+
+    if (!user) {
+      return res.status(403).json({ error: "User not found" });
+    }
+
+    // Allow both ENTERPRISE_MEMBER and ENTERPRISE_ADMIN for testing
+    if (user.role !== "ENTERPRISE_MEMBER" && user.role !== "ENTERPRISE_ADMIN") {
+      return res.status(403).json({ error: "Not authorized. Only enterprise users can complete onboarding." });
+    }
+
+    // Update user with profile photo and designation
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        profile_photo: profile_photo || user.profile_photo,
+      },
+    });
+
+    // Update or create comprehensive user profile
+    const updatedProfile = await prisma.userProfile.upsert({
+      where: { userId: user.id },
+      update: {
+        bio: bio || "",
+        expertise: expertise || [],
+        languages: languages || "English",
+        hourly_rate: hourly_rate || null,
+        availability: availability || "Full-time",
+        designation: designation || null,
+        years_experience: years_experience || null,
+        education: education || null,
+      },
+      create: {
+        userId: user.id,
+        bio: bio || "",
+        expertise: expertise || [],
+        languages: languages || "English",
+        hourly_rate: hourly_rate || null,
+        availability: availability || "Full-time",
+        designation: designation || null,
+        years_experience: years_experience || null,
+        education: education || null,
+        kyc_status: "PENDING",
+      },
+    });
+
+    console.log(`✓ Member onboarding completed for ${updatedUser.email}`);
+
+    res.json({
+      message: "Onboarding completed successfully",
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        phone: updatedUser.phone,
+        profile_photo: updatedUser.profile_photo,
+      },
+      profile: updatedProfile,
+    });
+  } catch (error) {
+    console.error("Member onboarding error:", error);
+    res.status(500).json({ error: "Failed to complete onboarding: " + error.message });
+  }
+});
+
+/**
+ * PATCH /enterprise/member/profile
+ * Update enterprise member profile
+ */
+app.patch("/enterprise/member/profile", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { name, phone, bio, expertise, availability, profile_photo } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+      include: { profile: true },
+    });
+
+    if (!user || (user.role !== "ENTERPRISE_MEMBER" && user.role !== "ENTERPRISE_ADMIN")) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    // Update user basic info
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        name: name || user.name,
+        phone: phone || user.phone,
+        profile_photo: profile_photo || user.profile_photo,
+      },
+    });
+
+    // Update or create user profile
+    const updatedProfile = await prisma.userProfile.upsert({
+      where: { userId: user.id },
+      update: {
+        bio: bio !== undefined ? bio : undefined,
+        expertise: expertise !== undefined ? expertise : undefined,
+        availability: availability !== undefined ? availability : undefined,
+      },
+      create: {
+        userId: user.id,
+        bio: bio || "",
+        expertise: expertise || [],
+        availability: availability || "",
+      },
+    });
+
+    console.log(`✓ Member profile updated for ${updatedUser.email}`);
+
+    res.json({
+      message: "Profile updated successfully",
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        phone: updatedUser.phone,
+        profile_photo: updatedUser.profile_photo,
+      },
+      profile: updatedProfile,
+    });
+  } catch (error) {
+    console.error("Update member profile error:", error);
+    res.status(500).json({ error: "Failed to update member profile: " + error.message });
+  }
+});
+
+/**
+ * GET /availability
+ * Get member's available consultation slots
+ */
+app.get("/availability", verifyFirebaseToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Return empty array for now - availability slots can be added later
+    // This can be extended to fetch actual availability from the database
+    res.json([]);
+  } catch (error) {
+    console.error("Get availability error:", error);
+    res.status(500).json({ error: "Failed to fetch availability" });
+  }
+});
+
+/**
+ * GET /reviews/member
+ * Get reviews for the current member
+ */
+app.get("/reviews/member", verifyFirebaseToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+      include: { consultant: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (!user.consultant) {
+      return res.json([]);
+    }
+
+    // Fetch reviews for this member/consultant
+    const reviews = await prisma.review.findMany({
+      where: { consultantId: user.consultant.id },
+      include: {
+        reviewer: {
+          select: { id: true, email: true, name: true },
+        },
+      },
+      orderBy: { created_at: "desc" },
+    });
+
+    res.json(reviews || []);
+  } catch (error) {
+    console.error("Get member reviews error:", error);
+    res.status(500).json({ error: "Failed to fetch reviews" });
   }
 });
 
@@ -4181,7 +5634,7 @@ app.get(
         include: { enterprise: true },
       });
 
-      if (!user || user.role !== "ENTERPRISE_MEMBER" || !user.enterprise) {
+      if (!user || (user.role !== "ENTERPRISE_MEMBER" && user.role !== "ENTERPRISE_ADMIN") || !user.enterprise) {
         return res.status(403).json({ error: "Not authorized" });
       }
 
@@ -4366,8 +5819,8 @@ app.get(
         return res.status(404).json({ error: "User not found" });
       }
 
-      if (user.role !== "ENTERPRISE_MEMBER") {
-        console.log(`❌ Wrong role: ${user.role}, expected ENTERPRISE_MEMBER`);
+      if (user.role !== "ENTERPRISE_MEMBER" && user.role !== "ENTERPRISE_ADMIN") {
+        console.log(`❌ Wrong role: ${user.role}, expected ENTERPRISE_MEMBER or ENTERPRISE_ADMIN`);
         return res.status(403).json({
           error: "Not authorized - wrong role",
           userRole: user.role,

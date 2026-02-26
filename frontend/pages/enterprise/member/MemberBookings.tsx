@@ -23,7 +23,7 @@ const MemberBookings: React.FC = () => {
   }, []);
 
   return (
-    <Layout>
+    <Layout title="My Bookings">
       <div className="p-8">
         <h1 className="text-2xl font-bold mb-6">My Bookings</h1>
 

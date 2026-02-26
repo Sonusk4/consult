@@ -145,14 +145,101 @@ export const auth = {
     }
   },
 
-  loginMember: async (username: string, password: string) => {
+  signupWithPassword: async (data: {
+    email: string;
+    fullName: string;
+    phone: string;
+    password: string;
+    role: UserRole;
+  }) => {
     try {
-      console.log(`📤 Logging in team member: ${username}`);
-      const response = await api.post("/auth/login-member", { username, password });
-      console.log("📥 Team member login response:", response.data);
+      console.log(`📤 Signing up with password for ${data.email}`);
+      const response = await api.post("/auth/signup", data);
+      console.log("📥 Signup response:", response.data);
       return response.data;
     } catch (error) {
-      console.error("❌ loginMember error:", error);
+      console.error("❌ signupWithPassword error:", error);
+      throw error;
+    }
+  },
+
+  loginWithPassword: async (email: string, password: string) => {
+    try {
+      console.log(`📤 Logging in with password for ${email}`);
+      const response = await api.post("/auth/login-password", {
+        email,
+        password,
+      });
+      console.log("📥 Password login response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("❌ loginWithPassword error:", error);
+      throw error;
+    }
+  },
+
+  forgotPassword: async (email: string) => {
+    try {
+      console.log(`📤 Sending forgot password email to ${email}`);
+      const response = await api.post("/auth/forgot-password", { email });
+      console.log("📥 Forgot password response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("❌ forgotPassword error:", error);
+      throw error;
+    }
+  },
+
+  resetPassword: async (token: string, newPassword: string, email?: string) => {
+    try {
+      console.log(`📤 Resetting password with token`);
+      const response = await api.post("/auth/reset-password", {
+        token,
+        newPassword,
+        email,
+      });
+      console.log("📥 Reset password response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("❌ resetPassword error:", error);
+      throw error;
+    }
+  },
+
+  changePasswordFirstLogin: async (newPassword: string) => {
+    try {
+      console.log(`📤 Changing password on first login`);
+      const response = await api.post("/auth/change-password-first-login", {
+        newPassword,
+      });
+      console.log("📥 Password change response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("❌ changePasswordFirstLogin error:", error);
+      throw error;
+    }
+  },
+
+  acceptInvitation: async (
+    token: string,
+    firebaseUid: string,
+    phone: string,
+    name: string,
+    password: string
+  ) => {
+    try {
+      console.log(`📤 Accepting invitation`);
+      const response = await api.post("/enterprise/accept-invite", {
+        token,
+        firebase_uid: firebaseUid,
+        phone,
+        name,
+        password,
+      });
+      console.log("📥 Invitation acceptance response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("❌ acceptInvitation error:", error);
       throw error;
     }
   },
@@ -220,6 +307,62 @@ export const consultants = {
     const response = await api.get("/consultant/earnings", {
       params: { period },
     });
+    return response.data;
+  },
+
+  getKycStatus: async () => {
+    const response = await api.get("/consultant/kyc-status");
+    return response.data;
+  },
+
+  getCertificates: async () => {
+    const response = await api.get("/consultant/certificates");
+    return response.data;
+  },
+
+  uploadKycDoc: async (files: File[], documentType?: string) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+    if (documentType) formData.append("documentType", documentType);
+
+    const response = await api.post("/consultant/upload-kyc", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  },
+
+  uploadCertificate: async (
+    files: File[],
+    metadata?: {
+      issuer?: string;
+      issueDate?: string;
+      expiryDate?: string;
+      credentialId?: string;
+    }
+  ) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+    if (metadata) {
+      if (metadata.issuer) formData.append("issuer", metadata.issuer);
+      if (metadata.issueDate) formData.append("issueDate", metadata.issueDate);
+      if (metadata.expiryDate) formData.append("expiryDate", metadata.expiryDate);
+      if (metadata.credentialId)
+        formData.append("credentialId", metadata.credentialId);
+    }
+
+    const response = await api.post("/consultant/upload-certificates", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  },
+
+  deleteCertificate: async (certificateId: string | number) => {
+    const response = await api.delete(`/consultant/certificates/${certificateId}`);
+    return response.data;
+  },
+
+  deleteKycDocument: async (documentId: number | string) => {
+    const response = await api.delete(`/consultant/kyc-documents/${documentId}`);
     return response.data;
   },
 };

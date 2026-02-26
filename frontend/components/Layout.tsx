@@ -31,8 +31,9 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
       case UserRole.CONSULTANT:
         return "/consultant/profile";
       case UserRole.ENTERPRISE_ADMIN:
-      case UserRole.ENTERPRISE_MEMBER:
         return "/enterprise/profile";
+      case UserRole.ENTERPRISE_MEMBER:
+        return "/member/profile";
       default:
         return "/";
     }
@@ -131,7 +132,7 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
                 </div>
 
                 <img
-                  src={user?.avatar || "https://via.placeholder.com/40"}
+                  src={user?.profile_photo || user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.email || 'User')}&background=0D8ABC&color=fff`}
                   alt="Avatar"
                   className="w-9 h-9 rounded-full ring-2 ring-blue-50 object-cover shadow-sm"
                 />
