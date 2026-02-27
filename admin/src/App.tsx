@@ -10,12 +10,18 @@ import EnterprisePage from "./pages/EnterprisePage";
 import EnterpriseVerificationPage from "./pages/EnterpriseVerificationPage";
 import VerificationManagementPage from "./pages/VerificationManagementPage";
 import InvoicesPage from "./pages/InvoicesPage";
+import TransactionsPage from "./pages/TransactionsPage";
 import KYCPage from "./pages/KYCPage";
 import LoginPage from "./pages/LoginPage";
 import SignUpPage from "./pages/SignUpPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import ProfilePage from "./pages/ProfilePage";
 import NotFound from "./pages/NotFound";
+import UsersListPage from "./pages/UsersListPage";
+import UserDetailPage from "./pages/UserDetailPage";
+import ConsultantsListPage from "./pages/ConsultantsListPage";
+import ConsultantDetailPage from "./pages/ConsultantDetailPage";
+import EnterpriseDetailPage from "./pages/EnterpriseDetailPage";
 import { adminAuth } from "./services/api";
 
 const queryClient = new QueryClient();
@@ -29,12 +35,12 @@ const ProtectedRoute: React.FC<{ element: React.ReactElement }> = ({ element }) 
 // Root route - redirect to admin if authenticated, otherwise to login
 const RootRoute: React.FC = () => {
   const token = localStorage.getItem("adminToken");
-  
+
   // If token exists, try to validate it, otherwise go to login
   if (token) {
     return <Navigate to="/admin" replace />;
   }
-  
+
   return <Navigate to="/login" replace />;
 };
 
@@ -93,6 +99,12 @@ const AppContent = () => {
         <Route path="kyc" element={<KYCPage />} />
         <Route path="documents" element={<DocumentsPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="transactions" element={<TransactionsPage />} />
+        <Route path="users" element={<UsersListPage />} />
+        <Route path="users/:id" element={<UserDetailPage />} />
+        <Route path="consultants-list" element={<ConsultantsListPage />} />
+        <Route path="consultants-list/:id" element={<ConsultantDetailPage />} />
+        <Route path="enterprise/:id" element={<EnterpriseDetailPage />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

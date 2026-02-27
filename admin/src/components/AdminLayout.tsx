@@ -9,6 +9,8 @@ import {
   Menu,
   FileCheck,
   User,
+  ArrowLeftRight,
+  UserCheck,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { adminAuth } from "../services/api";
@@ -21,10 +23,13 @@ interface AdminProfile {
 
 const navItems = [
   { to: "/admin", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/admin/users", icon: User, label: "Users" },
+  { to: "/admin/consultants-list", icon: UserCheck, label: "Consultants" },
   { to: "/admin/enterprise", icon: Building2, label: "Enterprise" },
   { to: "/admin/enterprise-verify", icon: ShieldCheck, label: "Enterprise Verify" },
   { to: "/admin/verification", icon: FileCheck, label: "Verifications" },
   { to: "/admin/invoices", icon: FileText, label: "Invoices" },
+  { to: "/admin/transactions", icon: ArrowLeftRight, label: "Transactions" },
   { to: "/admin/kyc", icon: ShieldCheck, label: "KYC" },
   { to: "/admin/documents", icon: FileCheck, label: "Documents" },
   { to: "/admin/profile", icon: User, label: "Profile" },
@@ -64,9 +69,8 @@ const AdminLayout: React.FC = () => {
 
       {/* Sidebar - Always Visible */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-white border-r border-gray-200 lg:relative ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-white border-r border-gray-200 lg:relative ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          }`}
       >
         {/* Logo */}
         <div className="flex h-16 items-center px-6 border-b border-gray-200">
@@ -82,10 +86,9 @@ const AdminLayout: React.FC = () => {
               end={item.to === "/admin"}
               onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-blue-100 text-blue-700"
-                    : "text-gray-700"
+                `flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${isActive
+                  ? "bg-blue-100 text-blue-700"
+                  : "text-gray-700"
                 }`
               }
             >

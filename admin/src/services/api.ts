@@ -225,4 +225,55 @@ export const invoices = {
   },
 };
 
+/* ================= TRANSACTIONS ================= */
+
+export const transactions = {
+  getAll: async (params?: {
+    type?: string;
+    userId?: number;
+    consultantId?: number;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.type) query.append("type", params.type);
+    if (params?.userId) query.append("userId", String(params.userId));
+    if (params?.consultantId) query.append("consultantId", String(params.consultantId));
+    if (params?.startDate) query.append("startDate", params.startDate);
+    if (params?.endDate) query.append("endDate", params.endDate);
+    if (params?.limit) query.append("limit", String(params.limit));
+    if (params?.offset) query.append("offset", String(params.offset));
+    const response = await api.get(
+      `/admin/transactions${query.toString() ? `?${query.toString()}` : ""}`
+    );
+    return response.data;
+  },
+
+  getStats: async () => {
+    const response = await api.get("/admin/transactions/stats");
+    return response.data;
+  },
+
+  getBookings: async (params?: {
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.append("status", params.status);
+    if (params?.startDate) query.append("startDate", params.startDate);
+    if (params?.endDate) query.append("endDate", params.endDate);
+    if (params?.limit) query.append("limit", String(params.limit));
+    if (params?.offset) query.append("offset", String(params.offset));
+    const response = await api.get(
+      `/admin/transactions/bookings${query.toString() ? `?${query.toString()}` : ""}`
+    );
+    return response.data;
+  },
+};
+
 export default api;

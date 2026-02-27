@@ -92,13 +92,18 @@ model Consultant {
   
   // Certificate Fields
   certificates    Json?           // Store certificate URLs and metadata
-  
+
+  // Commission Settings (set by admin only, not exposed to consultant or user)
+  consultant_commission_pct  Float?   // % deducted from consultant's payout (e.g. 15 means admin keeps 15%)
+  user_commission_pct        Float?   // % markup added to user's price (e.g. 10 means user pays +10%)
+
   availabilitySlots Availability[]
   bookings       Booking[]
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   reviews        Review[]
   slots          Slot[]
   supportTickets SupportTicket[]
+  payouts        ConsultantPayout[]
 }
 
 model Availability {
@@ -126,7 +131,8 @@ model Booking {
   call_completed    Boolean   @default(false)
   call_duration     Int?
   consultant_fee    Float?
-  commission_fee    Float?
+  commission_fee    Float?    // platform revenue = (user_price - consultant_net)
+  user_commission_fee Float?  // portion of commission charged as markup to user
   net_earning       Float?
   created_at        DateTime  @default(now())
   completed_at      DateTime?
@@ -291,4 +297,16 @@ model Admin {
   role       String   @default("ADMIN")
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+}
+
+model ConsultantPayout {
+  id           Int        @id @default(autoincrement())
+  consultantId Int
+  amount       Float
+  status       String     @default("PENDING")  // PENDING | PAID
+  paid_at      DateTime?
+  notes        String?
+  created_at   DateTime   @default(now())
+  updated_at   DateTime   @updatedAt
+  consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
 }

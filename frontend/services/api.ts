@@ -311,7 +311,7 @@ export const consultants = {
   },
 
   getConsultantAvailability: async () => {
-    const response = await api.get("/consultant/availability");
+    const response = await api.get("/consultant/availability/my");
     return response.data;
   },
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { Building2, Package, TrendingUp, ArrowUpRight } from "lucide-react";
+import { Building2, Package, TrendingUp, ArrowUpRight, ChevronRight } from "lucide-react";
 import { enterprises } from "../services/api";
+import { useNavigate } from "react-router-dom";
 
 interface EnterpriseStats {
   totalEnterprises?: number;
@@ -35,6 +36,7 @@ const variantColors = {
 };
 
 const EnterprisePage: React.FC = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<EnterpriseStats | null>(null);
   const [clients, setClients] = useState<EnterpriseClient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,6 +154,7 @@ const EnterprisePage: React.FC = () => {
                 <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-6 py-3">Owner</th>
                 <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-6 py-3">Members</th>
                 <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-6 py-3">Status</th>
+                <th className="px-6 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -163,7 +166,9 @@ const EnterprisePage: React.FC = () => {
                 </tr>
               ) : (
                 clients.map((client, i) => (
-                  <tr key={client.id} className="hover:bg-muted/30 transition-colors animate-fade-in" style={{ animationDelay: `${i * 60}ms` }}>
+                  <tr key={client.id} className="hover:bg-muted/30 transition-colors cursor-pointer animate-fade-in" style={{ animationDelay: `${i * 60}ms` }}
+                    onClick={() => navigate(`/admin/enterprise/${client.id}`)}
+                  >
                     <td className="px-6 py-4 text-sm font-medium text-foreground">{client.name}</td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">{client.owner?.name || "Unknown"}</td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">{client.members?.length || 0}</td>
@@ -175,6 +180,7 @@ const EnterprisePage: React.FC = () => {
                         {client.status === "OPEN" ? "Active" : client.status}
                       </span>
                     </td>
+                    <td className="px-6 py-4"><ChevronRight className="h-4 w-4 text-gray-300" /></td>
                   </tr>
                 ))
               )}

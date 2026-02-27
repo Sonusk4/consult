@@ -377,69 +377,7 @@ const UserProfilePage: React.FC = () => {
           </div>
 
           <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <label className="text-sm font-semibold text-gray-700 block mb-2">
-                Domains Needed
-              </label>
-              <input
-                name="domains"
-                value={formData.domains}
-                disabled={!isEditing}
-                onChange={handleChange}
-                placeholder="e.g., Technology, Business Strategy"
-                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100 disabled:cursor-not-allowed transition"
-              />
-              <p className="text-xs text-gray-400 mt-1">Comma-separated</p>
-            </div>
 
-            <div>
-              <label className="text-sm font-semibold text-gray-700 block mb-2">
-                Interests
-              </label>
-              <input
-                name="interests"
-                value={formData.interests}
-                disabled={!isEditing}
-                onChange={handleChange}
-                placeholder="e.g., Career Advice, Leadership"
-                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100 disabled:cursor-not-allowed transition"
-              />
-              <p className="text-xs text-gray-400 mt-1">Comma-separated</p>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <label className="text-sm font-semibold text-gray-700 block mb-2">
-                Primary Goal
-              </label>
-              <textarea
-                name="goal"
-                value={formData.goal}
-                disabled={!isEditing}
-                onChange={handleChange}
-                placeholder="Share your main goal"
-                rows={3}
-                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100 disabled:cursor-not-allowed transition resize-none"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold text-gray-700 block mb-2">
-                Preferred Session Type
-              </label>
-              <select
-                name="preferredSessionType"
-                value={formData.preferredSessionType}
-                disabled={!isEditing}
-                onChange={handleChange}
-                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100 disabled:cursor-not-allowed transition"
-              >
-                <option value="VIDEO">Video Call</option>
-                <option value="AUDIO">Audio Call</option>
-                <option value="CHAT">Chat/Messaging</option>
-              </select>
-            </div>
           </div>
 
         </div>
