@@ -4,12 +4,17 @@ import { useNavigate } from 'react-router-dom';
 import { consultants as consultantsApi } from '../../services/api';
 import { Consultant } from '../../types';
 import { Search, Loader, Star } from 'lucide-react';
+import '../../styles/UserPopupModal.css';
 
 const weekdays = [
   'Monday','Tuesday','Wednesday','Thursday',
   'Friday','Saturday','Sunday'
 ];
 
+const languages = [
+  "English",
+  "Kannada"
+];
 const SearchConsultantPage: React.FC = () => {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
@@ -47,17 +52,21 @@ const SearchConsultantPage: React.FC = () => {
   }, [consultantsData]);
 
   const languages = useMemo(() => {
-    return [
-      ...new Set(
-        consultantsData
-          .flatMap(c =>
-            c.languages ? c.languages.split(',') : []
-          )
-          .map(l => l.trim())
-          .filter(Boolean)
+  const dynamic = [
+    ...new Set(
+      consultantsData.flatMap(c =>
+        c.languages ? c.languages.split(",") : []
       )
-    ];
-  }, [consultantsData]);
+      .map(l => l.trim())
+      .filter(Boolean)
+    )
+  ];
+
+  // ALWAYS show these
+  const staticDefaults = ["English", "Kannada"];
+
+  return [...new Set([...staticDefaults, ...dynamic])];
+}, [consultantsData]);
 
   /* ---------------- Filtering Logic ---------------- */
 
@@ -166,35 +175,10 @@ const SearchConsultantPage: React.FC = () => {
           </div>
 
           {/* RATING */}
-          <div className="mb-6">
-            <h3 className="font-semibold mb-3">Rating</h3>
-            <div className="space-y-2 text-sm">
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  name="rating"
-                  checked={rating === null}
-                  onChange={() => setRating(null)}
-                  className="mr-2 accent-blue-600"
-                />
-                All Ratings
-              </label>
-              {[4, 3, 2].map(r => (
-                <label key={r} className="flex items-center">
-                  <input
-                    type="radio"
-                    name="rating"
-                    checked={rating === r}
-                    onChange={() => setRating(r)}
-                    className="mr-2 accent-blue-600"
-                  />
-                  {r}★ & above
-                </label>
-              ))}
-            </div>
-          </div>
+
 
           {/* LANGUAGE */}
+          
           <div className="mb-6">
             <h3 className="font-semibold mb-3">Language</h3>
             <div className="space-y-2 max-h-40 overflow-y-auto">
@@ -215,6 +199,7 @@ const SearchConsultantPage: React.FC = () => {
               ))}
             </div>
           </div>
+
 
           {/* AVAILABILITY */}
           <div>
@@ -288,8 +273,14 @@ const SearchConsultantPage: React.FC = () => {
                     className="w-24 h-24 rounded-full mx-auto mb-4 object-cover"
                   />
 
-                  <h3 className="text-lg font-bold">{c.name}</h3>
+                  <h3 className="text-lg font-bold">{c.user?.name || c.name}</h3>
                   <p className="text-blue-600 text-sm">{c.domain}</p>
+
+                  {c.user?.profile?.bio && (
+                    <p className="text-gray-600 text-sm mt-2 line-clamp-2 px-2">
+                      {c.user.profile.bio}
+                    </p>
+                  )}
 
                   <p className="text-sm text-gray-500 mt-2 flex justify-center items-center gap-1">
                     <Star size={14} className="text-yellow-500" />

@@ -33,12 +33,13 @@ const UserDashboard: React.FC = () => {
   const [usage, setUsage] = useState<any>(null);
 
   useEffect(() => {
-    fetchBookings();
-    fetchWallet();
-    fetchConsultants();
-    fetchNotifications();
-    fetchTransactions();
-    fetchUsage();
+    // TEMPORARILY DISABLED - These API calls are causing logout when navigating to search page
+    // fetchBookings();
+    // fetchWallet();
+    // fetchConsultants();
+    // fetchNotifications();
+    // fetchTransactions();
+    // fetchUsage();
   }, []);
 
   const fetchUsage = async () => {

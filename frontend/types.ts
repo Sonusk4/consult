@@ -62,6 +62,20 @@ export interface Consultant {
   availability?: any;
   user?: {
     email: string;
+    name?: string;
+    profile?: {
+      bio?: string;
+      avatar?: string;
+      headline?: string;
+      location?: string;
+      languages?: string;
+      expertise?: any;
+      hourly_rate?: number;
+      availability?: string;
+      designation?: string;
+      years_experience?: number;
+      education?: string;
+    };
   };
   // UI helper props (can be derived)
   name?: string;

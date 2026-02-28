@@ -2,6 +2,8 @@ import React from 'react';
 import Layout from '../../components/Layout';
 import { Check, X, Crown, Zap, Shield, Trophy } from 'lucide-react';
 import { subscriptions, chatCredits, users } from '../../services/api';
+import PaymentPopupModal from '../../components/PaymentPopupModal';
+import { usePaymentPopup } from '../../hooks/usePaymentPopup';
 
 declare global {
   interface Window {
@@ -23,6 +25,7 @@ export default function UserSubscriptionPlans() {
   const [selectedPlan, setSelectedPlan] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
   const [buyingCredit, setBuyingCredit] = React.useState<string | null>(null);
+  const { showPaymentSuccess, showPaymentError, showPaymentInfo, popup, hidePaymentPopup } = usePaymentPopup();
 
   const handleSubscribe = async () => {
     if (!selectedPlan) return;
@@ -63,10 +66,10 @@ export default function UserSubscriptionPlans() {
               planName: selectedPlan.name,
               userType: "USER",
             });
-            alert(`Payment Successful! You are now on the ${selectedPlan.name} plan! An email receipt has been sent.`);
+            showPaymentSuccess('Payment Successful!', `You are now on the ${selectedPlan.name} plan! An email receipt has been sent.`);
             setSelectedPlan(null);
           } catch (err: any) {
-            alert(`Verification failed: ${err.message}`);
+            showPaymentError('Verification Failed', err.message);
           } finally {
             setLoading(false);
           }
@@ -84,7 +87,7 @@ export default function UserSubscriptionPlans() {
       paymentObject.open();
 
     } catch (error: any) {
-      alert(`Subscription failed: ${error.response?.data?.error || error.message}`);
+      showPaymentError('Subscription Failed', error.response?.data?.error || error.message);
     } finally {
       setLoading(false);
     }
@@ -95,7 +98,7 @@ export default function UserSubscriptionPlans() {
     try {
       const res = await loadRazorpayScript();
       if (!res) {
-        alert("Razorpay SDK failed to load. Are you online?");
+        showPaymentError('SDK Error', 'Razorpay SDK failed to load. Are you online?');
         return;
       }
 
@@ -125,9 +128,9 @@ export default function UserSubscriptionPlans() {
               razorpay_signature: response.razorpay_signature,
               packName: packName,
             });
-            alert(`Payment Successful! Your limits have been bumped and you are ready to chat!`);
+            showPaymentSuccess('Payment Successful!', 'Your limits have been bumped and you are ready to chat!');
           } catch (err: any) {
-            alert(`Verification failed: ${err.message}`);
+            showPaymentError('Verification Failed', err.message);
           } finally {
             setBuyingCredit(null);
           }
@@ -144,7 +147,7 @@ export default function UserSubscriptionPlans() {
       const paymentObject = new window.Razorpay(options);
       paymentObject.open();
     } catch (error: any) {
-      alert(`Chat credits purchase failed: ${error.response?.data?.error || error.message}`);
+      showPaymentError('Purchase Failed', error.response?.data?.error || error.message);
     } finally {
       if (buyingCredit !== "verifying") setBuyingCredit(null);
     }
@@ -626,6 +629,15 @@ export default function UserSubscriptionPlans() {
           </div>
         </div>
       )}
+
+      {/* PaymentPopupModal */}
+      <PaymentPopupModal
+        open={popup.open}
+        title={popup.title}
+        message={popup.message}
+        icon={popup.icon}
+        onClose={hidePaymentPopup}
+      />
 
     </Layout>
   );

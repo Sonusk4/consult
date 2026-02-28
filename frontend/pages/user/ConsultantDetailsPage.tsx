@@ -4,7 +4,9 @@ import Layout from '../../components/Layout';
 import { consultants as consultantsApi, bookings } from '../../services/api';
 import api from '../../services/api';
 import { Consultant } from '../../types';
-import { Star, Calendar, Clock, DollarSign, ArrowLeft, Video, MessageCircle, Loader, AlertTriangle, CreditCard, CheckCircle, X, Wallet, Linkedin, Globe } from 'lucide-react';
+import { Star, Calendar, Clock,  ArrowLeft, Video, MessageCircle, Loader, AlertTriangle, CreditCard, CheckCircle, X, Wallet, Linkedin, Globe, IndianRupee } from 'lucide-react';
+import UserPopupModal from '../../components/UserPopupModal';
+import { useUserPopup } from '../../hooks/useUserPopup';
 
 interface TimeSlot {
   id: number;
@@ -78,6 +80,7 @@ const InsufficientBalanceModal: React.FC<{
 const BookingConfirmationModal: React.FC<{
   consultantName: string;
   domain: string;
+  bio?: string;
   date: string;
   timeSlot: string;
   fee: number;
@@ -85,7 +88,7 @@ const BookingConfirmationModal: React.FC<{
   onConfirm: () => void;
   onCancel: () => void;
   loading: boolean;
-}> = ({ consultantName, domain, date, timeSlot, fee, walletBalance, onConfirm, onCancel, loading }) => (
+}> = ({ consultantName, domain, bio, date, timeSlot, fee, walletBalance, onConfirm, onCancel, loading }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
     <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
       {/* Header */}
@@ -104,7 +107,7 @@ const BookingConfirmationModal: React.FC<{
       {/* Body */}
       <div className="p-6 space-y-4">
         {/* Consultant info */}
-        <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
+        <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
           <div className="flex justify-between text-sm">
             <span className="text-gray-500">Consultant</span>
             <span className="font-semibold text-gray-800">{consultantName}</span>
@@ -113,6 +116,14 @@ const BookingConfirmationModal: React.FC<{
             <span className="text-gray-500">Domain</span>
             <span className="font-semibold text-blue-600">{domain}</span>
           </div>
+          {bio && (
+            <div className="pt-2 border-t border-gray-200">
+              <div className="text-sm">
+                <span className="text-gray-500 block mb-1">About</span>
+                <p className="text-gray-700 text-xs leading-relaxed line-clamp-3">{bio}</p>
+              </div>
+            </div>
+          )}
           <div className="flex justify-between text-sm">
             <span className="text-gray-500">Date</span>
             <span className="font-semibold text-gray-800">{new Date(date).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
@@ -247,6 +258,7 @@ const ConsultantDetailsPage: React.FC = () => {
   const [selectedSlot, setSelectedSlot] = useState<string>('');
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number>(0);
+  const { showError, showSuccess, popup, hidePopup } = useUserPopup();
 
   // Modal states
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -351,7 +363,7 @@ const ConsultantDetailsPage: React.FC = () => {
         });
         setShowInsufficientModal(true);
       } else {
-        alert(errData?.error || 'Failed to send booking request. Please try again.');
+        showError('Booking Failed', errData?.error || 'Failed to send booking request. Please try again.');
       }
     } finally {
       setBookingLoading(false);
@@ -387,12 +399,13 @@ const ConsultantDetailsPage: React.FC = () => {
   }
 
   return (
-    <Layout title={`${consultant.name} - Consultant Details`}>
+    <Layout title={`${consultant.user?.name || consultant.name || 'Unknown Consultant'} - Consultant Details`}>
       {/* Modals */}
       {showConfirmModal && (
         <BookingConfirmationModal
-          consultantName={consultant.name || 'Unknown'}
+          consultantName={consultant.user?.name || consultant.name || 'Unknown'}
           domain={consultant.domain || ''}
+          bio={consultant.user?.profile?.bio}
           date={bookingDate}
           timeSlot={selectedSlot}
           fee={consultant.hourly_price || 0}
@@ -417,7 +430,7 @@ const ConsultantDetailsPage: React.FC = () => {
 
       {showSuccessModal && lastBookingResult && (
         <BookingSuccessModal
-          consultantName={consultant.name || 'Unknown'}
+          consultantName={consultant.user?.name || consultant.name || 'Unknown'}
           date={bookingDate || new Date().toISOString().split('T')[0]}
           timeSlot={selectedSlot}
           fee={lastBookingResult.fee}
@@ -430,7 +443,7 @@ const ConsultantDetailsPage: React.FC = () => {
 
         {/* Back Button */}
         <button
-          onClick={() => navigate('/search')}
+          onClick={() => navigate('/user/search')}
           className="flex items-center text-gray-600 hover:text-gray-800 mb-6"
         >
           <ArrowLeft size={20} className="mr-2" />
@@ -454,14 +467,14 @@ const ConsultantDetailsPage: React.FC = () => {
             <div className="flex-shrink-0">
               <img
                 src={consultant.profile_pic || consultant.image || '/default-avatar.png'}
-                alt={consultant.name}
+                alt={consultant.user?.name || consultant.name || 'Unknown'}
                 className="w-32 h-32 rounded-full object-cover border-4 border-blue-100"
               />
             </div>
 
             {/* Basic Info */}
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-gray-800 mb-2">{consultant.name}</h1>
+              <h1 className="text-3xl font-bold text-gray-800 mb-2">{consultant.user?.name || consultant.name || 'Unknown Consultant'}</h1>
               <p className="text-xl text-blue-600 font-semibold mb-4">{consultant.domain}</p>
 
               <div className="flex items-center gap-4 mb-4">
@@ -474,7 +487,7 @@ const ConsultantDetailsPage: React.FC = () => {
 
               <div className="space-y-2">
                 <div className="flex items-center text-gray-600">
-                  <DollarSign size={16} className="mr-2" />
+                  <IndianRupee size={16} className="mr-2" />
                   <span className="font-semibold">₹{consultant.hourly_price} / session</span>
                 </div>
 
@@ -515,10 +528,10 @@ const ConsultantDetailsPage: React.FC = () => {
           </div>
 
           {/* Bio Section */}
-          {consultant.bio && (
+          {consultant.user?.profile?.bio && (
             <div className="mt-6 pt-6 border-t">
               <h3 className="text-xl font-bold text-gray-800 mb-3">About</h3>
-              <p className="text-gray-600 leading-relaxed">{consultant.bio}</p>
+              <p className="text-gray-600 leading-relaxed">{consultant.user.profile.bio}</p>
             </div>
           )}
         </div>
@@ -531,7 +544,7 @@ const ConsultantDetailsPage: React.FC = () => {
           {consultant.hourly_price && (
             <div className="mb-6 bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center justify-between">
               <div className="flex items-center gap-2 text-blue-700">
-                <DollarSign size={18} />
+                <IndianRupee size={18} />
                 <span className="font-medium">Session Fee</span>
               </div>
               <span className="text-xl font-bold text-blue-700">₹{consultant.hourly_price}</span>
@@ -612,6 +625,15 @@ const ConsultantDetailsPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* UserPopupModal */}
+      <UserPopupModal
+        open={popup.open}
+        title={popup.title}
+        message={popup.message}
+        icon={popup.icon}
+        onClose={hidePopup}
+      />
     </Layout>
   );
 };
