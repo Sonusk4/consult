@@ -13,9 +13,9 @@ interface Transaction {
 }
 
 const creditPacks = [
-  { amount: 500, price: 49, bonus: 0 },
-  { amount: 1200, price: 99, bonus: 200 },
-  { amount: 3000, price: 199, bonus: 800 },
+  {  price: 0, bonus: 0 },
+  {  price: 500, bonus: 200 },
+  {  price: 1000, bonus: 800 },
 ];
 
 const UserCredit: React.FC = () => {
@@ -114,9 +114,6 @@ const UserCredit: React.FC = () => {
                 key={pack.amount}
                 className="bg-white p-6 rounded-3xl border shadow-sm hover:shadow-md transition text-center"
               >
-                <h4 className="text-3xl font-bold mb-2">
-                  {pack.amount}
-                </h4>
 
                 <p className="text-gray-500 text-sm mb-4">
                   + {pack.bonus} Bonus Credits
@@ -135,6 +132,128 @@ const UserCredit: React.FC = () => {
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* ================= SUBSCRIPTION PLANS ================= */}
+        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+          <div className="p-6 border-b">
+            <h3 className="text-xl font-bold text-gray-900">Subscription Plans</h3>
+            <p className="text-sm text-gray-500 mt-1">Choose the perfect plan for your needs</p>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="p-4 text-left font-semibold text-gray-700">Features</th>
+                  <th className="p-4 text-center font-semibold text-gray-600">Free</th>
+                  <th className="p-4 text-center font-semibold text-blue-600 relative">
+                    Starter
+                    <span className="absolute -top-2 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full">Popular</span>
+                  </th>
+                  <th className="p-4 text-center font-semibold text-green-600">Growth</th>
+                  <th className="p-4 text-center font-semibold text-purple-600">Enterprise</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                <tr className="hover:bg-gray-50">
+                  <td className="p-4 font-medium text-gray-700">Max Consultants Chat Access</td>
+                  <td className="p-4 text-center text-gray-600">3</td>
+                  <td className="p-4 text-center text-blue-600 font-semibold">10</td>
+                  <td className="p-4 text-center text-green-600 font-semibold">25</td>
+                  <td className="p-4 text-center text-purple-600 font-semibold">50</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="p-4 font-medium text-gray-700">Total Chat Messages / Month</td>
+                  <td className="p-4 text-center text-gray-600">5</td>
+                  <td className="p-4 text-center text-blue-600 font-semibold">20</td>
+                  <td className="p-4 text-center text-green-600 font-semibold">50</td>
+                  <td className="p-4 text-center text-purple-600 font-semibold">100</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="p-4 font-medium text-gray-700">Bookings / Month</td>
+                  <td className="p-4 text-center text-gray-600">Unlimited</td>
+                  <td className="p-4 text-center text-blue-600">Unlimited</td>
+                  <td className="p-4 text-center text-green-600">Unlimited</td>
+                  <td className="p-4 text-center text-purple-600">Unlimited</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="p-4 font-medium text-gray-700">Booking Duration Access</td>
+                  <td className="p-4 text-center text-gray-600">Up to 30 mins</td>
+                  <td className="p-4 text-center text-blue-600">Up to 60 mins</td>
+                  <td className="p-4 text-center text-green-600">Up to 60 mins</td>
+                  <td className="p-4 text-center text-purple-600">Up to 120 mins</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="p-4 font-medium text-gray-700">Platform Fee Discount</td>
+                  <td className="p-4 text-center text-gray-600">0%</td>
+                  <td className="p-4 text-center text-blue-600 font-semibold">10%</td>
+                  <td className="p-4 text-center text-green-600 font-semibold">15%</td>
+                  <td className="p-4 text-center text-purple-600 font-semibold">50%</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="p-4 font-medium text-gray-700">Wallet Bonus on Recharge</td>
+                  <td className="p-4 text-center text-gray-600">Nil</td>
+                  <td className="p-4 text-center text-blue-600">
+                    <div>2%</div>
+                    <div className="text-xs text-blue-500">(cap ₹200)</div>
+                  </td>
+                  <td className="p-4 text-center text-green-600">
+                    <div>5%</div>
+                    <div className="text-xs text-green-500">(cap ₹500)</div>
+                  </td>
+                  <td className="p-4 text-center text-purple-600">
+                    <div>10%</div>
+                    <div className="text-xs text-purple-500">(cap ₹1500)</div>
+                  </td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="p-4 font-medium text-gray-700">Loyalty Points</td>
+                  <td className="p-4 text-center text-gray-600">No</td>
+                  <td className="p-4 text-center text-blue-600 font-semibold">1%</td>
+                  <td className="p-4 text-center text-green-600 font-semibold">3%</td>
+                  <td className="p-4 text-center text-purple-600 font-semibold">7%</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="p-4 font-medium text-gray-700">Free Reschedule</td>
+                  <td className="p-4 text-center text-gray-600">No</td>
+                  <td className="p-4 text-center text-blue-600">1 per month</td>
+                  <td className="p-4 text-center text-green-600">2 per month</td>
+                  <td className="p-4 text-center text-purple-600">5 per month</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="p-4 font-medium text-gray-700">Cancellation Flexibility</td>
+                  <td className="p-4 text-center text-gray-600">Strict</td>
+                  <td className="p-4 text-center text-blue-600">Strict</td>
+                  <td className="p-4 text-center text-green-600">Moderate</td>
+                  <td className="p-4 text-center text-purple-600">Flexible</td>
+                </tr>
+                <tr className="bg-gray-50">
+                  <td className="p-4"></td>
+                  <td className="p-4 text-center">
+                    <button className="bg-gray-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-700 transition-colors">
+                      Choose Plan
+                    </button>
+                  </td>
+                  <td className="p-4 text-center">
+                    <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                      Choose Plan
+                    </button>
+                  </td>
+                  <td className="p-4 text-center">
+                    <button className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors">
+                      Choose Plan
+                    </button>
+                  </td>
+                  <td className="p-4 text-center">
+                    <button className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors">
+                      Choose Plan
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 

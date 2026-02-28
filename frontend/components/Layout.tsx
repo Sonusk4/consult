@@ -43,9 +43,10 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
     <div className="min-h-screen bg-gray-50 flex">
       {/* ================= SIDEBAR ================= */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transition-transform duration-300 transform ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } lg:translate-x-0 lg:static`}
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r
+        transition-transform duration-300 transform
+        ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
+        ${isSidebarOpen ? "lg:translate-x-0 lg:static" : ""}`}
       >
         <div className="h-full flex flex-col">
           {/* Logo */}
@@ -56,12 +57,6 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
             >
               ConsultaPro
             </Link>
-            <button
-              className="lg:hidden"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <X size={20} />
-            </button>
           </div>
 
           {/* Sidebar Links */}
@@ -101,10 +96,10 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
         <header className="h-16 bg-white border-b flex items-center justify-between px-6 sticky top-0 z-40">
           <div className="flex items-center">
             <button
-              className="lg:hidden mr-4"
-              onClick={() => setIsSidebarOpen(true)}
+              className="mr-4 p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             >
-              <Menu size={20} />
+              {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
             <h1 className="text-xl font-bold text-gray-800">{title}</h1>
           </div>

@@ -25,6 +25,7 @@ const UserProfilePage: React.FC = () => {
     interests: "",
     domains: "",
     goal: "",
+    designation: "",  
     preferredSessionType: "VIDEO",
   });
 
@@ -52,6 +53,7 @@ const UserProfilePage: React.FC = () => {
         interests: data.interests || "",
         domains: data.domains || "",
         goal: data.goal || "",
+        designation: data.designation || "",
         preferredSessionType: data.preferredSessionType || "VIDEO",
       };
 
@@ -158,6 +160,7 @@ const UserProfilePage: React.FC = () => {
         interests: formData.interests,
         domains: formData.domains,
         goal: formData.goal,
+        designation: formData.designation, 
         preferredSessionType: formData.preferredSessionType,
       });
 
@@ -354,6 +357,23 @@ const UserProfilePage: React.FC = () => {
                 className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100 disabled:cursor-not-allowed transition"
               />
             </div>
+            {/* Designation */}
+              <div>
+                <label className="text-sm font-semibold text-gray-700 block mb-2">
+                  Designation
+                </label>
+                <input
+                  name="designation"
+                  value={formData.designation}
+                  disabled={!isEditing}
+                  onChange={handleChange}
+                  placeholder="Enter your designation"
+                  className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl 
+                            outline-none focus:border-blue-500 focus:ring-2 
+                            focus:ring-blue-100 disabled:bg-gray-100 
+                            disabled:cursor-not-allowed transition"
+                />
+              </div>
 
           </div>
 
@@ -375,6 +395,7 @@ const UserProfilePage: React.FC = () => {
               {formData.bio.length}/500 characters
             </p>
           </div>
+          
 
           <div className="grid md:grid-cols-2 gap-6">
 

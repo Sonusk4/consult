@@ -24,6 +24,7 @@ import UserCredit from "./pages/user/UserCredit";
 import UserProfilePage from "./pages/user/UserProfilePage";
 import UserSupportPage from "./pages/user/UserSupportPage";
 import MessagesPage from "./pages/MessagesPage";
+import UserSubscriptionPlans from "./pages/user/UserSubscriptionPlans";
 
 /* CONSULTANT */
 import ConsultantDashboard from "./pages/ConsultantDashboard";
@@ -194,6 +195,10 @@ const App: React.FC = () => {
             <Route
               path="/user/credits"
               element={isUser ? <UserCredit /> : <Navigate to="/auth" />}
+            />
+            <Route
+              path="/user/subscription-plans"
+              element={isUser ? <UserSubscriptionPlans /> : <Navigate to="/auth" />}
             />
             <Route
               path="/user/wallet"

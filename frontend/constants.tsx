@@ -158,6 +158,11 @@ export const SIDEBAR_LINKS = {
       path: "/user/bookings",
     },
     { label: "Credits", icon: <CreditCard size={20} />, path: "/user/credits" },
+    { 
+      label: "Subscription Plans", 
+      icon: <Star size={20} />, 
+      path: "/user/subscription-plans" 
+    },
     {
       label: "Messages",
       icon: <MessageSquare size={20} />,
