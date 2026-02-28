@@ -60,6 +60,8 @@ export interface Consultant {
   rating: number;
   total_reviews: number;
   availability?: any;
+  linkedin_url?: string | null;
+  website_url?: string | null;
   user?: {
     email: string;
     name?: string;
