@@ -3680,6 +3680,92 @@ app.post("/payment/create-order", verifyFirebaseToken, async (req, res) => {
   }
 });
 
+// Function to show custom modal instead of browser alert
+function showPaymentModal(title, message, type) {
+  // Create modal overlay
+  const modalOverlay = document.createElement('div');
+  modalOverlay.style.cssText = `
+    position: fixed !important;
+    top: 80px !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: translateX(-50%) !important;
+    z-index: 9999 !important;
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    width: 100% !important;
+    max-width: 1200px !important;
+    padding: 2rem !important;
+    background-color: rgba(0, 0, 0, 0.3) !important;
+    backdrop-filter: blur(1px) !important;
+    border-radius: 1rem !important;
+  `;
+  
+  // Create modal content
+  const modalContent = document.createElement('div');
+  modalContent.style.cssText = `
+    background: white !important;
+    border-radius: 1rem !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+    max-width: 28rem !important;
+    width: 100% !important;
+    max-height: 70vh !important;
+    overflow-y: auto !important;
+    margin: 0 !important;
+    padding: 1.5rem !important;
+  `;
+  
+  // Set icon based on type
+  const getIcon = (type) => {
+    switch (type) {
+      case 'success':
+        return '✅';
+      case 'error':
+        return '❌';
+      case 'info':
+        return 'ℹ️';
+      default:
+        return 'ℹ️';
+    }
+  };
+  
+  modalContent.innerHTML = `
+    <div style="padding: 1.5rem;">
+      <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+        <span style="font-size: 1.5rem;">${getIcon(type)}</span>
+        <div>
+          <h3 style="margin: 0; font-size: 1.25rem; font-weight: 600; color: #1f2937;">${title}</h3>
+          <p style="margin: 0.5rem 0 0 1rem; color: #6b7280; line-height: 1.5;">${message}</p>
+        </div>
+      </div>
+      <button onclick="closeModal()" style="
+        width: 100%;
+        padding: 0.75rem;
+        margin-top: 1rem;
+        background: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+      ">OK</button>
+    </div>
+  `;
+  
+  // Close modal function
+  window.closeModal = function() {
+    document.body.removeChild(modalOverlay);
+    document.body.removeChild(modalContent);
+  };
+  
+  // Add modal to page
+  document.body.appendChild(modalOverlay);
+  document.body.appendChild(modalContent);
+}
+
 /**
  * GET /payment-page
  * Serve Razorpay Checkout page with proper modal display
@@ -3822,10 +3908,12 @@ var options = {
     .then(res => res.json())
     .then(data => {
       if (data.success || data.new_balance !== undefined) {
-        alert('Payment successful! ' + data.amount_added + ' credits have been added to your wallet.');
+        // Show custom modal instead of browser alert
+        showPaymentModal('Payment Successful!', data.amount_added + ' credits have been added to your wallet.', 'success');
         window.location.href = 'http://localhost:3000/#/user/credits?payment=success&credits=' + encodeURIComponent(data.amount_added);
       } else {
-        alert('Payment verification failed: ' + (data.error || 'Unknown error'));
+        // Show custom modal instead of browser alert
+        showPaymentModal('Payment verification failed', data.error || 'Unknown error', 'error');
         document.getElementById('payBtn').disabled = false;
         document.getElementById('payBtn').innerText = 'Pay with Razorpay';
       }

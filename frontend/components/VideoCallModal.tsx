@@ -1,6 +1,7 @@
 // src/components/VideoCallModal.tsx - FIXED VERSION
 import React, { useEffect, useRef, useState } from "react";
 import api from "../services/api";
+import ReviewPopup from "./ReviewPopup";
 import { Mic, MicOff, Video, VideoOff, PhoneOff, Users } from "lucide-react";
 
 interface VideoCallModalProps {
@@ -30,6 +31,7 @@ const VideoCallModal: React.FC<VideoCallModalProps> = ({
   const [remoteUsers, setRemoteUsers] = useState<any[]>([]);
   const [connectionState, setConnectionState] = useState("connecting");
   const [error, setError] = useState<string | null>(null);
+  const [showReview, setShowReview] = useState(false);
   const hasJoinedRef = useRef<boolean>(false);
 
   const clientRef = useRef<any>(null);
@@ -128,6 +130,12 @@ const VideoCallModal: React.FC<VideoCallModalProps> = ({
 
   const endCall = () => {
     socket.emit("end-video-call", { bookingId });
+
+    if (userRole === "USER") {
+      setShowReview(true);
+      return; // IMPORTANT: stops modal from closing
+    }
+
     onClose();
   };
 
@@ -270,6 +278,12 @@ const VideoCallModal: React.FC<VideoCallModalProps> = ({
           </button>
         </div>
       </div>
+      {showReview && (
+        <ReviewPopup
+          bookingId={bookingId}
+          onClose={() => setShowReview(false)}
+        />
+      )}
     </div>
   );
 };

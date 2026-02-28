@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import Layout from "../../components/Layout";
 import api from "../../services/api";
-import { useToast } from "../../context/ToastContext";
+import { usePaymentPopup } from "../../hooks/usePaymentPopup";
+import PaymentPopupModal from "../../components/PaymentPopupModal";
 import { Zap, ShieldCheck, History, Loader } from "lucide-react";
 
 interface Transaction {
@@ -20,7 +21,7 @@ const creditPacks = [
 ];
 
 const UserCredit: React.FC = () => {
-  const { addToast } = useToast();
+  const { showPaymentSuccess, showPaymentError, popup, hidePaymentPopup } = usePaymentPopup();
 
   const [walletBalance, setWalletBalance] = useState(0);
   const [bonusBalance, setBonusBalance] = useState(0);
@@ -41,7 +42,7 @@ const UserCredit: React.FC = () => {
       setBonusBalance(res.data.bonus_balance || 0);
     } catch (err) {
       console.error("Wallet fetch failed");
-      addToast("Failed to load wallet", "error");
+      showPaymentError('Wallet Error', 'Failed to load wallet balance');
     }
   };
 
@@ -76,7 +77,7 @@ const UserCredit: React.FC = () => {
 
     } catch (error) {
       console.error('Payment error:', error);
-      addToast('Failed to initiate payment. Please try again.', "error");
+      showPaymentError('Payment Failed', 'Failed to initiate payment. Please try again.');
       setBuying(null);
     }
   };
@@ -203,8 +204,17 @@ const UserCredit: React.FC = () => {
             </div>
           )}
         </div>
-
       </div>
+
+      {/* PaymentPopupModal */}
+      <PaymentPopupModal
+        open={popup.open}
+        title={popup.title}
+        message={popup.message}
+        icon={popup.icon}
+        onClose={hidePaymentPopup}
+      />
+
     </Layout>
   );
 };

@@ -33,7 +33,7 @@ const PaymentPopupModal: React.FC<PaymentPopupModalProps> = ({
   };
 
   return (
-    <div className="payment-modal-overlay">
+    <div className="payment-modal-no overlay">
       <div className="modal-content animate-slideUp">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">

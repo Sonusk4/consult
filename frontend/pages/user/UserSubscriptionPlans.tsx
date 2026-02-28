@@ -289,9 +289,11 @@ export default function UserSubscriptionPlans() {
               >
                 {plan.popular && (
                   <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                    <span className="bg-blue-600 text-white px-4 py-1 rounded-full text-sm font-bold">
-                      MOST POPULAR
-                    </span>
+                    <span className="bg-blue-600 text-white px-6 py-1.5 rounded-full 
+                 text-sm font-bold whitespace-nowrap tracking-wide 
+                 min-w-[140px] text-center">
+                  MOST POPULAR
+                </span>
                   </div>
                 )}
 
@@ -568,67 +570,100 @@ export default function UserSubscriptionPlans() {
       </div>
 
       {/* ========= MODAL VIEW ========= */}
-      {selectedPlan && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-8 relative">
+     {/* ========= MODAL VIEW (REDUCED HEIGHT) ========= */}
+{selectedPlan && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-3 
+                  bg-black/40 backdrop-blur-sm">
 
-            <button
-              onClick={() => setSelectedPlan(null)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-            >
-              <X size={24} />
-            </button>
+    <div className="relative w-full max-w-2xl rounded-2xl 
+                    bg-white/90 backdrop-blur-xl 
+                    shadow-[0_4px_30px_rgba(0,0,0,0.12)]
+                    border border-white/30 overflow-hidden">
 
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-2xl mb-4">
-                {selectedPlan.icon}
-              </div>
+      {/* Close Button */}
+      <button
+        onClick={() => setSelectedPlan(null)}
+        className="absolute top-3 right-3 text-gray-600 hover:text-gray-900 
+                   bg-white/70 p-1.5 rounded-full shadow-sm"
+      >
+        <X size={18} />
+      </button>
 
-              <h2 className="text-3xl font-bold mb-1">{selectedPlan.name}</h2>
-              <p className="text-gray-600 text-lg mb-2">{selectedPlan.description}</p>
+      {/* Header */}
+      <div className="text-center pt-8 pb-5 px-6 bg-gradient-to-b 
+                      from-gray-50 to-white border-b border-gray-100">
 
-              <div className="text-5xl font-bold mb-2">{selectedPlan.price}</div>
-              <p className="text-gray-500 text-lg">per month</p>
-            </div>
-
-            <div className="space-y-6 mb-8">
-              <h3 className="text-xl font-bold">Features & Benefits</h3>
-              {selectedPlan.features.map((feature: any, idx: number) => (
-                <div key={idx} className="flex gap-4">
-                  <Check className="text-green-600 mt-1" size={18} />
-                  <div>
-                    <p className="text-lg font-semibold">{feature.text}</p>
-                    <p className="text-gray-700">{feature.value}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-center gap-4">
-              <button
-                onClick={() => setSelectedPlan(null)}
-                className="px-8 py-3 rounded-xl bg-gray-100 border text-gray-600"
-              >
-                Close
-              </button>
-
-              <button
-                disabled={loading}
-                onClick={handleSubscribe}
-                className="px-8 py-3 rounded-xl bg-blue-600 text-white disabled:opacity-50"
-              >
-                {loading
-                  ? "Processing..."
-                  : selectedPlan.name === 'Enterprise'
-                    ? 'Contact Sales'
-                    : `Choose ${selectedPlan.name}`
-                }
-              </button>
-            </div>
-
-          </div>
+        <div className="inline-flex items-center justify-center 
+                        w-16 h-16 bg-white/70 rounded-xl shadow-inner mb-3">
+          {selectedPlan.icon}
         </div>
-      )}
+
+        <h2 className="text-3xl font-bold text-gray-900 mb-1">
+          {selectedPlan.name}
+        </h2>
+
+        <p className="text-sm text-gray-600">{selectedPlan.description}</p>
+
+        <div className="mt-2 text-4xl font-extrabold text-gray-900">
+          {selectedPlan.price}
+        </div>
+
+        <p className="text-gray-500 text-xs -mt-1">per month</p>
+      </div>
+
+      {/* Features - COMPACT */}
+      <div className="px-6 py-6 space-y-4">
+        <h3 className="text-lg font-semibold text-gray-900">
+          Features & Benefits
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {selectedPlan.features.map((feature: any, idx: number) => (
+            <div
+              key={idx}
+              className="flex gap-3 p-3 bg-gray-50 rounded-xl 
+                         border border-gray-100 hover:shadow-sm transition"
+            >
+              <Check className="text-green-600 mt-0.5" size={16} />
+              <div>
+                <p className="font-medium text-gray-900 text-sm">{feature.text}</p>
+                <p className="text-gray-600 text-xs">{feature.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Footer - COMPACT */}
+      <div className="px-6 py-4 flex justify-center gap-3 
+                      border-t border-gray-100 bg-white/70">
+
+        <button
+          onClick={() => setSelectedPlan(null)}
+          className="px-5 py-2 rounded-lg bg-gray-100 text-gray-700 
+                     hover:bg-gray-200 transition text-sm font-medium"
+        >
+          Close
+        </button>
+
+        <button
+          disabled={loading}
+          onClick={handleSubscribe}
+          className="px-6 py-2 rounded-lg bg-blue-600 text-white 
+                     hover:bg-blue-700 transition text-sm font-semibold 
+                     shadow-md disabled:opacity-50"
+        >
+          {loading
+            ? "Processing..."
+            : selectedPlan.name === "Enterprise"
+            ? "Contact Sales"
+            : `Choose ${selectedPlan.name}`}
+        </button>
+
+      </div>
+    </div>
+  </div>
+)}
 
       {/* PaymentPopupModal */}
       <PaymentPopupModal

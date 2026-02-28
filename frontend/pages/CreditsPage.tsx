@@ -2,8 +2,12 @@
 import React from 'react';
 import Layout from '../components/Layout';
 import { CreditCard, Plus, ArrowUpRight, History, Zap, ShieldCheck } from 'lucide-react';
+import { usePaymentPopup } from "../hooks/usePaymentPopup";
+import PaymentPopupModal from "../components/PaymentPopupModal";
 
 const CreditsPage: React.FC = () => {
+  const { showPaymentSuccess, showPaymentError, popup, hidePaymentPopup } = usePaymentPopup();
+
   return (
     <Layout title="Credits & Billing">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -95,6 +99,15 @@ const CreditsPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* PaymentPopupModal */}
+      <PaymentPopupModal
+        open={popup.open}
+        title={popup.title}
+        message={popup.message}
+        icon={popup.icon}
+        onClose={hidePaymentPopup}
+      />
     </Layout>
   );
 };
