@@ -1,3 +1,15 @@
+enum ClientPlan {
+  FREE
+  BASIC   // ₹199
+  PRO     // ₹999
+}
+
+enum ConsultantPlan {
+  FREE
+  PROFESSIONAL
+  PREMIUM
+  ELITE
+}
 generator client {
   provider = "prisma-client-js"
 }
@@ -40,7 +52,10 @@ model User {
   transactions              Transaction[]
   profile                   UserProfile?
   wallet                    Wallet?
-  enterpriseBookings        Booking[] @relation("EnterpriseMemberBookings")
+  enterpriseBookings        Booking[]         @relation("EnterpriseMemberBookings")
+  clientPlan                ClientPlan        @default(FREE)
+  messagesUsed              Int               @default(0)
+  subscriptionEnd DateTime?
 }
 
 model UserProfile {
@@ -104,6 +119,8 @@ model Consultant {
   slots          Slot[]
   supportTickets SupportTicket[]
   payouts        ConsultantPayout[]
+  consultantPlan   ConsultantPlan @default(FREE)
+  inboundChatsUsed Int            @default(0)
 }
 
 model Availability {

@@ -14,6 +14,10 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
+const {
+  CLIENT_PLAN_LIMITS,
+  CONSULTANT_PLAN_LIMITS,
+} = require("./utils/planLimits");
 
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const http = require("http");
@@ -46,7 +50,11 @@ try {
 }
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:3002",
+    ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
@@ -60,7 +68,11 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:3002",
+    ],
     methods: ["GET", "POST"],
   },
 });
@@ -238,7 +250,9 @@ app.post("/auth/me", async (req, res) => {
           name: name || null,
           phone: phone || null,
           is_verified: true,
-          firebase_uid: firebase_uid || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, // fallback if not provided
+          firebase_uid:
+            firebase_uid ||
+            `temp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, // fallback if not provided
         },
         include: { profile: true },
       });
@@ -549,7 +563,8 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
         .json({ error: "Admin not found. Please login first." });
     }
 
-    const adminEnterpriseId = admin.enterpriseId || admin.ownedEnterprise?.id || null;
+    const adminEnterpriseId =
+      admin.enterpriseId || admin.ownedEnterprise?.id || null;
 
     // Generate credentials
     const username = generateUsername();
@@ -602,8 +617,9 @@ app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
     }
 
     // Create invite link
-    const inviteLink = `${process.env.FRONTEND_URL || "http://localhost:3000"
-      }/#/enterprise/invite/${inviteToken}`;
+    const inviteLink = `${
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    }/#/enterprise/invite/${inviteToken}`;
 
     // Send invite email with credentials
     try {
@@ -807,7 +823,8 @@ app.post("/enterprise/accept-invite", async (req, res) => {
     const inviteRecord = await prisma.enterpriseInvite
       .findUnique({ where: { token } })
       .catch(() => null);
-    const enterpriseIdFromInvite = inviteRecord?.enterpriseId || invitedUser.enterpriseId;
+    const enterpriseIdFromInvite =
+      inviteRecord?.enterpriseId || invitedUser.enterpriseId;
 
     // Hash the user-provided password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -854,7 +871,8 @@ app.post("/enterprise/accept-invite", async (req, res) => {
     console.log(`✓ Password set by user`);
 
     res.status(200).json({
-      message: "Invitation accepted successfully. You can now login with your email and password.",
+      message:
+        "Invitation accepted successfully. You can now login with your email and password.",
       user: {
         id: updatedUser.id,
         email: updatedUser.email,
@@ -885,16 +903,15 @@ app.post("/auth/check-username", async (req, res) => {
     // Check if username exists in permanent_username or temp_username
     const existingUser = await prisma.user.findFirst({
       where: {
-        OR: [
-          { permanent_username: username },
-          { temp_username: username },
-        ],
+        OR: [{ permanent_username: username }, { temp_username: username }],
       },
     });
 
     res.json({
       available: !existingUser,
-      message: existingUser ? "Username is already taken" : "Username is available"
+      message: existingUser
+        ? "Username is already taken"
+        : "Username is available",
     });
   } catch (error) {
     console.error("Check username error:", error);
@@ -912,14 +929,14 @@ app.post("/auth/set-permanent-credentials", async (req, res) => {
 
     if (!email || !permanent_username || !permanent_password) {
       return res.status(400).json({
-        error: "Email, username, and password are required"
+        error: "Email, username, and password are required",
       });
     }
 
     // Validate password strength
     if (permanent_password.length < 8) {
       return res.status(400).json({
-        error: "Password must be at least 8 characters long"
+        error: "Password must be at least 8 characters long",
       });
     }
 
@@ -933,7 +950,9 @@ app.post("/auth/set-permanent-credentials", async (req, res) => {
     }
 
     if (user.role !== "ENTERPRISE_MEMBER") {
-      return res.status(400).json({ error: "Only enterprise members can set credentials" });
+      return res
+        .status(400)
+        .json({ error: "Only enterprise members can set credentials" });
     }
 
     if (!user.is_verified) {
@@ -950,7 +969,7 @@ app.post("/auth/set-permanent-credentials", async (req, res) => {
 
     if (existingUser) {
       return res.status(400).json({
-        error: "Username already taken. Please choose another one."
+        error: "Username already taken. Please choose another one.",
       });
     }
 
@@ -984,7 +1003,7 @@ app.post("/auth/set-permanent-credentials", async (req, res) => {
   } catch (error) {
     console.error("Set credentials error:", error);
     res.status(500).json({
-      error: "Failed to set credentials: " + error.message
+      error: "Failed to set credentials: " + error.message,
     });
   }
 });
@@ -1016,8 +1035,9 @@ app.post("/auth/send-otp", async (req, res) => {
     if (existingUser && existingUser.role === "ENTERPRISE_MEMBER") {
       // Team members can only login with username/password
       return res.status(403).json({
-        error: "Enterprise team members must login with their provided credentials",
-        hint: "Use the Team Member login option with your username and password"
+        error:
+          "Enterprise team members must login with their provided credentials",
+        hint: "Use the Team Member login option with your username and password",
       });
     }
 
@@ -1025,7 +1045,7 @@ app.post("/auth/send-otp", async (req, res) => {
     if (type === "SIGNUP" && req.body.role === "ENTERPRISE_MEMBER") {
       return res.status(403).json({
         error: "Enterprise team members cannot sign up independently",
-        hint: "Please request an invitation from your enterprise administrator"
+        hint: "Please request an invitation from your enterprise administrator",
       });
     }
 
@@ -1097,7 +1117,8 @@ app.post("/auth/send-otp", async (req, res) => {
           message: err.message,
         });
         console.error(
-          `🔧 Configuration check: EMAIL_USER="${process.env.EMAIL_USER
+          `🔧 Configuration check: EMAIL_USER="${
+            process.env.EMAIL_USER
           }", EMAIL_PASS set: ${!!process.env.EMAIL_PASS}`
         );
         console.log(`📝 OTP saved to database for testing: ${otp}`);
@@ -1297,7 +1318,9 @@ app.get("/auth/member-debug/:email", async (req, res) => {
     }
 
     if (user.role !== "ENTERPRISE_MEMBER") {
-      return res.status(400).json({ error: "User is not an enterprise member" });
+      return res
+        .status(400)
+        .json({ error: "User is not an enterprise member" });
     }
 
     res.json({
@@ -1307,7 +1330,9 @@ app.get("/auth/member-debug/:email", async (req, res) => {
       username: user.temp_username,
       isVerified: user.is_verified,
       inviteExpiry: user.invite_token_expiry,
-      status: !user.is_verified ? "NOT_VERIFIED - Member needs to accept invitation" : "READY_TO_LOGIN",
+      status: !user.is_verified
+        ? "NOT_VERIFIED - Member needs to accept invitation"
+        : "READY_TO_LOGIN",
       instructions: user.is_verified
         ? `Use username: ${user.temp_username} to login`
         : "Member must accept the invitation first before login",
@@ -1388,7 +1413,7 @@ app.post("/auth/signup", async (req, res) => {
               <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
               <p style="color: #666; font-size: 12px;">ConsultaPro Team</p>
             </div>
-          `
+          `,
         });
         console.log(`📧 OTP email sent to: ${email}`);
       }
@@ -1407,7 +1432,8 @@ app.post("/auth/signup", async (req, res) => {
     });
 
     res.status(201).json({
-      message: "User registered successfully. Please verify your email with the OTP sent to your inbox.",
+      message:
+        "User registered successfully. Please verify your email with the OTP sent to your inbox.",
       email: newUser.email,
       requiresOtp: true,
       user: {
@@ -1417,7 +1443,8 @@ app.post("/auth/signup", async (req, res) => {
         phone: newUser.phone,
         role: newUser.role,
       },
-      instructions: "Check your email for the verification code. You will receive a 6-digit OTP.",
+      instructions:
+        "Check your email for the verification code. You will receive a 6-digit OTP.",
     });
   } catch (error) {
     console.error("Signup error:", error.message);
@@ -1433,9 +1460,7 @@ app.post("/auth/login-password", async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return res
-      .status(400)
-      .json({ error: "Email and password are required" });
+    return res.status(400).json({ error: "Email and password are required" });
   }
 
   try {
@@ -1451,9 +1476,7 @@ app.post("/auth/login-password", async (req, res) => {
 
     if (!user) {
       console.log(`❌ User not found: ${email}`);
-      return res
-        .status(401)
-        .json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "Invalid email or password" });
     }
 
     // Verify password (check permanent_password)
@@ -1464,16 +1487,16 @@ app.post("/auth/login-password", async (req, res) => {
 
     if (!passwordValid) {
       console.log(`❌ Invalid password for: ${email}`);
-      return res
-        .status(401)
-        .json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "Invalid email or password" });
     }
 
     console.log(`✅ Password verified for ${email}`);
 
     // Check if first login - needs password change
     if (!user.password_changed) {
-      console.log(`⚠️ First login detected for ${email} - password change required`);
+      console.log(
+        `⚠️ First login detected for ${email} - password change required`
+      );
 
       // Generate temporary token for password change (30 min expiry)
       let tempToken;
@@ -1544,9 +1567,7 @@ app.post("/auth/login-password", async (req, res) => {
     });
   } catch (error) {
     console.error("Password login error:", error.message);
-    res
-      .status(500)
-      .json({ error: "Login failed: " + error.message });
+    res.status(500).json({ error: "Login failed: " + error.message });
   }
 });
 
@@ -1554,80 +1575,88 @@ app.post("/auth/login-password", async (req, res) => {
  * POST /auth/change-password-first-login
  * Change password on first login (after accepting invitation)
  */
-app.post("/auth/change-password-first-login", verifyFirebaseToken, async (req, res) => {
-  try {
-    const { newPassword } = req.body;
+app.post(
+  "/auth/change-password-first-login",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      const { newPassword } = req.body;
 
-    if (!newPassword || newPassword.length < 8) {
-      return res.status(400).json({
-        error: "Password must be at least 8 characters long"
-      });
-    }
-
-    // Get user from token
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      include: { consultant: true }
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update password and mark as changed
-    const updatedUser = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        permanent_password: hashedPassword,
-        password_changed: true,
-      },
-      include: { consultant: true }
-    });
-
-    // Generate permanent token
-    let token;
-    if (!firebaseAdminInitialized) {
-      token = jwt.sign(
-        {
-          email: updatedUser.email,
-          uid: updatedUser.id,
-          iat: Math.floor(Date.now() / 1000),
-          exp: Math.floor(Date.now() / 1000) + 86400,
-        },
-        process.env.JWT_SECRET || "dev-secret-key-for-testing-only",
-        { algorithm: "HS256" }
-      );
-    } else {
-      let firebaseUser;
-      try {
-        firebaseUser = await admin.auth().getUserByEmail(updatedUser.email);
-      } catch {
-        firebaseUser = await admin.auth().createUser({ email: updatedUser.email });
+      if (!newPassword || newPassword.length < 8) {
+        return res.status(400).json({
+          error: "Password must be at least 8 characters long",
+        });
       }
-      token = await admin.auth().createCustomToken(firebaseUser.uid);
+
+      // Get user from token
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        include: { consultant: true },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update password and mark as changed
+      const updatedUser = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          permanent_password: hashedPassword,
+          password_changed: true,
+        },
+        include: { consultant: true },
+      });
+
+      // Generate permanent token
+      let token;
+      if (!firebaseAdminInitialized) {
+        token = jwt.sign(
+          {
+            email: updatedUser.email,
+            uid: updatedUser.id,
+            iat: Math.floor(Date.now() / 1000),
+            exp: Math.floor(Date.now() / 1000) + 86400,
+          },
+          process.env.JWT_SECRET || "dev-secret-key-for-testing-only",
+          { algorithm: "HS256" }
+        );
+      } else {
+        let firebaseUser;
+        try {
+          firebaseUser = await admin.auth().getUserByEmail(updatedUser.email);
+        } catch {
+          firebaseUser = await admin
+            .auth()
+            .createUser({ email: updatedUser.email });
+        }
+        token = await admin.auth().createCustomToken(firebaseUser.uid);
+      }
+
+      console.log(`✅ Password changed successfully for ${updatedUser.email}`);
+
+      res.status(200).json({
+        message: "Password changed successfully",
+        token,
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          name: updatedUser.name,
+          role: updatedUser.role,
+          isConsultant: !!updatedUser.consultant,
+        },
+      });
+    } catch (error) {
+      console.error("Change password error:", error.message);
+      res
+        .status(500)
+        .json({ error: "Failed to change password: " + error.message });
     }
-
-    console.log(`✅ Password changed successfully for ${updatedUser.email}`);
-
-    res.status(200).json({
-      message: "Password changed successfully",
-      token,
-      user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        name: updatedUser.name,
-        role: updatedUser.role,
-        isConsultant: !!updatedUser.consultant,
-      },
-    });
-  } catch (error) {
-    console.error("Change password error:", error.message);
-    res.status(500).json({ error: "Failed to change password: " + error.message });
   }
-});
+);
 app.post("/auth/forgot-password", async (req, res) => {
   const { email } = req.body;
 
@@ -1668,7 +1697,9 @@ app.post("/auth/forgot-password", async (req, res) => {
     });
 
     // Create reset link
-    const resetLink = `${process.env.FRONTEND_URL || "http://localhost:3000"}/#/reset-password?token=${resetToken}&email=${email}`;
+    const resetLink = `${
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    }/#/reset-password?token=${resetToken}&email=${email}`;
 
     console.log(`✅ Reset token generated for: ${email}`);
     console.log(`📌 Reset link: ${resetLink}`);
@@ -1682,7 +1713,7 @@ app.post("/auth/forgot-password", async (req, res) => {
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
               <h2>Password Reset Request</h2>
-              <p>Hi ${user.name || 'there'},</p>
+              <p>Hi ${user.name || "there"},</p>
               <p>We received a request to reset your ConsultaPro password. Click the button below to create a new password:</p>
               <div style="text-align: center; margin: 30px 0;">
                 <a href="${resetLink}" 
@@ -1699,11 +1730,13 @@ app.post("/auth/forgot-password", async (req, res) => {
               <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
               <p style="color: #666; font-size: 12px;">ConsultaPro Team</p>
             </div>
-          `
+          `,
         });
         console.log(`📧 Password reset email sent to: ${email}`);
       } else {
-        console.warn("⚠️ Email transporter not configured, showing link in response for development");
+        console.warn(
+          "⚠️ Email transporter not configured, showing link in response for development"
+        );
       }
     } catch (emailErr) {
       console.error("⚠️ Failed to send reset email:", emailErr.message);
@@ -1760,17 +1793,13 @@ app.post("/auth/reset-password", async (req, res) => {
 
     if (!user) {
       console.log(`❌ Invalid reset token for: ${email}`);
-      return res
-        .status(400)
-        .json({ error: "Invalid or expired reset token" });
+      return res.status(400).json({ error: "Invalid or expired reset token" });
     }
 
     // Check if token has expired
     if (new Date() > user.password_reset_expiry) {
       console.log(`❌ Reset token expired for: ${email}`);
-      return res
-        .status(400)
-        .json({ error: "Reset token has expired" });
+      return res.status(400).json({ error: "Reset token has expired" });
     }
 
     // Hash new password
@@ -2061,9 +2090,9 @@ app.get("/enterprise/team", verifyFirebaseToken, async (req, res) => {
     });
 
     // Add status field to distinguish pending vs accepted invites
-    const membersWithStatus = members.map(member => ({
+    const membersWithStatus = members.map((member) => ({
       ...member,
-      status: member.is_verified ? "Active" : "Pending Invitation"
+      status: member.is_verified ? "Active" : "Pending Invitation",
     }));
 
     res.status(200).json(membersWithStatus);
@@ -2109,8 +2138,12 @@ app.patch("/enterprise/team/:id", verifyFirebaseToken, async (req, res) => {
     const updatedMember = await prisma.user.update({
       where: { id: Number(id) },
       data: {
-        name: typeof name === "string" && name.trim() ? name.trim() : member.name,
-        email: typeof email === "string" && email.trim() ? email.trim() : member.email,
+        name:
+          typeof name === "string" && name.trim() ? name.trim() : member.name,
+        email:
+          typeof email === "string" && email.trim()
+            ? email.trim()
+            : member.email,
       },
       select: {
         id: true,
@@ -2130,81 +2163,85 @@ app.patch("/enterprise/team/:id", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-app.get("/enterprise/team/:id/credentials", verifyFirebaseToken, async (req, res) => {
-  try {
-    const { id } = req.params;
+app.get(
+  "/enterprise/team/:id/credentials",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
 
-    // Verify admin
-    let admin = await prisma.user
-      .findUnique({
-        where: { firebase_uid: req.user.firebase_uid },
-      })
-      .catch(() => null);
-
-    if (!admin) {
-      admin = await prisma.user
+      // Verify admin
+      let admin = await prisma.user
         .findUnique({
-          where: { email: req.user.email },
+          where: { firebase_uid: req.user.firebase_uid },
         })
         .catch(() => null);
-    }
 
-    if (!admin || admin.role !== "ENTERPRISE_ADMIN") {
-      return res
-        .status(403)
-        .json({ error: "Not authorized. Admin role required." });
-    }
+      if (!admin) {
+        admin = await prisma.user
+          .findUnique({
+            where: { email: req.user.email },
+          })
+          .catch(() => null);
+      }
 
-    // Get member details with credentials and profile
-    const member = await prisma.user.findUnique({
-      where: { id: Number(id) },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        is_verified: true,
-        temp_username: true,
-        temp_password: true,
-        created_at: true,
-        profile: {
-          select: {
-            avatar: true,
-            bio: true,
-            designation: true,
-            years_experience: true,
-            education: true,
-            languages: true,
-            hourly_rate: true,
-            availability: true,
-            expertise: true,
-            location: true,
+      if (!admin || admin.role !== "ENTERPRISE_ADMIN") {
+        return res
+          .status(403)
+          .json({ error: "Not authorized. Admin role required." });
+      }
+
+      // Get member details with credentials and profile
+      const member = await prisma.user.findUnique({
+        where: { id: Number(id) },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          phone: true,
+          role: true,
+          is_verified: true,
+          temp_username: true,
+          temp_password: true,
+          created_at: true,
+          profile: {
+            select: {
+              avatar: true,
+              bio: true,
+              designation: true,
+              years_experience: true,
+              education: true,
+              languages: true,
+              hourly_rate: true,
+              availability: true,
+              expertise: true,
+              location: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!member || member.role !== "ENTERPRISE_MEMBER") {
-      return res.status(404).json({ error: "Team member not found." });
+      if (!member || member.role !== "ENTERPRISE_MEMBER") {
+        return res.status(404).json({ error: "Team member not found." });
+      }
+
+      res.status(200).json({
+        id: member.id,
+        email: member.email,
+        name: member.name,
+        phone: member.phone,
+        is_verified: member.is_verified,
+        username: member.temp_username,
+        password: member.temp_password,
+        created_at: member.created_at,
+        profile: member.profile,
+      });
+    } catch (error) {
+      console.error("Get member credentials error:", error);
+      res.status(500).json({ error: "Failed to fetch member credentials" });
     }
-
-    res.status(200).json({
-      id: member.id,
-      email: member.email,
-      name: member.name,
-      phone: member.phone,
-      is_verified: member.is_verified,
-      username: member.temp_username,
-      password: member.temp_password,
-      created_at: member.created_at,
-      profile: member.profile,
-    });
-  } catch (error) {
-    console.error("Get member credentials error:", error);
-    res.status(500).json({ error: "Failed to fetch member credentials" });
   }
-});
+);
 
 app.delete("/enterprise/team/:id", verifyFirebaseToken, async (req, res) => {
   try {
@@ -2428,7 +2465,7 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
       kyc_document: kycDocuments.length > 0 ? kycDocuments[0].url : null,
       kyc_document_data: kycDocuments.length > 0 ? kycDocuments[0] : null,
       certificates: certificates,
-      certificate_urls: certificates.map(cert => cert.url)
+      certificate_urls: certificates.map((cert) => cert.url),
     };
 
     res.json(profileData);
@@ -2443,14 +2480,29 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
  * Update consultant profile
  */
 app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
-  const { type, domain, bio, languages, hourly_price, full_name, phone, expertise, availability, designation, years_experience, education } = req.body;
+  const {
+    type,
+    domain,
+    bio,
+    languages,
+    hourly_price,
+    full_name,
+    phone,
+    expertise,
+    availability,
+    designation,
+    years_experience,
+    education,
+  } = req.body;
 
   try {
     // Use consistent user lookup (same as GET endpoint)
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      include: { consultant: true },
-    }).catch(() => null);
+    const user = await prisma.user
+      .findUnique({
+        where: { id: req.user.id },
+        include: { consultant: true },
+      })
+      .catch(() => null);
 
     if (!user && req.user.id) {
       user = await prisma.user.findUnique({
@@ -2479,7 +2531,10 @@ app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
         expertise: expertise || user.consultant.expertise,
         availability: availability || user.consultant.availability,
         designation: designation || user.consultant.designation,
-        years_experience: years_experience !== undefined ? parseInt(years_experience) : user.consultant.years_experience,
+        years_experience:
+          years_experience !== undefined
+            ? parseInt(years_experience)
+            : user.consultant.years_experience,
         education: education || user.consultant.education,
       },
     });
@@ -2575,19 +2630,19 @@ app.get("/consultant/bookings", verifyFirebaseToken, async (req, res) => {
           select: {
             id: true,
             email: true,
-            name: true
-          }
-        }
+            name: true,
+          },
+        },
       },
       orderBy: { date: "desc" },
     });
 
     // Format the bookings to include user info and proper time display
-    const formattedBookings = bookings.map(booking => ({
+    const formattedBookings = bookings.map((booking) => ({
       ...booking,
       user: booking.user,
       // Keep time_slot as is for now, but this represents the booked time
-      time_slot: booking.time_slot
+      time_slot: booking.time_slot,
     }));
 
     res.json(formattedBookings);
@@ -2664,11 +2719,15 @@ app.post("/consultant/availability", verifyFirebaseToken, async (req, res) => {
     }
 
     if (slotsToCreate.length === 0) {
-      return res.status(400).json({ error: "Invalid time range. No slots can be generated." });
+      return res
+        .status(400)
+        .json({ error: "Invalid time range. No slots can be generated." });
     }
 
     if (slotsToCreate.length > 24) {
-      return res.status(400).json({ error: "You can only add a maximum of 24 slots at a time." });
+      return res
+        .status(400)
+        .json({ error: "You can only add a maximum of 24 slots at a time." });
     }
 
     // Insert all generated slots
@@ -2679,7 +2738,9 @@ app.post("/consultant/availability", verifyFirebaseToken, async (req, res) => {
       });
     }
 
-    res.status(201).json({ message: `Successfully added ${slotsToCreate.length} slots` });
+    res
+      .status(201)
+      .json({ message: `Successfully added ${slotsToCreate.length} slots` });
   } catch (error) {
     console.error("Add Availability Error:", error.message);
     res.status(500).json({ error: "Failed to add availability" });
@@ -2790,7 +2851,8 @@ app.post(
       cloudinary.config({
         cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "dhtfjzu6l",
         api_key: process.env.CLOUDINARY_API_KEY || "336399692592491",
-        api_secret: process.env.CLOUDINARY_API_SECRET || "28_kUZNQg2G5iTuT9JxVzx66qYU"
+        api_secret:
+          process.env.CLOUDINARY_API_SECRET || "28_kUZNQg2G5iTuT9JxVzx66qYU",
       });
 
       // Upload to Cloudinary
@@ -2809,10 +2871,12 @@ app.post(
       const imageUrl = uploadResult.secure_url;
 
       // Get user - use consistent lookup with other endpoints
-      const user = await prisma.user.findUnique({
-        where: { id: req.user.id },
-        include: { consultant: true },
-      }).catch(() => null);
+      const user = await prisma.user
+        .findUnique({
+          where: { id: req.user.id },
+          include: { consultant: true },
+        })
+        .catch(() => null);
 
       if (!user && req.user.id) {
         user = await prisma.user.findUnique({
@@ -2864,7 +2928,8 @@ app.post(
       cloudinary.config({
         cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "dhtfjzu6l",
         api_key: process.env.CLOUDINARY_API_KEY || "336399692592491",
-        api_secret: process.env.CLOUDINARY_API_SECRET || "28_kUZNQg2G5iTuT9JxVzx66qYU"
+        api_secret:
+          process.env.CLOUDINARY_API_SECRET || "28_kUZNQg2G5iTuT9JxVzx66qYU",
       });
 
       const uploadResult = await new Promise((resolve, reject) => {
@@ -2881,9 +2946,11 @@ app.post(
       const imageUrl = uploadResult.secure_url;
 
       // Find user by firebase_uid or id (dev mode)
-      let user = await prisma.user.findUnique({
-        where: { firebase_uid: req.user.firebase_uid },
-      }).catch(() => null);
+      let user = await prisma.user
+        .findUnique({
+          where: { firebase_uid: req.user.firebase_uid },
+        })
+        .catch(() => null);
 
       if (!user && req.user.id) {
         user = await prisma.user.findUnique({ where: { id: req.user.id } });
@@ -2910,8 +2977,11 @@ app.post(
       });
     } catch (error) {
       console.error("Upload Error:", error);
-      const errorMessage = error && error.message ? error.message : String(error);
-      res.status(500).json({ error: "Failed to upload profile picture: " + errorMessage });
+      const errorMessage =
+        error && error.message ? error.message : String(error);
+      res
+        .status(500)
+        .json({ error: "Failed to upload profile picture: " + errorMessage });
     }
   }
 );
@@ -2925,9 +2995,11 @@ app.put("/user/profile", verifyFirebaseToken, async (req, res) => {
 
   try {
     // Find user by firebase_uid or id (dev mode)
-    let user = await prisma.user.findUnique({
-      where: { firebase_uid: req.user.firebase_uid },
-    }).catch(() => null);
+    let user = await prisma.user
+      .findUnique({
+        where: { firebase_uid: req.user.firebase_uid },
+      })
+      .catch(() => null);
 
     if (!user && req.user.id) {
       user = await prisma.user.findUnique({ where: { id: req.user.id } });
@@ -2972,7 +3044,9 @@ app.put("/user/profile", verifyFirebaseToken, async (req, res) => {
     });
   } catch (error) {
     console.error("Update User Profile Error:", error.message);
-    res.status(500).json({ error: "Failed to update user profile: " + error.message });
+    res
+      .status(500)
+      .json({ error: "Failed to update user profile: " + error.message });
   }
 });
 
@@ -3060,7 +3134,8 @@ app.post(
       cloudinary.config({
         cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "dhtfjzu6l",
         api_key: process.env.CLOUDINARY_API_KEY || "336399692592491",
-        api_secret: process.env.CLOUDINARY_API_SECRET || "28_kUZNQg2G5iTuT9JxVzx66qYU"
+        api_secret:
+          process.env.CLOUDINARY_API_SECRET || "28_kUZNQg2G5iTuT9JxVzx66qYU",
       });
 
       // Upload all files to Cloudinary
@@ -3069,7 +3144,7 @@ app.post(
           const uploadStream = cloudinary.uploader.upload_stream(
             {
               folder: "consultancy-platform/kyc-documents",
-              resource_type: "auto"
+              resource_type: "auto",
             },
             (error, result) => {
               if (error) reject(error);
@@ -3089,7 +3164,7 @@ app.post(
         url: result.secure_url,
         public_id: result.public_id,
         uploaded_at: new Date().toISOString(),
-        type: req.body.documentType || 'document'
+        type: req.body.documentType || "document",
       }));
 
       // Update consultant's KYC documents
@@ -3100,14 +3175,14 @@ app.post(
         where: { id: consultant.id },
         data: {
           kyc_documents: updatedKycDocuments,
-          kyc_status: "SUBMITTED"
+          kyc_status: "SUBMITTED",
         },
       });
 
       res.status(200).json({
         message: "KYC documents uploaded successfully",
         documents: documents,
-        kyc_status: "SUBMITTED"
+        kyc_status: "SUBMITTED",
       });
     } catch (error) {
       console.error("KYC Upload Error:", error);
@@ -3145,7 +3220,7 @@ app.post(
           const uploadStream = cloudinary.uploader.upload_stream(
             {
               folder: "consultancy-platform/certificates",
-              resource_type: "auto"
+              resource_type: "auto",
             },
             (error, result) => {
               if (error) reject(error);
@@ -3168,7 +3243,7 @@ app.post(
         issuer: req.body.issuer || "Not specified",
         issue_date: req.body.issueDate || null,
         expiry_date: req.body.expiryDate || null,
-        credential_id: req.body.credentialId || null
+        credential_id: req.body.credentialId || null,
       }));
 
       // Update consultant's certificates
@@ -3184,7 +3259,7 @@ app.post(
 
       res.status(200).json({
         message: "Certificates uploaded successfully",
-        certificates: certificates
+        certificates: certificates,
       });
     } catch (error) {
       console.error("Certificates Upload Error:", error);
@@ -3203,8 +3278,8 @@ app.get("/consultant/kyc-status", verifyFirebaseToken, async (req, res) => {
       where: { userId: req.user.id },
       select: {
         kyc_status: true,
-        kyc_documents: true
-      }
+        kyc_documents: true,
+      },
     });
 
     if (!consultant) {
@@ -3219,7 +3294,7 @@ app.get("/consultant/kyc-status", verifyFirebaseToken, async (req, res) => {
       kyc_status: consultant.kyc_status,
       documents: documents,
       kyc_document: singleDocument?.url || null, // Backward compatibility
-      kyc_document_data: singleDocument || null // Full document data
+      kyc_document_data: singleDocument || null, // Full document data
     });
   } catch (error) {
     console.error("KYC Status Error:", error);
@@ -3236,8 +3311,8 @@ app.get("/consultant/certificates", verifyFirebaseToken, async (req, res) => {
     const consultant = await prisma.consultant.findFirst({
       where: { userId: req.user.id },
       select: {
-        certificates: true
-      }
+        certificates: true,
+      },
     });
 
     if (!consultant) {
@@ -3247,11 +3322,11 @@ app.get("/consultant/certificates", verifyFirebaseToken, async (req, res) => {
     const certificates = consultant.certificates || [];
 
     // For backward compatibility, return array of URLs
-    const certificateUrls = certificates.map(cert => cert.url);
+    const certificateUrls = certificates.map((cert) => cert.url);
 
     res.json({
       certificates: certificates,
-      certificate_urls: certificateUrls // Backward compatibility
+      certificate_urls: certificateUrls, // Backward compatibility
     });
   } catch (error) {
     console.error("Certificates Error:", error);
@@ -3263,94 +3338,110 @@ app.get("/consultant/certificates", verifyFirebaseToken, async (req, res) => {
  * DELETE /consultant/certificate/:id
  * Delete a certificate
  */
-app.delete("/consultant/certificate/:id", verifyFirebaseToken, async (req, res) => {
-  try {
-    const consultant = await prisma.consultant.findFirst({
-      where: { userId: req.user.id },
-    });
+app.delete(
+  "/consultant/certificate/:id",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      const consultant = await prisma.consultant.findFirst({
+        where: { userId: req.user.id },
+      });
 
-    if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
+      if (!consultant) {
+        return res.status(404).json({ error: "Consultant not found" });
+      }
+
+      const certificateId = parseInt(req.params.id);
+      const certificates = consultant.certificates || [];
+
+      // Find the certificate to delete
+      const certificateToDelete = certificates.find(
+        (cert) => cert.id === certificateId
+      );
+
+      if (!certificateToDelete) {
+        return res.status(404).json({ error: "Certificate not found" });
+      }
+
+      // Delete from Cloudinary
+      if (certificateToDelete.public_id) {
+        await cloudinary.uploader.destroy(certificateToDelete.public_id);
+      }
+
+      // Remove from database
+      const updatedCertificates = certificates.filter(
+        (cert) => cert.id !== certificateId
+      );
+
+      await prisma.consultant.update({
+        where: { id: consultant.id },
+        data: {
+          certificates: updatedCertificates,
+        },
+      });
+
+      res.json({ message: "Certificate deleted successfully" });
+    } catch (error) {
+      console.error("Delete Certificate Error:", error);
+      res.status(500).json({ error: "Failed to delete certificate" });
     }
-
-    const certificateId = parseInt(req.params.id);
-    const certificates = consultant.certificates || [];
-
-    // Find the certificate to delete
-    const certificateToDelete = certificates.find(cert => cert.id === certificateId);
-
-    if (!certificateToDelete) {
-      return res.status(404).json({ error: "Certificate not found" });
-    }
-
-    // Delete from Cloudinary
-    if (certificateToDelete.public_id) {
-      await cloudinary.uploader.destroy(certificateToDelete.public_id);
-    }
-
-    // Remove from database
-    const updatedCertificates = certificates.filter(cert => cert.id !== certificateId);
-
-    await prisma.consultant.update({
-      where: { id: consultant.id },
-      data: {
-        certificates: updatedCertificates,
-      },
-    });
-
-    res.json({ message: "Certificate deleted successfully" });
-  } catch (error) {
-    console.error("Delete Certificate Error:", error);
-    res.status(500).json({ error: "Failed to delete certificate" });
   }
-});
+);
 
 /**
  * DELETE /consultant/kyc-document/:id
  * Delete a KYC document
  */
-app.delete("/consultant/kyc-document/:id", verifyFirebaseToken, async (req, res) => {
-  try {
-    const consultant = await prisma.consultant.findFirst({
-      where: { userId: req.user.id },
-    });
+app.delete(
+  "/consultant/kyc-document/:id",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      const consultant = await prisma.consultant.findFirst({
+        where: { userId: req.user.id },
+      });
 
-    if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
+      if (!consultant) {
+        return res.status(404).json({ error: "Consultant not found" });
+      }
+
+      const documentId = parseInt(req.params.id);
+      const kycDocuments = consultant.kyc_documents || [];
+
+      // Find the document to delete
+      const documentToDelete = kycDocuments.find(
+        (doc) => doc.id === documentId
+      );
+
+      if (!documentToDelete) {
+        return res.status(404).json({ error: "KYC document not found" });
+      }
+
+      // Delete from Cloudinary
+      if (documentToDelete.public_id) {
+        await cloudinary.uploader.destroy(documentToDelete.public_id);
+      }
+
+      // Remove from database
+      const updatedDocuments = kycDocuments.filter(
+        (doc) => doc.id !== documentId
+      );
+
+      await prisma.consultant.update({
+        where: { id: consultant.id },
+        data: {
+          kyc_documents: updatedDocuments,
+          kyc_status: updatedDocuments.length === 0 ? "PENDING" : "SUBMITTED",
+        },
+      });
+
+      res.json({ message: "KYC document deleted successfully" });
+    } catch (error) {
+      console.error("Delete KYC Document Error:", error);
+      res.status(500).json({ error: "Failed to delete KYC document" });
     }
-
-    const documentId = parseInt(req.params.id);
-    const kycDocuments = consultant.kyc_documents || [];
-
-    // Find the document to delete
-    const documentToDelete = kycDocuments.find(doc => doc.id === documentId);
-
-    if (!documentToDelete) {
-      return res.status(404).json({ error: "KYC document not found" });
-    }
-
-    // Delete from Cloudinary
-    if (documentToDelete.public_id) {
-      await cloudinary.uploader.destroy(documentToDelete.public_id);
-    }
-
-    // Remove from database
-    const updatedDocuments = kycDocuments.filter(doc => doc.id !== documentId);
-
-    await prisma.consultant.update({
-      where: { id: consultant.id },
-      data: {
-        kyc_documents: updatedDocuments,
-        kyc_status: updatedDocuments.length === 0 ? "PENDING" : "SUBMITTED"
-      },
-    });
-
-    res.json({ message: "KYC document deleted successfully" });
-  } catch (error) {
-    console.error("Delete KYC Document Error:", error);
-    res.status(500).json({ error: "Failed to delete KYC document" });
   }
-});
+);
 
 /**
  * GET /consultants
@@ -3424,7 +3515,11 @@ app.get("/consultants/:id", async (req, res) => {
     const displayPrice = basePrice * (1 + markupPct / 100);
 
     // Filter out internal commission fields before sending to client
-    const { consultant_commission_pct, user_commission_pct, ...publicConsultantData } = consultant;
+    const {
+      consultant_commission_pct,
+      user_commission_pct,
+      ...publicConsultantData
+    } = consultant;
 
     // Override hourly_price with displayPrice so frontend only sees marked-up price
     publicConsultantData.hourly_price = displayPrice;
@@ -3935,8 +4030,9 @@ app.post("/payment/verify", async (req, res) => {
           userId: user.id,
           type: "CREDIT",
           amount: totalCredits,
-          description: `Added ${creditsToAdd} credits${bonusAmount > 0 ? ` with ${bonusAmount} bonus` : ""
-            } via Razorpay (Order: ${razorpay_order_id})`,
+          description: `Added ${creditsToAdd} credits${
+            bonusAmount > 0 ? ` with ${bonusAmount} bonus` : ""
+          } via Razorpay (Order: ${razorpay_order_id})`,
           payment_method: "RAZORPAY",
           status: "SUCCESS",
         },
@@ -4023,13 +4119,14 @@ app.post("/payment/verify", async (req, res) => {
                     <td>${creditsToAdd} Credits</td>
                     <td style="text-align: right;">₹${orderRecord.amount}</td>
                   </tr>
-                  ${bonusAmount > 0
-        ? `<tr>
+                  ${
+                    bonusAmount > 0
+                      ? `<tr>
                     <td>${bonusAmount} Bonus Credits</td>
                     <td style="text-align: right; color: #16a34a;">FREE</td>
                   </tr>`
-        : ""
-      }
+                      : ""
+                  }
                 </tbody>
               </table>
 
@@ -4204,8 +4301,9 @@ app.post("/wallet/add-credits", verifyFirebaseToken, async (req, res) => {
         userId: user.id,
         type: "CREDIT",
         amount: totalCredits,
-        description: `Added ₹${amount} credits${bonusAmount > 0 ? ` with ₹${bonusAmount} bonus` : ""
-          }`,
+        description: `Added ₹${amount} credits${
+          bonusAmount > 0 ? ` with ₹${bonusAmount} bonus` : ""
+        }`,
         payment_method: "CREDIT_CARD",
         status: "SUCCESS",
       },
@@ -4284,6 +4382,17 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
     const consultant = await prisma.consultant.findUnique({
       where: { id: consultantId },
     });
+    // 🔐 CONSULTANT MONTHLY INBOUND LIMIT
+    const consultantPlan = consultant.consultantPlan || "FREE";
+    const inboundUsed = consultant.inboundChatsUsed || 0;
+
+    const inboundLimit = CONSULTANT_PLAN_LIMITS[consultantPlan];
+
+    if (inboundUsed >= inboundLimit) {
+      return res.status(403).json({
+        error: "Consultant has reached monthly inbound chat limit.",
+      });
+    }
 
     if (!consultant) {
       return res.status(404).json({ error: "Consultant not found" });
@@ -4346,6 +4455,19 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
         net_earning: consultantNet,
       },
     });
+    // 🔼 Increment consultant monthly inbound count
+    try {
+      await prisma.consultant.update({
+        where: { id: consultant.id },
+        data: {
+          inboundChatsUsed: {
+            increment: 1,
+          },
+        },
+      });
+    } catch (err) {
+      console.log("Inbound increment skipped (DB not updated yet)");
+    }
 
     // Mark the availability slot as booked
     await prisma.availability.updateMany({
@@ -4390,7 +4512,10 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
 
       const bookingDate = new Date(date);
       const dateStr = bookingDate.toLocaleDateString("en-IN", {
-        weekday: "long", year: "numeric", month: "long", day: "numeric",
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
       });
       const slotH = parseInt(time_slot);
       const endSlot = `${String(slotH + 1).padStart(2, "0")}:00`;
@@ -4412,23 +4537,35 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
               <div style="background:#fff;border-radius:16px;padding:24px;margin-bottom:16px;border:1px solid #e5e7eb;">
                 <h2 style="font-size:16px;font-weight:700;color:#1f2937;margin:0 0 16px;">Booking Details</h2>
                 <table style="width:100%;border-collapse:collapse;">
-                  <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Booking ID</td><td style="padding:12px 0;font-weight:700;color:#1f2937;font-size:14px;">#${booking.id}</td></tr>
-                  <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Consultant Domain</td><td style="padding:12px 0;font-weight:600;color:#2563eb;font-size:14px;">${consultant.domain || "Consultation"}</td></tr>
+                  <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Booking ID</td><td style="padding:12px 0;font-weight:700;color:#1f2937;font-size:14px;">#${
+                    booking.id
+                  }</td></tr>
+                  <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Consultant Domain</td><td style="padding:12px 0;font-weight:600;color:#2563eb;font-size:14px;">${
+                    consultant.domain || "Consultation"
+                  }</td></tr>
                   <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Date</td><td style="padding:12px 0;font-weight:600;color:#1f2937;font-size:14px;">${dateStr}</td></tr>
                   <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Time Slot</td><td style="padding:12px 0;font-weight:700;color:#059669;font-size:14px;">${sessionStr}</td></tr>
-                  <tr><td style="padding:12px 0;color:#6b7280;font-size:14px;">Amount Paid</td><td style="padding:12px 0;font-weight:700;color:#dc2626;font-size:14px;">₹${consultant.hourly_price.toFixed(2)}</td></tr>
+                  <tr><td style="padding:12px 0;color:#6b7280;font-size:14px;">Amount Paid</td><td style="padding:12px 0;font-weight:700;color:#dc2626;font-size:14px;">₹${consultant.hourly_price.toFixed(
+                    2
+                  )}</td></tr>
                 </table>
               </div>
               <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:16px;margin-bottom:16px;">
                 <p style="margin:0;font-size:14px;color:#1e40af;font-weight:600;">⏰ How to connect with your consultant</p>
-                <p style="margin:8px 0 0;font-size:13px;color:#3b82f6;">Go to <strong>Messages</strong> → Select this booking → Chat opens automatically at <strong>${time_slot}</strong> on <strong>${bookingDate.toLocaleDateString("en-IN")}</strong>. Your consultant will initiate the video call.</p>
+                <p style="margin:8px 0 0;font-size:13px;color:#3b82f6;">Go to <strong>Messages</strong> → Select this booking → Chat opens automatically at <strong>${time_slot}</strong> on <strong>${bookingDate.toLocaleDateString(
+            "en-IN"
+          )}</strong>. Your consultant will initiate the video call.</p>
               </div>
-              <p style="text-align:center;font-size:12px;color:#9ca3af;">ConsultPro · Booking confirmation · Booking #${booking.id}</p>
+              <p style="text-align:center;font-size:12px;color:#9ca3af;">ConsultPro · Booking confirmation · Booking #${
+                booking.id
+              }</p>
             </div>
           `,
         };
         await transporter.sendMail(userMailOptions);
-        console.log(`📧 Booking confirmation email sent to user: ${user.email}`);
+        console.log(
+          `📧 Booking confirmation email sent to user: ${user.email}`
+        );
       }
 
       // ── Email to CONSULTANT ───────────────────────────────────────────────
@@ -4447,28 +4584,44 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
               <div style="background:#fff;border-radius:16px;padding:24px;margin-bottom:16px;border:1px solid #e5e7eb;">
                 <h2 style="font-size:16px;font-weight:700;color:#1f2937;margin:0 0 16px;">Session Details</h2>
                 <table style="width:100%;border-collapse:collapse;">
-                  <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Booking ID</td><td style="padding:12px 0;font-weight:700;color:#1f2937;font-size:14px;">#${booking.id}</td></tr>
-                  <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Client</td><td style="padding:12px 0;font-weight:600;color:#1f2937;font-size:14px;">${user.name || user.email}</td></tr>
+                  <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Booking ID</td><td style="padding:12px 0;font-weight:700;color:#1f2937;font-size:14px;">#${
+                    booking.id
+                  }</td></tr>
+                  <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Client</td><td style="padding:12px 0;font-weight:600;color:#1f2937;font-size:14px;">${
+                    user.name || user.email
+                  }</td></tr>
                   <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Date</td><td style="padding:12px 0;font-weight:600;color:#1f2937;font-size:14px;">${dateStr}</td></tr>
                   <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Time Slot</td><td style="padding:12px 0;font-weight:700;color:#059669;font-size:14px;">${sessionStr}</td></tr>
-                  <tr><td style="padding:12px 0;color:#6b7280;font-size:14px;">Your Earnings</td><td style="padding:12px 0;font-weight:700;color:#059669;font-size:14px;">₹${(consultant.hourly_price * 0.9).toFixed(2)} <span style="font-size:11px;color:#9ca3af;">(after 10% platform fee)</span></td></tr>
+                  <tr><td style="padding:12px 0;color:#6b7280;font-size:14px;">Your Earnings</td><td style="padding:12px 0;font-weight:700;color:#059669;font-size:14px;">₹${(
+                    consultant.hourly_price * 0.9
+                  ).toFixed(
+                    2
+                  )} <span style="font-size:11px;color:#9ca3af;">(after 10% platform fee)</span></td></tr>
                 </table>
               </div>
               <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin-bottom:16px;">
                 <p style="margin:0;font-size:14px;color:#065f46;font-weight:600;">💬 How to start the session</p>
                 <p style="margin:8px 0 0;font-size:13px;color:#059669;">Go to <strong>Messages</strong> at the scheduled time. Chat will unlock automatically at <strong>${time_slot}</strong>. You can initiate the video call using the "Start Call" button — only you have this ability.</p>
               </div>
-              <p style="text-align:center;font-size:12px;color:#9ca3af;">ConsultPro · New session notification · Booking #${booking.id}</p>
+              <p style="text-align:center;font-size:12px;color:#9ca3af;">ConsultPro · New session notification · Booking #${
+                booking.id
+              }</p>
             </div>
           `,
         };
         await transporter.sendMail(consultantMailOptions);
-        console.log(`📧 New session email sent to consultant: ${consultantUser.email}`);
+        console.log(
+          `📧 New session email sent to consultant: ${consultantUser.email}`
+        );
       }
 
       if (!isEmailConfigured) {
-        console.log(`📧 [Email not configured] Would have emailed: ${user.email} & ${consultantUser?.email}`);
-        console.log(`   Booking #${booking.id} | ${dateStr} | ${sessionStr} | ₹${consultant.hourly_price}`);
+        console.log(
+          `📧 [Email not configured] Would have emailed: ${user.email} & ${consultantUser?.email}`
+        );
+        console.log(
+          `   Booking #${booking.id} | ${dateStr} | ${sessionStr} | ₹${consultant.hourly_price}`
+        );
       }
     } catch (emailErr) {
       // Email failure must not break the booking confirmation
@@ -4488,7 +4641,6 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
       .json({ error: "Failed to create booking: " + error.message });
   }
 });
-
 
 /**
  * POST /bookings/:id/complete
@@ -4756,6 +4908,21 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
     if (!isClient && !isConsultant) {
       return res.status(403).json({ error: "Not authorized to send messages" });
     }
+    // ===============================
+    // 🔐 CLIENT MONTHLY MESSAGE LIMIT
+    // ===============================
+    if (isClient) {
+      const plan = sender.clientPlan || "FREE";
+      const messagesUsed = sender.messagesUsed || 0;
+
+      const monthlyLimit = CLIENT_PLAN_LIMITS[plan];
+
+      if (messagesUsed >= monthlyLimit) {
+        return res.status(403).json({
+          error: "Monthly message limit reached. Please upgrade your plan.",
+        });
+      }
+    }
 
     // Create message
     const message = await prisma.message.create({
@@ -4765,6 +4932,21 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
         content: content.trim(),
       },
     });
+    // 🔼 Increment monthly message count (only for clients)
+    if (isClient) {
+      try {
+        await prisma.user.update({
+          where: { id: sender.id },
+          data: {
+            messagesUsed: {
+              increment: 1,
+            },
+          },
+        });
+      } catch (err) {
+        console.log("Increment skipped (DB not updated yet)");
+      }
+    }
 
     // Emit real-time message via Socket.IO
     io.to(`booking_${bookingId}`).emit("new_message", {
@@ -4921,12 +5103,26 @@ app.get("/agora/token", verifyFirebaseToken, async (req, res) => {
     const isAuthConsultant = booking.consultant?.userId === authUserId;
     const isAuthEnterprise = booking.enterpriseMemberId === authUserId;
 
-    if (!isClient && !isConsultant && !isEnterpriseMember && !isConsultantById && !isAuthClient && !isAuthConsultant && !isAuthEnterprise) {
-      console.log(`❌ Agora Auth Failed: dbUserId=${dbUserId}, authUserId=${authUserId}, booking: client=${booking.userId}, consultantUser=${booking.consultant?.userId}, consultantId=${booking.consultant?.id}`);
+    if (
+      !isClient &&
+      !isConsultant &&
+      !isEnterpriseMember &&
+      !isConsultantById &&
+      !isAuthClient &&
+      !isAuthConsultant &&
+      !isAuthEnterprise
+    ) {
+      console.log(
+        `❌ Agora Auth Failed: dbUserId=${dbUserId}, authUserId=${authUserId}, booking: client=${booking.userId}, consultantUser=${booking.consultant?.userId}, consultantId=${booking.consultant?.id}`
+      );
       return res.status(403).json({ error: "Not authorized" });
     }
 
-    console.log(`✅ Agora Auth Success for user ${dbUserId || authUserId} on booking ${bookingId}`);
+    console.log(
+      `✅ Agora Auth Success for user ${
+        dbUserId || authUserId
+      } on booking ${bookingId}`
+    );
 
     // ✅ Generate unique Agora UID HERE
     const agoraUid = Math.floor(Math.random() * 1000000);
@@ -5075,6 +5271,27 @@ io.on("connection", (socket) => {
         });
       }
 
+      // 👇 Get sender user
+      const sender = socket.user;
+      // ============================
+      // 🔐 1️⃣ CLIENT MONTHLY LIMIT
+      // ============================
+      if (sender.role === "USER") {
+        const plan = sender.clientPlan || "FREE";
+        const messagesUsed = sender.messagesUsed || 0;
+
+        const monthlyLimit = CLIENT_PLAN_LIMITS[plan];
+
+        if (messagesUsed >= monthlyLimit) {
+          return socket.emit("chat-blocked", {
+            message: "Monthly message limit reached. Upgrade your plan.",
+          });
+        }
+      }
+
+      // ====================================
+      // 🔐 2️⃣ UNPAID BOOKING FREE LIMIT (5)
+      // ====================================
       if (!booking.is_paid) {
         const messageCount = await prisma.message.count({
           where: { bookingId: id },
@@ -5087,31 +5304,34 @@ io.on("connection", (socket) => {
         }
       }
 
-      // 3️⃣ Save message with user info - NO CHANGE
+      // ============================
+      // 💾 Save Message
+      // ============================
       const message = await prisma.message.create({
         data: {
           bookingId: id,
-          senderId: user.id,
+          senderId: sender.id,
           content,
         },
       });
 
-      // 4️⃣ 👇 MODIFY THIS - add role to sender info
+      // ============================
+      // 📡 Emit Message
+      // ============================
       const messageWithSender = {
         ...message,
         sender: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role, // 👈 ADD THIS
+          id: sender.id,
+          email: sender.email,
+          name: sender.name,
+          role: sender.role,
         },
       };
 
       io.to(`booking_${id}`).emit("receive-message", messageWithSender);
 
-      // 👇 CHANGE THIS - add role to log
       console.log(
-        `📨 Message sent in booking_${id} from ${user.email} (${user.role})`
+        `📨 Message sent in booking_${id} from ${sender.email} (${sender.role})`
       );
     } catch (err) {
       console.log("CHAT ERROR:", err);
@@ -5420,9 +5640,7 @@ app.get("/dev-member-profile-test", async (req, res) => {
     const { userId } = req.query;
 
     if (!userId) {
-      return res
-        .status(400)
-        .json({ error: "userId query parameter required" });
+      return res.status(400).json({ error: "userId query parameter required" });
     }
 
     const user = await prisma.user.findUnique({
@@ -5477,21 +5695,28 @@ app.get("/dev-generate-token", async (req, res) => {
     }
 
     // Create JWT-formatted token (header.payload.signature)
-    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString('base64');
-    const payload = Buffer.from(JSON.stringify({
-      email: user.email,
-      uid: user.id,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 86400 // 24 hours
-    })).toString('base64');
-    const signature = Buffer.from("dev-mode-signature").toString('base64');
+    const header = Buffer.from(
+      JSON.stringify({ alg: "HS256", typ: "JWT" })
+    ).toString("base64");
+    const payload = Buffer.from(
+      JSON.stringify({
+        email: user.email,
+        uid: user.id,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 86400, // 24 hours
+      })
+    ).toString("base64");
+    const signature = Buffer.from("dev-mode-signature").toString("base64");
     const token = `${header}.${payload}.${signature}`;
 
     res.json({
       message: "Dev token generated",
       user: { id: user.id, email: user.email, role: user.role },
       token: token,
-      instructions: "Copy this token and run in browser console: localStorage.setItem('devToken', '" + token + "'); location.reload();"
+      instructions:
+        "Copy this token and run in browser console: localStorage.setItem('devToken', '" +
+        token +
+        "'); location.reload();",
     });
   } catch (e) {
     res.json({ error: e.message });
@@ -5509,13 +5734,17 @@ app.get("/dev-clear-tables", async (req, res) => {
 
     if (confirmToken !== "YES_DELETE_ALL_DATA") {
       return res.status(400).json({
-        error: "SAFETY CHECK: Pass ?confirm=YES_DELETE_ALL_DATA to confirm deletion",
-        warning: "This will permanently delete all data from Consultant, User, and Enterprise tables",
-        usage: "GET /dev-clear-tables?confirm=YES_DELETE_ALL_DATA"
+        error:
+          "SAFETY CHECK: Pass ?confirm=YES_DELETE_ALL_DATA to confirm deletion",
+        warning:
+          "This will permanently delete all data from Consultant, User, and Enterprise tables",
+        usage: "GET /dev-clear-tables?confirm=YES_DELETE_ALL_DATA",
       });
     }
 
-    console.log("🗑️  CLEARING ALL DATA FROM CONSULTANT, USER, AND ENTERPRISE TABLES");
+    console.log(
+      "🗑️  CLEARING ALL DATA FROM CONSULTANT, USER, AND ENTERPRISE TABLES"
+    );
 
     // Delete in order to avoid foreign key constraint violations
     // Need to delete in reverse order of dependencies
@@ -5545,14 +5774,17 @@ app.get("/dev-clear-tables", async (req, res) => {
         enterprises: enterpriseCount.count,
         users: userCount.count,
       },
-      total: consultantCount.count + profileCount.count + enterpriseCount.count + userCount.count,
-      warning: "⚠️ This data has been permanently deleted from the database"
+      total:
+        consultantCount.count +
+        profileCount.count +
+        enterpriseCount.count +
+        userCount.count,
+      warning: "⚠️ This data has been permanently deleted from the database",
     });
-
   } catch (error) {
     console.error("❌ Error clearing tables:", error.message);
     res.status(500).json({
-      error: "Failed to clear tables: " + error.message
+      error: "Failed to clear tables: " + error.message,
     });
   }
 });
@@ -5585,7 +5817,10 @@ app.get("/enterprise/member/profile", verifyFirebaseToken, async (req, res) => {
 
     // If not found by firebase_uid, try by email
     if (!user && req.user.email) {
-      console.log("⚠️ User not found by firebase_uid, trying by email:", req.user.email);
+      console.log(
+        "⚠️ User not found by firebase_uid, trying by email:",
+        req.user.email
+      );
       user = await prisma.user.findUnique({
         where: { email: req.user.email },
         include: {
@@ -5609,7 +5844,11 @@ app.get("/enterprise/member/profile", verifyFirebaseToken, async (req, res) => {
       });
     }
 
-    console.log("✓ User found:", { id: user?.id, role: user?.role, email: user?.email });
+    console.log("✓ User found:", {
+      id: user?.id,
+      role: user?.role,
+      email: user?.email,
+    });
 
     if (!user) {
       return res.status(404).json({ error: "User not found in database" });
@@ -5634,10 +5873,10 @@ app.get("/enterprise/member/profile", verifyFirebaseToken, async (req, res) => {
       phone: user.phone,
       enterprise: enterprise
         ? {
-          id: enterprise.id,
-          name: enterprise.name,
-          logo: enterprise.logo,
-        }
+            id: enterprise.id,
+            name: enterprise.name,
+            logo: enterprise.logo,
+          }
         : null,
       profile: user.profile,
     });
@@ -5651,259 +5890,296 @@ app.get("/enterprise/member/profile", verifyFirebaseToken, async (req, res) => {
  * POST /enterprise/member/kyc/upload
  * Upload KYC documents (ID proof, address proof, additional docs)
  */
-app.post("/enterprise/member/kyc/upload", verifyFirebaseToken, async (req, res) => {
-  try {
-    const firebaseUid = req.user.uid;
-    const { document_type, file_data, file_name } = req.body;
-
-    if (!document_type || !file_data || !file_name) {
-      return res.status(400).json({
-        error: "Missing required fields: document_type, file_data, file_name"
-      });
-    }
-
-    // Validate document type
-    const validTypes = ["id_proof", "address_proof", "additional"];
-    if (!validTypes.includes(document_type)) {
-      return res.status(400).json({
-        error: `Invalid document type. Must be one of: ${validTypes.join(", ")}`
-      });
-    }
-
-    // Validate file data (base64)
-    if (!file_data.startsWith("data:")) {
-      return res.status(400).json({
-        error: "File data must be in base64 format (data URI)"
-      });
-    }
-
-    // Get or create user profile
-    let userProfile = await prisma.userProfile.findUnique({
-      where: { firebase_uid: firebaseUid },
-    });
-
-    if (!userProfile) {
-      return res.status(404).json({ error: "User profile not found" });
-    }
-
-    // Upload to Cloudinary
+app.post(
+  "/enterprise/member/kyc/upload",
+  verifyFirebaseToken,
+  async (req, res) => {
     try {
-      const cloudinaryConfig = ensureCloudinaryConfigured();
-      if (!cloudinaryConfig.api_key || !cloudinaryConfig.api_secret || !cloudinaryConfig.cloud_name) {
-        return res.status(500).json({ error: "Cloudinary not configured on server" });
+      const firebaseUid = req.user.uid;
+      const { document_type, file_data, file_name } = req.body;
+
+      if (!document_type || !file_data || !file_name) {
+        return res.status(400).json({
+          error: "Missing required fields: document_type, file_data, file_name",
+        });
       }
 
-      const uploadResponse = await cloudinary.uploader.upload(file_data, {
-        folder: "consultancy-platform/kyc-documents",
-        resource_type: "auto",
-        public_id: `${userProfile.id}_${document_type}_${Date.now()}`,
-        overwrite: false,
-      });
-
-      // Prepare document metadata
-      const documentMetadata = {
-        document_type,
-        url: uploadResponse.secure_url,
-        file_name,
-        public_id: uploadResponse.public_id,
-        uploaded_at: new Date().toISOString(),
-        size: uploadResponse.bytes,
-      };
-
-      // Update the appropriate field based on document type
-      const updateData = {
-        kyc_submitted_at: new Date(),
-      };
-
-      if (document_type === "id_proof") {
-        updateData.id_proof_url = uploadResponse.secure_url;
-      } else if (document_type === "address_proof") {
-        updateData.address_proof_url = uploadResponse.secure_url;
-      } else if (document_type === "additional") {
-        // Add to array of additional documents
-        const existingDocs = Array.isArray(userProfile.kyc_documents)
-          ? userProfile.kyc_documents
-          : [];
-        updateData.kyc_documents = [...existingDocs, documentMetadata];
+      // Validate document type
+      const validTypes = ["id_proof", "address_proof", "additional"];
+      if (!validTypes.includes(document_type)) {
+        return res.status(400).json({
+          error: `Invalid document type. Must be one of: ${validTypes.join(
+            ", "
+          )}`,
+        });
       }
 
-      // Set status to SUBMITTED if not already approved/rejected
-      if (userProfile.kyc_status !== "APPROVED" && userProfile.kyc_status !== "REJECTED") {
-        updateData.kyc_status = "SUBMITTED";
+      // Validate file data (base64)
+      if (!file_data.startsWith("data:")) {
+        return res.status(400).json({
+          error: "File data must be in base64 format (data URI)",
+        });
       }
 
-      // Update the profile
-      const updatedProfile = await prisma.userProfile.update({
-        where: { id: userProfile.id },
-        data: updateData,
+      // Get or create user profile
+      let userProfile = await prisma.userProfile.findUnique({
+        where: { firebase_uid: firebaseUid },
       });
 
-      res.status(200).json({
-        success: true,
-        message: `${document_type} uploaded successfully`,
-        profile: updatedProfile,
-        document: documentMetadata,
-      });
-    } catch (uploadError) {
-      console.error("Cloudinary upload error:", uploadError);
-      res.status(500).json({
-        error: "Failed to upload document to cloud storage",
-        details: uploadError.message
-      });
+      if (!userProfile) {
+        return res.status(404).json({ error: "User profile not found" });
+      }
+
+      // Upload to Cloudinary
+      try {
+        const cloudinaryConfig = ensureCloudinaryConfigured();
+        if (
+          !cloudinaryConfig.api_key ||
+          !cloudinaryConfig.api_secret ||
+          !cloudinaryConfig.cloud_name
+        ) {
+          return res
+            .status(500)
+            .json({ error: "Cloudinary not configured on server" });
+        }
+
+        const uploadResponse = await cloudinary.uploader.upload(file_data, {
+          folder: "consultancy-platform/kyc-documents",
+          resource_type: "auto",
+          public_id: `${userProfile.id}_${document_type}_${Date.now()}`,
+          overwrite: false,
+        });
+
+        // Prepare document metadata
+        const documentMetadata = {
+          document_type,
+          url: uploadResponse.secure_url,
+          file_name,
+          public_id: uploadResponse.public_id,
+          uploaded_at: new Date().toISOString(),
+          size: uploadResponse.bytes,
+        };
+
+        // Update the appropriate field based on document type
+        const updateData = {
+          kyc_submitted_at: new Date(),
+        };
+
+        if (document_type === "id_proof") {
+          updateData.id_proof_url = uploadResponse.secure_url;
+        } else if (document_type === "address_proof") {
+          updateData.address_proof_url = uploadResponse.secure_url;
+        } else if (document_type === "additional") {
+          // Add to array of additional documents
+          const existingDocs = Array.isArray(userProfile.kyc_documents)
+            ? userProfile.kyc_documents
+            : [];
+          updateData.kyc_documents = [...existingDocs, documentMetadata];
+        }
+
+        // Set status to SUBMITTED if not already approved/rejected
+        if (
+          userProfile.kyc_status !== "APPROVED" &&
+          userProfile.kyc_status !== "REJECTED"
+        ) {
+          updateData.kyc_status = "SUBMITTED";
+        }
+
+        // Update the profile
+        const updatedProfile = await prisma.userProfile.update({
+          where: { id: userProfile.id },
+          data: updateData,
+        });
+
+        res.status(200).json({
+          success: true,
+          message: `${document_type} uploaded successfully`,
+          profile: updatedProfile,
+          document: documentMetadata,
+        });
+      } catch (uploadError) {
+        console.error("Cloudinary upload error:", uploadError);
+        res.status(500).json({
+          error: "Failed to upload document to cloud storage",
+          details: uploadError.message,
+        });
+      }
+    } catch (error) {
+      console.error("KYC upload error:", error);
+      res.status(500).json({ error: "Failed to upload KYC documents" });
     }
-  } catch (error) {
-    console.error("KYC upload error:", error);
-    res.status(500).json({ error: "Failed to upload KYC documents" });
   }
-});
+);
 
 /**
  * POST /enterprise/member/onboarding
  * Complete member onboarding with full profile details
  */
-app.post("/enterprise/member/onboarding", verifyFirebaseToken, async (req, res) => {
-  try {
-    const {
-      profile_photo,
-      bio,
-      expertise,
-      languages,
-      hourly_rate,
-      availability,
-      designation,
-      years_experience,
-      education,
-    } = req.body;
+app.post(
+  "/enterprise/member/onboarding",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      const {
+        profile_photo,
+        bio,
+        expertise,
+        languages,
+        hourly_rate,
+        availability,
+        designation,
+        years_experience,
+        education,
+      } = req.body;
 
-    const user = await prisma.user.findUnique({
-      where: { firebase_uid: req.user.firebase_uid },
-      include: { profile: true },
-    });
+      const user = await prisma.user.findUnique({
+        where: { firebase_uid: req.user.firebase_uid },
+        include: { profile: true },
+      });
 
-    if (!user) {
-      return res.status(403).json({ error: "User not found" });
+      if (!user) {
+        return res.status(403).json({ error: "User not found" });
+      }
+
+      // Allow both ENTERPRISE_MEMBER and ENTERPRISE_ADMIN for testing
+      if (
+        user.role !== "ENTERPRISE_MEMBER" &&
+        user.role !== "ENTERPRISE_ADMIN"
+      ) {
+        return res.status(403).json({
+          error:
+            "Not authorized. Only enterprise users can complete onboarding.",
+        });
+      }
+
+      // Update user with profile photo and designation
+      const updatedUser = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          profile_photo: profile_photo || user.profile_photo,
+        },
+      });
+
+      // Update or create comprehensive user profile
+      const updatedProfile = await prisma.userProfile.upsert({
+        where: { userId: user.id },
+        update: {
+          bio: bio || "",
+          expertise: expertise || [],
+          languages: languages || "English",
+          hourly_rate: hourly_rate || null,
+          availability: availability || "Full-time",
+          designation: designation || null,
+          years_experience: years_experience || null,
+          education: education || null,
+        },
+        create: {
+          userId: user.id,
+          bio: bio || "",
+          expertise: expertise || [],
+          languages: languages || "English",
+          hourly_rate: hourly_rate || null,
+          availability: availability || "Full-time",
+          designation: designation || null,
+          years_experience: years_experience || null,
+          education: education || null,
+          kyc_status: "PENDING",
+        },
+      });
+
+      console.log(`✓ Member onboarding completed for ${updatedUser.email}`);
+
+      res.json({
+        message: "Onboarding completed successfully",
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          name: updatedUser.name,
+          phone: updatedUser.phone,
+          profile_photo: updatedUser.profile_photo,
+        },
+        profile: updatedProfile,
+      });
+    } catch (error) {
+      console.error("Member onboarding error:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to complete onboarding: " + error.message });
     }
-
-    // Allow both ENTERPRISE_MEMBER and ENTERPRISE_ADMIN for testing
-    if (user.role !== "ENTERPRISE_MEMBER" && user.role !== "ENTERPRISE_ADMIN") {
-      return res.status(403).json({ error: "Not authorized. Only enterprise users can complete onboarding." });
-    }
-
-    // Update user with profile photo and designation
-    const updatedUser = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        profile_photo: profile_photo || user.profile_photo,
-      },
-    });
-
-    // Update or create comprehensive user profile
-    const updatedProfile = await prisma.userProfile.upsert({
-      where: { userId: user.id },
-      update: {
-        bio: bio || "",
-        expertise: expertise || [],
-        languages: languages || "English",
-        hourly_rate: hourly_rate || null,
-        availability: availability || "Full-time",
-        designation: designation || null,
-        years_experience: years_experience || null,
-        education: education || null,
-      },
-      create: {
-        userId: user.id,
-        bio: bio || "",
-        expertise: expertise || [],
-        languages: languages || "English",
-        hourly_rate: hourly_rate || null,
-        availability: availability || "Full-time",
-        designation: designation || null,
-        years_experience: years_experience || null,
-        education: education || null,
-        kyc_status: "PENDING",
-      },
-    });
-
-    console.log(`✓ Member onboarding completed for ${updatedUser.email}`);
-
-    res.json({
-      message: "Onboarding completed successfully",
-      user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        name: updatedUser.name,
-        phone: updatedUser.phone,
-        profile_photo: updatedUser.profile_photo,
-      },
-      profile: updatedProfile,
-    });
-  } catch (error) {
-    console.error("Member onboarding error:", error);
-    res.status(500).json({ error: "Failed to complete onboarding: " + error.message });
   }
-});
+);
 
 /**
  * PATCH /enterprise/member/profile
  * Update enterprise member profile
  */
-app.patch("/enterprise/member/profile", verifyFirebaseToken, async (req, res) => {
-  try {
-    const { name, phone, bio, expertise, availability, profile_photo } = req.body;
+app.patch(
+  "/enterprise/member/profile",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      const { name, phone, bio, expertise, availability, profile_photo } =
+        req.body;
 
-    const user = await prisma.user.findUnique({
-      where: { firebase_uid: req.user.firebase_uid },
-      include: { profile: true },
-    });
+      const user = await prisma.user.findUnique({
+        where: { firebase_uid: req.user.firebase_uid },
+        include: { profile: true },
+      });
 
-    if (!user || (user.role !== "ENTERPRISE_MEMBER" && user.role !== "ENTERPRISE_ADMIN")) {
-      return res.status(403).json({ error: "Not authorized" });
+      if (
+        !user ||
+        (user.role !== "ENTERPRISE_MEMBER" && user.role !== "ENTERPRISE_ADMIN")
+      ) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      // Update user basic info
+      const updatedUser = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          name: name || user.name,
+          phone: phone || user.phone,
+          profile_photo: profile_photo || user.profile_photo,
+        },
+      });
+
+      // Update or create user profile
+      const updatedProfile = await prisma.userProfile.upsert({
+        where: { userId: user.id },
+        update: {
+          bio: bio !== undefined ? bio : undefined,
+          expertise: expertise !== undefined ? expertise : undefined,
+          availability: availability !== undefined ? availability : undefined,
+        },
+        create: {
+          userId: user.id,
+          bio: bio || "",
+          expertise: expertise || [],
+          availability: availability || "",
+        },
+      });
+
+      console.log(`✓ Member profile updated for ${updatedUser.email}`);
+
+      res.json({
+        message: "Profile updated successfully",
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          name: updatedUser.name,
+          phone: updatedUser.phone,
+          profile_photo: updatedUser.profile_photo,
+        },
+        profile: updatedProfile,
+      });
+    } catch (error) {
+      console.error("Update member profile error:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to update member profile: " + error.message });
     }
-
-    // Update user basic info
-    const updatedUser = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        name: name || user.name,
-        phone: phone || user.phone,
-        profile_photo: profile_photo || user.profile_photo,
-      },
-    });
-
-    // Update or create user profile
-    const updatedProfile = await prisma.userProfile.upsert({
-      where: { userId: user.id },
-      update: {
-        bio: bio !== undefined ? bio : undefined,
-        expertise: expertise !== undefined ? expertise : undefined,
-        availability: availability !== undefined ? availability : undefined,
-      },
-      create: {
-        userId: user.id,
-        bio: bio || "",
-        expertise: expertise || [],
-        availability: availability || "",
-      },
-    });
-
-    console.log(`✓ Member profile updated for ${updatedUser.email}`);
-
-    res.json({
-      message: "Profile updated successfully",
-      user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        name: updatedUser.name,
-        phone: updatedUser.phone,
-        profile_photo: updatedUser.profile_photo,
-      },
-      profile: updatedProfile,
-    });
-  } catch (error) {
-    console.error("Update member profile error:", error);
-    res.status(500).json({ error: "Failed to update member profile: " + error.message });
   }
-});
+);
 
 /**
  * GET /availability
@@ -5979,7 +6255,12 @@ app.get(
         include: { enterprise: true },
       });
 
-      if (!user || (user.role !== "ENTERPRISE_MEMBER" && user.role !== "ENTERPRISE_ADMIN") || !user.enterprise) {
+      if (
+        !user ||
+        (user.role !== "ENTERPRISE_MEMBER" &&
+          user.role !== "ENTERPRISE_ADMIN") ||
+        !user.enterprise
+      ) {
         return res.status(403).json({ error: "Not authorized" });
       }
 
@@ -6164,8 +6445,13 @@ app.get(
         return res.status(404).json({ error: "User not found" });
       }
 
-      if (user.role !== "ENTERPRISE_MEMBER" && user.role !== "ENTERPRISE_ADMIN") {
-        console.log(`❌ Wrong role: ${user.role}, expected ENTERPRISE_MEMBER or ENTERPRISE_ADMIN`);
+      if (
+        user.role !== "ENTERPRISE_MEMBER" &&
+        user.role !== "ENTERPRISE_ADMIN"
+      ) {
+        console.log(
+          `❌ Wrong role: ${user.role}, expected ENTERPRISE_MEMBER or ENTERPRISE_ADMIN`
+        );
         return res.status(403).json({
           error: "Not authorized - wrong role",
           userRole: user.role,
@@ -6279,13 +6565,13 @@ app.get(
   }
 );
 
-
 /* ============================================================ */
 /* ==================== ADMIN ROUTES ========================== */
 /* ============================================================ */
 
 const verifyAdminToken = require("./middleware/adminAuthMiddleware");
-const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET || "admin-secret-key";
+const ADMIN_JWT_SECRET =
+  process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET || "admin-secret-key";
 
 /**
  * POST /admin/signup
@@ -6294,17 +6580,36 @@ const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET 
 app.post("/admin/signup", async (req, res) => {
   const { email, password, name } = req.body;
   if (!email || !password || !name) {
-    return res.status(400).json({ error: "Email, password and name are required" });
+    return res
+      .status(400)
+      .json({ error: "Email, password and name are required" });
   }
   try {
     const existing = await prisma.admin.findUnique({ where: { email } });
-    if (existing) return res.status(409).json({ error: "Admin with this email already exists" });
+    if (existing)
+      return res
+        .status(409)
+        .json({ error: "Admin with this email already exists" });
 
     const hashed = await bcrypt.hash(password, 10);
-    const admin = await prisma.admin.create({ data: { email, password: hashed, name } });
+    const admin = await prisma.admin.create({
+      data: { email, password: hashed, name },
+    });
 
-    const token = jwt.sign({ adminId: admin.id, email: admin.email }, ADMIN_JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role } });
+    const token = jwt.sign(
+      { adminId: admin.id, email: admin.email },
+      ADMIN_JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    res.json({
+      token,
+      admin: {
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        role: admin.role,
+      },
+    });
   } catch (err) {
     console.error("Admin signup error:", err.message);
     res.status(500).json({ error: "Failed to create admin account" });
@@ -6317,7 +6622,8 @@ app.post("/admin/signup", async (req, res) => {
  */
 app.post("/admin/signin", async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+  if (!email || !password)
+    return res.status(400).json({ error: "Email and password required" });
   try {
     const admin = await prisma.admin.findUnique({ where: { email } });
     if (!admin) return res.status(401).json({ error: "Invalid credentials" });
@@ -6325,8 +6631,21 @@ app.post("/admin/signin", async (req, res) => {
     const valid = await bcrypt.compare(password, admin.password);
     if (!valid) return res.status(401).json({ error: "Invalid credentials" });
 
-    const token = jwt.sign({ adminId: admin.id, email: admin.email }, ADMIN_JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role, avatar: admin.avatar } });
+    const token = jwt.sign(
+      { adminId: admin.id, email: admin.email },
+      ADMIN_JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    res.json({
+      token,
+      admin: {
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        role: admin.role,
+        avatar: admin.avatar,
+      },
+    });
   } catch (err) {
     console.error("Admin signin error:", err.message);
     res.status(500).json({ error: "Failed to sign in" });
@@ -6346,29 +6665,37 @@ app.get("/admin/profile", verifyAdminToken, async (req, res) => {
  * POST /admin/profile/upload
  * Upload admin avatar
  */
-app.post("/admin/profile/upload", verifyAdminToken, upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: "No file provided" });
+app.post(
+  "/admin/profile/upload",
+  verifyAdminToken,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No file provided" });
 
-    const uploadResult = await new Promise((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        { folder: "consultancy-platform/admin-avatars" },
-        (err, result) => { if (err) reject(err); else resolve(result); }
-      );
-      stream.end(req.file.buffer);
-    });
+      const uploadResult = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: "consultancy-platform/admin-avatars" },
+          (err, result) => {
+            if (err) reject(err);
+            else resolve(result);
+          }
+        );
+        stream.end(req.file.buffer);
+      });
 
-    const updated = await prisma.admin.update({
-      where: { id: req.admin.id },
-      data: { avatar: uploadResult.secure_url },
-    });
-    const { password: _, ...safe } = updated;
-    res.json(safe);
-  } catch (err) {
-    console.error("Admin avatar upload error:", err.message);
-    res.status(500).json({ error: "Failed to upload avatar" });
+      const updated = await prisma.admin.update({
+        where: { id: req.admin.id },
+        data: { avatar: uploadResult.secure_url },
+      });
+      const { password: _, ...safe } = updated;
+      res.json(safe);
+    } catch (err) {
+      console.error("Admin avatar upload error:", err.message);
+      res.status(500).json({ error: "Failed to upload avatar" });
+    }
   }
-});
+);
 
 /* ─── Dashboard ─────────────────────────────────────────────── */
 
@@ -6377,7 +6704,14 @@ app.post("/admin/profile/upload", verifyAdminToken, upload.single("file"), async
  */
 app.get("/admin/dashboard/stats", verifyAdminToken, async (req, res) => {
   try {
-    const [totalUsers, totalConsultants, pendingKyc, totalBookings, totalEnterprises, totalRevenue] = await Promise.all([
+    const [
+      totalUsers,
+      totalConsultants,
+      pendingKyc,
+      totalBookings,
+      totalEnterprises,
+      totalRevenue,
+    ] = await Promise.all([
       prisma.user.count({ where: { role: "USER" } }),
       prisma.consultant.count(),
       prisma.consultant.count({ where: { kyc_status: "SUBMITTED" } }),
@@ -6406,9 +6740,29 @@ app.get("/admin/dashboard/stats", verifyAdminToken, async (req, res) => {
 app.get("/admin/dashboard/activity", verifyAdminToken, async (req, res) => {
   try {
     const [recentUsers, recentBookings, recentConsultants] = await Promise.all([
-      prisma.user.findMany({ orderBy: { created_at: "desc" }, take: 5, select: { id: true, name: true, email: true, role: true, created_at: true } }),
-      prisma.booking.findMany({ orderBy: { created_at: "desc" }, take: 5, include: { user: { select: { name: true, email: true } } } }),
-      prisma.consultant.findMany({ orderBy: { id: "desc" }, take: 5, include: { user: { select: { name: true, email: true, created_at: true } } } }),
+      prisma.user.findMany({
+        orderBy: { created_at: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          created_at: true,
+        },
+      }),
+      prisma.booking.findMany({
+        orderBy: { created_at: "desc" },
+        take: 5,
+        include: { user: { select: { name: true, email: true } } },
+      }),
+      prisma.consultant.findMany({
+        orderBy: { id: "desc" },
+        take: 5,
+        include: {
+          user: { select: { name: true, email: true, created_at: true } },
+        },
+      }),
     ]);
     res.json({ recentUsers, recentBookings, recentConsultants });
   } catch (err) {
@@ -6428,7 +6782,9 @@ app.get("/admin/consultants/pending", verifyAdminToken, async (req, res) => {
     const consultantList = await prisma.consultant.findMany({
       where: { kyc_status: { in: ["SUBMITTED", "PENDING"] } },
       include: {
-        user: { select: { id: true, email: true, name: true, created_at: true } },
+        user: {
+          select: { id: true, email: true, name: true, created_at: true },
+        },
       },
       orderBy: { id: "desc" },
     });
@@ -6472,7 +6828,11 @@ app.get("/admin/consultants/pending", verifyAdminToken, async (req, res) => {
 app.get("/admin/consultants", verifyAdminToken, async (req, res) => {
   try {
     const consultantList = await prisma.consultant.findMany({
-      include: { user: { select: { id: true, email: true, name: true, created_at: true } } },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true, created_at: true },
+        },
+      },
       orderBy: { id: "desc" },
     });
     res.json(consultantList);
@@ -6485,25 +6845,35 @@ app.get("/admin/consultants", verifyAdminToken, async (req, res) => {
  * PUT /admin/consultants/:id/commission
  * Set consultant and user commission percentages
  */
-app.put("/admin/consultants/:id/commission", verifyAdminToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { consultant_commission_pct, user_commission_pct } = req.body;
+app.put(
+  "/admin/consultants/:id/commission",
+  verifyAdminToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { consultant_commission_pct, user_commission_pct } = req.body;
 
-    const consultant = await prisma.consultant.update({
-      where: { id: parseInt(id) },
-      data: {
-        consultant_commission_pct: consultant_commission_pct !== undefined ? parseFloat(consultant_commission_pct) : null,
-        user_commission_pct: user_commission_pct !== undefined ? parseFloat(user_commission_pct) : null,
-      },
-    });
+      const consultant = await prisma.consultant.update({
+        where: { id: parseInt(id) },
+        data: {
+          consultant_commission_pct:
+            consultant_commission_pct !== undefined
+              ? parseFloat(consultant_commission_pct)
+              : null,
+          user_commission_pct:
+            user_commission_pct !== undefined
+              ? parseFloat(user_commission_pct)
+              : null,
+        },
+      });
 
-    res.json({ message: "Commission updated successfully", consultant });
-  } catch (error) {
-    console.error("Set Commission Error:", error);
-    res.status(500).json({ error: "Failed to update commission" });
+      res.json({ message: "Commission updated successfully", consultant });
+    } catch (error) {
+      console.error("Set Commission Error:", error);
+      res.status(500).json({ error: "Failed to update commission" });
+    }
   }
-});
+);
 
 /**
  * PUT /admin/consultants/:id/verify
@@ -6512,20 +6882,35 @@ app.put("/admin/consultants/:id/commission", verifyAdminToken, async (req, res) 
 app.put("/admin/consultants/:id/verify", verifyAdminToken, async (req, res) => {
   const consultantId = parseInt(req.params.id);
   try {
-    const consultant = await prisma.consultant.findUnique({ where: { id: consultantId } });
-    if (!consultant) return res.status(404).json({ error: "Consultant not found" });
+    const consultant = await prisma.consultant.findUnique({
+      where: { id: consultantId },
+    });
+    if (!consultant)
+      return res.status(404).json({ error: "Consultant not found" });
 
     // Mark all docs as APPROVED
-    const updatedDocs = (consultant.kyc_documents || []).map((doc) => ({ ...doc, status: "APPROVED" }));
+    const updatedDocs = (consultant.kyc_documents || []).map((doc) => ({
+      ...doc,
+      status: "APPROVED",
+    }));
 
     const updated = await prisma.consultant.update({
       where: { id: consultantId },
-      data: { is_verified: true, kyc_status: "APPROVED", kyc_documents: updatedDocs },
+      data: {
+        is_verified: true,
+        kyc_status: "APPROVED",
+        kyc_documents: updatedDocs,
+      },
       include: { user: { select: { name: true, email: true } } },
     });
 
-    console.log(`✅ Consultant ${consultantId} verified by admin ${req.admin.email}`);
-    res.json({ message: "Consultant verified successfully", consultant: updated });
+    console.log(
+      `✅ Consultant ${consultantId} verified by admin ${req.admin.email}`
+    );
+    res.json({
+      message: "Consultant verified successfully",
+      consultant: updated,
+    });
   } catch (err) {
     console.error("Admin verify consultant error:", err.message);
     res.status(500).json({ error: "Failed to verify consultant" });
@@ -6540,16 +6925,25 @@ app.put("/admin/consultants/:id/reject", verifyAdminToken, async (req, res) => {
   const consultantId = parseInt(req.params.id);
   const { rejectionReason } = req.body;
   try {
-    const consultant = await prisma.consultant.findUnique({ where: { id: consultantId } });
-    if (!consultant) return res.status(404).json({ error: "Consultant not found" });
+    const consultant = await prisma.consultant.findUnique({
+      where: { id: consultantId },
+    });
+    if (!consultant)
+      return res.status(404).json({ error: "Consultant not found" });
 
     const updatedDocs = (consultant.kyc_documents || []).map((doc) => ({
-      ...doc, status: "REJECTED", rejection_reason: rejectionReason,
+      ...doc,
+      status: "REJECTED",
+      rejection_reason: rejectionReason,
     }));
 
     const updated = await prisma.consultant.update({
       where: { id: consultantId },
-      data: { is_verified: false, kyc_status: "REJECTED", kyc_documents: updatedDocs },
+      data: {
+        is_verified: false,
+        kyc_status: "REJECTED",
+        kyc_documents: updatedDocs,
+      },
     });
 
     res.json({ message: "Consultant KYC rejected", consultant: updated });
@@ -6616,13 +7010,22 @@ app.put("/documents/:id/verify", verifyAdminToken, async (req, res) => {
     for (const c of allConsultants) {
       const docs = c.kyc_documents || [];
       const idx = docs.findIndex((d, i) => (d.id || i + 1) === docId);
-      if (idx !== -1) { targetConsultant = c; targetDocIndex = idx; break; }
+      if (idx !== -1) {
+        targetConsultant = c;
+        targetDocIndex = idx;
+        break;
+      }
     }
 
-    if (!targetConsultant) return res.status(404).json({ error: "Document not found" });
+    if (!targetConsultant)
+      return res.status(404).json({ error: "Document not found" });
 
     const docs = [...(targetConsultant.kyc_documents || [])];
-    docs[targetDocIndex] = { ...docs[targetDocIndex], status: "APPROVED", notes };
+    docs[targetDocIndex] = {
+      ...docs[targetDocIndex],
+      status: "APPROVED",
+      notes,
+    };
 
     // Check if all docs are APPROVED → mark consultant verified
     const allApproved = docs.every((d) => d.status === "APPROVED");
@@ -6636,7 +7039,10 @@ app.put("/documents/:id/verify", verifyAdminToken, async (req, res) => {
       },
     });
 
-    res.json({ message: "Document approved", allConsultantVerified: allApproved });
+    res.json({
+      message: "Document approved",
+      allConsultantVerified: allApproved,
+    });
   } catch (err) {
     console.error("Admin doc verify error:", err.message);
     res.status(500).json({ error: "Failed to verify document" });
@@ -6658,13 +7064,22 @@ app.put("/documents/:id/reject", verifyAdminToken, async (req, res) => {
     for (const c of allConsultants) {
       const docs = c.kyc_documents || [];
       const idx = docs.findIndex((d, i) => (d.id || i + 1) === docId);
-      if (idx !== -1) { targetConsultant = c; targetDocIndex = idx; break; }
+      if (idx !== -1) {
+        targetConsultant = c;
+        targetDocIndex = idx;
+        break;
+      }
     }
 
-    if (!targetConsultant) return res.status(404).json({ error: "Document not found" });
+    if (!targetConsultant)
+      return res.status(404).json({ error: "Document not found" });
 
     const docs = [...(targetConsultant.kyc_documents || [])];
-    docs[targetDocIndex] = { ...docs[targetDocIndex], status: "REJECTED", rejection_reason: rejectionReason };
+    docs[targetDocIndex] = {
+      ...docs[targetDocIndex],
+      status: "REJECTED",
+      rejection_reason: rejectionReason,
+    };
 
     await prisma.consultant.update({
       where: { id: targetConsultant.id },
@@ -6711,7 +7126,11 @@ app.get("/admin/enterprises/pending", verifyAdminToken, async (req, res) => {
   try {
     // Enterprises without a verified owner are treated as pending
     const enterprises = await prisma.enterprise.findMany({
-      include: { owner: { select: { id: true, name: true, email: true, is_verified: true } } },
+      include: {
+        owner: {
+          select: { id: true, name: true, email: true, is_verified: true },
+        },
+      },
       orderBy: { created_at: "desc" },
     });
     res.json(enterprises);
@@ -6728,7 +7147,10 @@ app.put("/admin/enterprises/:id/verify", verifyAdminToken, async (req, res) => {
       data: { status: "VERIFIED" },
     });
     // also verify the owner
-    await prisma.user.update({ where: { id: enterprise.ownerId }, data: { is_verified: true } });
+    await prisma.user.update({
+      where: { id: enterprise.ownerId },
+      data: { is_verified: true },
+    });
     res.json({ message: "Enterprise verified", enterprise });
   } catch (err) {
     res.status(500).json({ error: "Failed to verify enterprise" });
@@ -6741,7 +7163,10 @@ app.put("/admin/enterprises/:id/reject", verifyAdminToken, async (req, res) => {
   try {
     const enterprise = await prisma.enterprise.update({
       where: { id },
-      data: { status: "REJECTED", description: rejectionReason || enterprise.description },
+      data: {
+        status: "REJECTED",
+        description: rejectionReason || enterprise.description,
+      },
     });
     res.json({ message: "Enterprise rejected", enterprise });
   } catch (err) {
@@ -6769,8 +7194,15 @@ app.get("/admin/invoices", verifyAdminToken, async (req, res) => {
 app.get("/admin/invoices/stats", verifyAdminToken, async (req, res) => {
   try {
     const [total, successful, pending] = await Promise.all([
-      prisma.paymentOrder.aggregate({ _sum: { amount: true }, _count: { id: true } }),
-      prisma.paymentOrder.aggregate({ where: { status: "PAID" }, _sum: { amount: true }, _count: { id: true } }),
+      prisma.paymentOrder.aggregate({
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+      prisma.paymentOrder.aggregate({
+        where: { status: "PAID" },
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
       prisma.paymentOrder.count({ where: { status: "PENDING" } }),
     ]);
     res.json({
@@ -6793,7 +7225,15 @@ app.get("/admin/invoices/stats", verifyAdminToken, async (req, res) => {
  */
 app.get("/admin/transactions", verifyAdminToken, async (req, res) => {
   try {
-    const { type, userId, consultantId, startDate, endDate, limit = 100, offset = 0 } = req.query;
+    const {
+      type,
+      userId,
+      consultantId,
+      startDate,
+      endDate,
+      limit = 100,
+      offset = 0,
+    } = req.query;
 
     const where = {};
     if (type) where.type = type;
@@ -7012,19 +7452,20 @@ app.get("/admin/transactions/bookings", verifyAdminToken, async (req, res) => {
       // Consultant booked with
       consultant: b.consultant
         ? {
-          id: b.consultant.id,
-          name: b.consultant.user?.name || b.consultant.user?.email || "Unknown",
-          email: b.consultant.user?.email,
-          domain: b.consultant.domain || "N/A",
-        }
+            id: b.consultant.id,
+            name:
+              b.consultant.user?.name || b.consultant.user?.email || "Unknown",
+            email: b.consultant.user?.email,
+            domain: b.consultant.domain || "N/A",
+          }
         : b.enterpriseMember
-          ? {
+        ? {
             id: b.enterpriseMember.id,
             name: b.enterpriseMember.name || b.enterpriseMember.email,
             email: b.enterpriseMember.email,
             domain: "Enterprise",
           }
-          : null,
+        : null,
       // Financial details
       consultant_fee: b.consultant_fee || 0,
       amount_deducted_from_user: b.consultant_fee || 0,
@@ -7105,7 +7546,9 @@ app.get("/admin/consultants-list", verifyAdminToken, async (req, res) => {
   try {
     const consultants = await prisma.consultant.findMany({
       include: {
-        user: { select: { id: true, name: true, email: true, created_at: true } },
+        user: {
+          select: { id: true, name: true, email: true, created_at: true },
+        },
         _count: { select: { bookings: true } },
       },
       orderBy: { id: "desc" },
@@ -7126,7 +7569,12 @@ app.get("/admin/consultants-list", verifyAdminToken, async (req, res) => {
         ]);
         const totalEarned = earning._sum.net_earning || 0;
         const totalPaid = paid._sum.amount || 0;
-        return { ...c, totalEarned, totalPaid, outstanding: totalEarned - totalPaid };
+        return {
+          ...c,
+          totalEarned,
+          totalPaid,
+          outstanding: totalEarned - totalPaid,
+        };
       })
     );
 
@@ -7143,11 +7591,21 @@ app.get("/admin/consultants-list/:id", verifyAdminToken, async (req, res) => {
     const consultant = await prisma.consultant.findUnique({
       where: { id: consultantId },
       include: {
-        user: { select: { id: true, name: true, email: true, phone: true, created_at: true, is_verified: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            created_at: true,
+            is_verified: true,
+          },
+        },
         payouts: { orderBy: { created_at: "desc" } },
       },
     });
-    if (!consultant) return res.status(404).json({ error: "Consultant not found" });
+    if (!consultant)
+      return res.status(404).json({ error: "Consultant not found" });
 
     const [bookings, transactions, earnAgg, paidAgg] = await Promise.all([
       prisma.booking.findMany({
@@ -7196,30 +7654,34 @@ app.get("/admin/consultants-list/:id", verifyAdminToken, async (req, res) => {
 
 /* ─── Admin: Mark Payout Paid ─────────────────────────────────── */
 
-app.post("/admin/payouts/:consultantId/mark-paid", verifyAdminToken, async (req, res) => {
-  const consultantId = parseInt(req.params.consultantId);
-  const { amount, notes } = req.body;
+app.post(
+  "/admin/payouts/:consultantId/mark-paid",
+  verifyAdminToken,
+  async (req, res) => {
+    const consultantId = parseInt(req.params.consultantId);
+    const { amount, notes } = req.body;
 
-  try {
-    const consultant = await prisma.consultant.findUnique({
-      where: { id: consultantId },
-      include: { user: { select: { name: true, email: true } } },
-    });
-    if (!consultant) return res.status(404).json({ error: "Consultant not found" });
+    try {
+      const consultant = await prisma.consultant.findUnique({
+        where: { id: consultantId },
+        include: { user: { select: { name: true, email: true } } },
+      });
+      if (!consultant)
+        return res.status(404).json({ error: "Consultant not found" });
 
-    const payout = await prisma.consultantPayout.create({
-      data: {
-        consultantId,
-        amount: parseFloat(amount),
-        status: "PAID",
-        paid_at: new Date(),
-        notes: notes || null,
-      },
-    });
+      const payout = await prisma.consultantPayout.create({
+        data: {
+          consultantId,
+          amount: parseFloat(amount),
+          status: "PAID",
+          paid_at: new Date(),
+          notes: notes || null,
+        },
+      });
 
-    // Send email notification to consultant
-    if (transporter && isEmailConfigured && consultant.user?.email) {
-      const paymentEmail = `
+      // Send email notification to consultant
+      if (transporter && isEmailConfigured && consultant.user?.email) {
+        const paymentEmail = `
         <!DOCTYPE html>
         <html>
         <head><style>
@@ -7245,9 +7707,16 @@ app.post("/admin/payouts/:consultantId/mark-paid", verifyAdminToken, async (req,
               <div class="box" style="text-align:center;">
                 <p style="color:#6b7280;font-size:14px;margin-bottom:5px;">Amount Paid</p>
                 <p class="amount">₹${parseFloat(amount).toFixed(2)}</p>
-                <p style="color:#6b7280;font-size:13px;">Paid on: ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</p>
+                <p style="color:#6b7280;font-size:13px;">Paid on: ${new Date().toLocaleDateString(
+                  "en-IN",
+                  { day: "2-digit", month: "long", year: "numeric" }
+                )}</p>
               </div>
-              ${notes ? `<div class="box"><strong>Notes from Admin:</strong><br>${notes}</div>` : ""}
+              ${
+                notes
+                  ? `<div class="box"><strong>Notes from Admin:</strong><br>${notes}</div>`
+                  : ""
+              }
               <div class="box">
                 <p>Thank you for your valuable consultations on our platform. We look forward to continuing our partnership.</p>
               </div>
@@ -7260,21 +7729,28 @@ app.post("/admin/payouts/:consultantId/mark-paid", verifyAdminToken, async (req,
         </html>
       `;
 
-      transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: consultant.user.email,
-        subject: `Payment of ₹${parseFloat(amount).toFixed(2)} Credited - ConsultaPro`,
-        html: paymentEmail,
-      }).catch(err => console.error("Payout email error:", err.message));
-    }
+        transporter
+          .sendMail({
+            from: process.env.EMAIL_USER,
+            to: consultant.user.email,
+            subject: `Payment of ₹${parseFloat(amount).toFixed(
+              2
+            )} Credited - ConsultaPro`,
+            html: paymentEmail,
+          })
+          .catch((err) => console.error("Payout email error:", err.message));
+      }
 
-    console.log(`✅ Payout of ₹${amount} marked PAID for consultant ${consultantId}`);
-    res.json({ message: "Payout marked as paid and email sent", payout });
-  } catch (err) {
-    console.error("Mark payout paid error:", err.message);
-    res.status(500).json({ error: "Failed to mark payout as paid" });
+      console.log(
+        `✅ Payout of ₹${amount} marked PAID for consultant ${consultantId}`
+      );
+      res.json({ message: "Payout marked as paid and email sent", payout });
+    } catch (err) {
+      console.error("Mark payout paid error:", err.message);
+      res.status(500).json({ error: "Failed to mark payout as paid" });
+    }
   }
-});
+);
 
 /* ─── Admin: Enterprise Detail ────────────────────────────────── */
 
@@ -7284,15 +7760,32 @@ app.get("/admin/enterprises/:id", verifyAdminToken, async (req, res) => {
     const enterprise = await prisma.enterprise.findUnique({
       where: { id: enterpriseId },
       include: {
-        owner: { select: { id: true, name: true, email: true, phone: true, created_at: true } },
-        members: { select: { id: true, name: true, email: true, role: true, created_at: true } },
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            created_at: true,
+          },
+        },
+        members: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            created_at: true,
+          },
+        },
         invites: { orderBy: { created_at: "desc" } },
       },
     });
-    if (!enterprise) return res.status(404).json({ error: "Enterprise not found" });
+    if (!enterprise)
+      return res.status(404).json({ error: "Enterprise not found" });
 
     // Get bookings made by enterprise members
-    const memberIds = enterprise.members.map(m => m.id);
+    const memberIds = enterprise.members.map((m) => m.id);
     const bookings = await prisma.booking.findMany({
       where: { enterpriseMemberId: { in: memberIds } },
       include: {
@@ -7304,7 +7797,9 @@ app.get("/admin/enterprises/:id", verifyAdminToken, async (req, res) => {
     });
 
     // Get wallet of owner
-    const ownerWallet = await prisma.wallet.findUnique({ where: { userId: enterprise.ownerId } });
+    const ownerWallet = await prisma.wallet.findUnique({
+      where: { userId: enterprise.ownerId },
+    });
 
     // Get transactions of owner
     const transactions = await prisma.transaction.findMany({
@@ -7343,23 +7838,29 @@ function generateHourlySlots(startTime, endTime) {
 app.post("/consultant/availability", verifyFirebaseToken, async (req, res) => {
   const { date, start_time, end_time } = req.body;
   if (!date || !start_time || !end_time) {
-    return res.status(400).json({ error: "date, start_time and end_time are required" });
+    return res
+      .status(400)
+      .json({ error: "date, start_time and end_time are required" });
   }
   if (start_time >= end_time) {
     return res.status(400).json({ error: "end_time must be after start_time" });
   }
 
   try {
-    const consultant = await prisma.consultant.findFirst({ where: { userId: req.user.id } });
-    if (!consultant) return res.status(404).json({ error: "Consultant profile not found" });
+    const consultant = await prisma.consultant.findFirst({
+      where: { userId: req.user.id },
+    });
+    if (!consultant)
+      return res.status(404).json({ error: "Consultant profile not found" });
 
     const slots = generateHourlySlots(start_time, end_time);
-    if (slots.length === 0) return res.status(400).json({ error: "No full hour slots in range" });
+    if (slots.length === 0)
+      return res.status(400).json({ error: "No full hour slots in range" });
 
     const availableDate = new Date(date);
     // Upsert each slot (skip if already exists)
     const created = await Promise.all(
-      slots.map(time =>
+      slots.map((time) =>
         prisma.availability.upsert({
           where: {
             consultantId_available_date_available_time: {
@@ -7379,7 +7880,9 @@ app.post("/consultant/availability", verifyFirebaseToken, async (req, res) => {
       )
     );
 
-    console.log(`✅ Created ${created.length} slots for consultant ${consultant.id} on ${date}`);
+    console.log(
+      `✅ Created ${created.length} slots for consultant ${consultant.id} on ${date}`
+    );
     res.json({ message: `${created.length} slot(s) added`, slots: created });
   } catch (err) {
     console.error("Add availability error:", err.message);
@@ -7388,41 +7891,59 @@ app.post("/consultant/availability", verifyFirebaseToken, async (req, res) => {
 });
 
 /* DELETE /consultant/availability/:id — Delete a single slot (only if not booked) */
-app.delete("/consultant/availability/:id", verifyFirebaseToken, async (req, res) => {
-  const slotId = parseInt(req.params.id);
-  try {
-    const consultant = await prisma.consultant.findFirst({ where: { userId: req.user.id } });
-    if (!consultant) return res.status(404).json({ error: "Consultant profile not found" });
+app.delete(
+  "/consultant/availability/:id",
+  verifyFirebaseToken,
+  async (req, res) => {
+    const slotId = parseInt(req.params.id);
+    try {
+      const consultant = await prisma.consultant.findFirst({
+        where: { userId: req.user.id },
+      });
+      if (!consultant)
+        return res.status(404).json({ error: "Consultant profile not found" });
 
-    const slot = await prisma.availability.findUnique({ where: { id: slotId } });
-    if (!slot) return res.status(404).json({ error: "Slot not found" });
-    if (slot.consultantId !== consultant.id) return res.status(403).json({ error: "Not your slot" });
-    if (slot.is_booked) return res.status(400).json({ error: "Cannot delete a booked slot" });
+      const slot = await prisma.availability.findUnique({
+        where: { id: slotId },
+      });
+      if (!slot) return res.status(404).json({ error: "Slot not found" });
+      if (slot.consultantId !== consultant.id)
+        return res.status(403).json({ error: "Not your slot" });
+      if (slot.is_booked)
+        return res.status(400).json({ error: "Cannot delete a booked slot" });
 
-    await prisma.availability.delete({ where: { id: slotId } });
-    res.json({ message: "Slot deleted" });
-  } catch (err) {
-    console.error("Delete slot error:", err.message);
-    res.status(500).json({ error: "Failed to delete slot" });
+      await prisma.availability.delete({ where: { id: slotId } });
+      res.json({ message: "Slot deleted" });
+    } catch (err) {
+      console.error("Delete slot error:", err.message);
+      res.status(500).json({ error: "Failed to delete slot" });
+    }
   }
-});
+);
 
 /* GET /consultant/availability/my — Consultant views all their own slots */
-app.get("/consultant/availability/my", verifyFirebaseToken, async (req, res) => {
-  try {
-    const consultant = await prisma.consultant.findFirst({ where: { userId: req.user.id } });
-    if (!consultant) return res.status(404).json({ error: "Consultant profile not found" });
+app.get(
+  "/consultant/availability/my",
+  verifyFirebaseToken,
+  async (req, res) => {
+    try {
+      const consultant = await prisma.consultant.findFirst({
+        where: { userId: req.user.id },
+      });
+      if (!consultant)
+        return res.status(404).json({ error: "Consultant profile not found" });
 
-    const slots = await prisma.availability.findMany({
-      where: { consultantId: consultant.id },
-      orderBy: [{ available_date: "asc" }, { available_time: "asc" }],
-    });
-    res.json(slots);
-  } catch (err) {
-    console.error("Get my availability error:", err.message);
-    res.status(500).json({ error: "Failed to fetch availability" });
+      const slots = await prisma.availability.findMany({
+        where: { consultantId: consultant.id },
+        orderBy: [{ available_date: "asc" }, { available_time: "asc" }],
+      });
+      res.json(slots);
+    } catch (err) {
+      console.error("Get my availability error:", err.message);
+      res.status(500).json({ error: "Failed to fetch availability" });
+    }
   }
-});
+);
 
 /* GET /consultants/:id/availability?date=YYYY-MM-DD — User sees available (unbooked) slots */
 app.get("/consultants/:id/availability", async (req, res) => {
@@ -7451,38 +7972,42 @@ app.get("/consultants/:id/availability", async (req, res) => {
 });
 
 /* GET /admin/consultant-availability/:consultantId — Admin sees ALL slots for a consultant */
-app.get("/admin/consultant-availability/:consultantId", verifyAdminToken, async (req, res) => {
-  const consultantId = parseInt(req.params.consultantId);
-  const { date } = req.query;
+app.get(
+  "/admin/consultant-availability/:consultantId",
+  verifyAdminToken,
+  async (req, res) => {
+    const consultantId = parseInt(req.params.consultantId);
+    const { date } = req.query;
 
-  try {
-    const where = { consultantId };
-    if (date) {
-      const targetDate = new Date(date);
-      const nextDay = new Date(targetDate);
-      nextDay.setDate(nextDay.getDate() + 1);
-      where.available_date = { gte: targetDate, lt: nextDay };
+    try {
+      const where = { consultantId };
+      if (date) {
+        const targetDate = new Date(date);
+        const nextDay = new Date(targetDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        where.available_date = { gte: targetDate, lt: nextDay };
+      }
+
+      const slots = await prisma.availability.findMany({
+        where,
+        orderBy: [{ available_date: "asc" }, { available_time: "asc" }],
+      });
+
+      // Group by date
+      const grouped = {};
+      slots.forEach((s) => {
+        const dateKey = new Date(s.available_date).toISOString().split("T")[0];
+        if (!grouped[dateKey]) grouped[dateKey] = [];
+        grouped[dateKey].push(s);
+      });
+
+      res.json({ slots, grouped });
+    } catch (err) {
+      console.error("Admin consultant availability error:", err.message);
+      res.status(500).json({ error: "Failed to fetch availability" });
     }
-
-    const slots = await prisma.availability.findMany({
-      where,
-      orderBy: [{ available_date: "asc" }, { available_time: "asc" }],
-    });
-
-    // Group by date
-    const grouped = {};
-    slots.forEach(s => {
-      const dateKey = new Date(s.available_date).toISOString().split("T")[0];
-      if (!grouped[dateKey]) grouped[dateKey] = [];
-      grouped[dateKey].push(s);
-    });
-
-    res.json({ slots, grouped });
-  } catch (err) {
-    console.error("Admin consultant availability error:", err.message);
-    res.status(500).json({ error: "Failed to fetch availability" });
   }
-});
+);
 
 /* ─── Hook: Mark slot as booked when a booking is created ─── */
 // This function is called from within booking creation logic
@@ -7499,7 +8024,9 @@ async function markSlotAsBooked(consultantId, date, timeSlot) {
       },
       data: { is_booked: true },
     });
-    console.log(`✅ Slot ${timeSlot} on ${date} marked as booked for consultant ${consultantId}`);
+    console.log(
+      `✅ Slot ${timeSlot} on ${date} marked as booked for consultant ${consultantId}`
+    );
   } catch (err) {
     console.error("markSlotAsBooked error:", err.message);
   }
@@ -7524,9 +8051,25 @@ app.post("/bookings/slot-book", verifyFirebaseToken, async (req, res) => {
   const { consultant_id, date, time_slot } = req.body;
   try {
     const user = req.user;
-    const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } });
-    const consultant = await prisma.consultant.findUnique({ where: { id: consultant_id } });
-    if (!consultant || !wallet) return res.status(404).json({ error: "Not found" });
+    const wallet = await prisma.wallet.findUnique({
+      where: { userId: user.id },
+    });
+    const consultant = await prisma.consultant.findUnique({
+      where: { id: consultant_id },
+    });
+    // 🔐 CONSULTANT MONTHLY INBOUND LIMIT
+    const consultantPlan = consultant.consultantPlan || "FREE";
+    const inboundUsed = consultant.inboundChatsUsed || 0;
+
+    const inboundLimit = CONSULTANT_PLAN_LIMITS[consultantPlan];
+
+    if (inboundUsed >= inboundLimit) {
+      return res.status(403).json({
+        error: "Consultant has reached monthly inbound chat limit.",
+      });
+    }
+    if (!consultant || !wallet)
+      return res.status(404).json({ error: "Not found" });
 
     // Check slot is still available
     const targetDate = new Date(date);
@@ -7540,7 +8083,10 @@ app.post("/bookings/slot-book", verifyFirebaseToken, async (req, res) => {
         is_booked: false,
       },
     });
-    if (!slot) return res.status(400).json({ error: "This slot is no longer available" });
+    if (!slot)
+      return res
+        .status(400)
+        .json({ error: "This slot is no longer available" });
 
     const basePrice = consultant.hourly_price || 0;
     const consultantCommPct = consultant.consultant_commission_pct || 10;
@@ -7552,14 +8098,21 @@ app.post("/bookings/slot-book", verifyFirebaseToken, async (req, res) => {
     const userMarkupFee = userPrice - basePrice;
 
     if (wallet.balance < userPrice) {
-      return res.status(400).json({ error: "Insufficient balance", required: userPrice, current: wallet.balance });
+      return res.status(400).json({
+        error: "Insufficient balance",
+        required: userPrice,
+        current: wallet.balance,
+      });
     }
 
     // Mark slot as booked
     await markSlotAsBooked(consultant_id, date, time_slot);
 
     // Deduct wallet
-    await prisma.wallet.update({ where: { userId: user.id }, data: { balance: { decrement: userPrice } } });
+    await prisma.wallet.update({
+      where: { userId: user.id },
+      data: { balance: { decrement: userPrice } },
+    });
 
     // Create booking
     const booking = await prisma.booking.create({
@@ -7576,6 +8129,19 @@ app.post("/bookings/slot-book", verifyFirebaseToken, async (req, res) => {
         net_earning: consultantNet,
       },
     });
+    // 🔼 Increment consultant monthly inbound count
+    try {
+      await prisma.consultant.update({
+        where: { id: consultant.id },
+        data: {
+          inboundChatsUsed: {
+            increment: 1,
+          },
+        },
+      });
+    } catch (err) {
+      console.log("Inbound increment skipped (DB not updated yet)");
+    }
 
     // Record transaction
     await prisma.transaction.create({
@@ -7585,11 +8151,15 @@ app.post("/bookings/slot-book", verifyFirebaseToken, async (req, res) => {
         type: "DEBIT",
         amount: fee,
         status: "SUCCESS",
-        description: `Booking #${booking.id} - ${consultant.domain || "Consultation"}`,
+        description: `Booking #${booking.id} - ${
+          consultant.domain || "Consultation"
+        }`,
       },
     });
 
-    const updatedWallet = await prisma.wallet.findUnique({ where: { userId: user.id } });
+    const updatedWallet = await prisma.wallet.findUnique({
+      where: { userId: user.id },
+    });
     res.json({ booking, remaining_balance: updatedWallet?.balance });
   } catch (err) {
     console.error("Slot book error:", err.message);

@@ -1,0 +1,14 @@
+const CLIENT_PLAN_LIMITS = {
+  FREE: 5,
+  BASIC: 30,
+  PRO: 50,
+};
+
+const CONSULTANT_PLAN_LIMITS = {
+  FREE: 5,
+  PROFESSIONAL: 20,
+  PREMIUM: 50,
+  ELITE: Infinity,
+};
+
+module.exports = { CLIENT_PLAN_LIMITS, CONSULTANT_PLAN_LIMITS };

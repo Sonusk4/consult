@@ -2,10 +2,25 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../App";
 import { UserRole } from "../types";
-import { ArrowRight, Mail, Shield, ChevronLeft, Info, Eye, EyeOff } from "lucide-react";
+import {
+  ArrowRight,
+  Mail,
+  Shield,
+  ChevronLeft,
+  Info,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import { auth } from "../services/api";
 
-type AuthStep = "ROLE" | "EMAIL" | "OTP" | "PASSWORD" | "SIGNUP_PASSWORD" | "FORGOT_PASSWORD" | "RESET_PASSWORD";
+type AuthStep =
+  | "ROLE"
+  | "EMAIL"
+  | "OTP"
+  | "PASSWORD"
+  | "SIGNUP_PASSWORD"
+  | "FORGOT_PASSWORD"
+  | "RESET_PASSWORD";
 
 interface AuthPageProps {
   type: "LOGIN" | "SIGNUP";
@@ -36,7 +51,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
   const [changedPassword, setChangedPassword] = useState("");
   const [changedConfirmPassword, setChangedConfirmPassword] = useState("");
   const [showChangedPassword, setShowChangedPassword] = useState(false);
-  const [showChangedConfirmPassword, setShowChangedConfirmPassword] = useState(false);
+  const [showChangedConfirmPassword, setShowChangedConfirmPassword] =
+    useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -48,9 +64,14 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
     const hasLowerCase = /[a-z]/.test(pwd);
     const hasNumber = /\d/.test(pwd);
     const hasSpecialChar = /[!@#$%^&*]/.test(pwd);
-    
+
     return {
-      isValid: hasMinLength && hasUpperCase && hasLowerCase && hasNumber && hasSpecialChar,
+      isValid:
+        hasMinLength &&
+        hasUpperCase &&
+        hasLowerCase &&
+        hasNumber &&
+        hasSpecialChar,
       hasMinLength,
       hasUpperCase,
       hasLowerCase,
@@ -61,7 +82,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
   const handleSignupWithPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!fullName || !email || !phone || !password || !confirmPassword) {
       setError("Please fill in all fields");
       return;
@@ -74,7 +95,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.isValid) {
-      setError("Password must contain: 8+ characters, uppercase, lowercase, number, and special character (!@#$%^&*)");
+      setError(
+        "Password must contain: 8+ characters, uppercase, lowercase, number, and special character (!@#$%^&*)"
+      );
       return;
     }
 
@@ -83,7 +106,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
     try {
       console.log("Signing up with password:", email);
-      
+
       const signupRes = await auth.signupWithPassword({
         email,
         fullName,
@@ -126,7 +149,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
         localStorage.setItem("user", JSON.stringify(signupRes.user));
       }
 
-      const user = await login(signupRes.user?.email || email, selectedRole, fullName);
+      const user = await login(
+        signupRes.user?.email || email,
+        selectedRole,
+        fullName
+      );
       console.log("User synced successfully:", user);
 
       if (user.role === "USER") {
@@ -140,7 +167,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       }
     } catch (err: any) {
       console.error("Signup failed:", err);
-      const message = err.response?.data?.error || err.message || "Signup failed. Please try again.";
+      const message =
+        err.response?.data?.error ||
+        err.message ||
+        "Signup failed. Please try again.";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -149,7 +179,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       setError("Please enter your email and password");
       return;
@@ -160,12 +190,14 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
     try {
       console.log("Logging in with password:", email);
-      
+
       const loginRes = await auth.loginWithPassword(email, password);
 
       // Check if first-time password change is required
       if (loginRes.requiresPasswordChange) {
         console.log("First-time password change required");
+        localStorage.setItem("devToken", loginRes.tempToken);
+
         setShowPasswordChangeModal(true);
         setIsLoading(false);
         return;
@@ -207,7 +239,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       }
     } catch (err: any) {
       console.error("Password login failed:", err);
-      const message = err.response?.data?.error || err.message || "Invalid email or password";
+      const message =
+        err.response?.data?.error || err.message || "Invalid email or password";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -216,7 +249,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!resetEmail) {
       setError("Please enter your email");
       return;
@@ -227,18 +260,23 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
     try {
       console.log("Sending reset password email:", resetEmail);
-      
+
       await auth.forgotPassword(resetEmail);
 
       // In a real app, user would receive email with reset link
       // For now, we show a success message
       setError(""); // Clear error
-      alert("If an account exists with this email, you will receive password reset instructions.");
+      alert(
+        "If an account exists with this email, you will receive password reset instructions."
+      );
       setStep("ROLE");
       setResetEmail("");
     } catch (err: any) {
       console.error("Forgot password failed:", err);
-      const message = err.response?.data?.error || err.message || "Failed to send reset email";
+      const message =
+        err.response?.data?.error ||
+        err.message ||
+        "Failed to send reset email";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -247,7 +285,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!resetToken || !newPassword) {
       setError("Please enter reset token and new password");
       return;
@@ -255,7 +293,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
     const passwordValidation = validatePassword(newPassword);
     if (!passwordValidation.isValid) {
-      setError("Password must contain: 8+ characters, uppercase, lowercase, number, and special character");
+      setError(
+        "Password must contain: 8+ characters, uppercase, lowercase, number, and special character"
+      );
       return;
     }
 
@@ -264,7 +304,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
     try {
       console.log("Resetting password with token");
-      
+
       const resetRes = await auth.resetPassword(resetToken, newPassword);
 
       if (!resetRes.customToken) {
@@ -289,7 +329,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       navigate("/user/dashboard");
     } catch (err: any) {
       console.error("Password reset failed:", err);
-      const message = err.response?.data?.error || err.message || "Password reset failed";
+      const message =
+        err.response?.data?.error || err.message || "Password reset failed";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -298,7 +339,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
   const handleChangePasswordFirstLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!changedPassword || !changedConfirmPassword) {
       setError("Please enter your new password");
       return;
@@ -311,7 +352,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
     const passwordValidation = validatePassword(changedPassword);
     if (!passwordValidation.isValid) {
-      setError("Password must contain: 8+ characters, uppercase, lowercase, number, and special character");
+      setError(
+        "Password must contain: 8+ characters, uppercase, lowercase, number, and special character"
+      );
       return;
     }
 
@@ -320,7 +363,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
     try {
       console.log("Setting new password on first login");
-      
+
       const changeRes = await auth.changePasswordFirstLogin(changedPassword);
 
       if (!changeRes.customToken) {
@@ -348,7 +391,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       setShowPasswordChangeModal(false);
       setChangedPassword("");
       setChangedConfirmPassword("");
-      
+
       if (user.role === "USER") {
         navigate("/user/dashboard");
       } else if (user.role === "CONSULTANT") {
@@ -362,7 +405,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       }
     } catch (err: any) {
       console.error("Password change failed:", err);
-      const message = err.response?.data?.error || err.message || "Failed to change password";
+      const message =
+        err.response?.data?.error || err.message || "Failed to change password";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -377,17 +421,17 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
-    
+
     // No separate login for enterprise members - they use email+password like everyone else
     setStep("EMAIL");
   };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Use signupEmail if in signup flow, otherwise use email from login flow
     const emailToUse = signupEmail || email;
-    
+
     if (!emailToUse.includes("@")) {
       setError("Please enter a valid email address");
       return;
@@ -419,11 +463,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
     setError("");
     setIsLoading(true);
 
-    const otpString = otp.map(d => d.trim()).join("");
-    
+    const otpString = otp.map((d) => d.trim()).join("");
+
     // Determine which email to use: signupEmail (from signup flow) or email (from login flow)
     const emailToVerify = signupEmail || email;
-    
+
     if (!emailToVerify) {
       setError("Email information missing. Please start over.");
       setIsLoading(false);
@@ -463,7 +507,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
       // Step 3: Sync user with backend
       console.log("Syncing user with backend...");
-      
+
       // For signup flow (via OTP), include role and fullName
       // For login flow, don't include them
       const isSignupFlow = !!signupEmail;
@@ -474,7 +518,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       );
 
       console.log("User synced successfully:", user);
-      
+
       // Clear signup state if we were in signup flow
       if (isSignupFlow) {
         setSignupEmail("");
@@ -574,25 +618,41 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
               </h3>
               <RoleButton
                 title="Client / User"
-                subtitle={type === "LOGIN" ? "I am a client" : "I want to find and book consultants"}
+                subtitle={
+                  type === "LOGIN"
+                    ? "I am a client"
+                    : "I want to find and book consultants"
+                }
                 onClick={() => handleRoleSelect(UserRole.USER)}
               />
               <RoleButton
                 title="Individual Expert"
-                subtitle={type === "LOGIN" ? "I am a consultant" : "I want to offer my expertise directly"}
+                subtitle={
+                  type === "LOGIN"
+                    ? "I am a consultant"
+                    : "I want to offer my expertise directly"
+                }
                 onClick={() => handleRoleSelect(UserRole.CONSULTANT)}
               />
               <RoleButton
                 title="Enterprise Admin"
-                subtitle={type === "LOGIN" ? "I manage teams" : "Managing teams and large-scale operations"}
+                subtitle={
+                  type === "LOGIN"
+                    ? "I manage teams"
+                    : "Managing teams and large-scale operations"
+                }
                 onClick={() => handleRoleSelect(UserRole.ENTERPRISE_ADMIN)}
               />
 
               <div className="pt-4 text-center">
                 <p className="text-sm text-gray-500">
-                  {type === "LOGIN" ? "New here? " : "Already have an account? "}
+                  {type === "LOGIN"
+                    ? "New here? "
+                    : "Already have an account? "}
                   <button
-                    onClick={() => navigate(type === "LOGIN" ? "/signup" : "/login")}
+                    onClick={() =>
+                      navigate(type === "LOGIN" ? "/signup" : "/login")
+                    }
                     className="text-blue-600 font-bold hover:underline"
                   >
                     {type === "LOGIN" ? "Sign up here" : "Login here"}
@@ -601,16 +661,30 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
               </div>
             </div>
           ) : step === "EMAIL" ? (
-            <form onSubmit={type === "SIGNUP" ? handleSignupWithPassword : handlePasswordLogin} className="space-y-6">
+            <form
+              onSubmit={
+                type === "SIGNUP"
+                  ? handleSignupWithPassword
+                  : handlePasswordLogin
+              }
+              className="space-y-6"
+            >
               {type === "SIGNUP" && (
-                <BackButton onClick={() => { setStep("ROLE"); setError(""); }} />
+                <BackButton
+                  onClick={() => {
+                    setStep("ROLE");
+                    setError("");
+                  }}
+                />
               )}
               <div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">
                   {type === "LOGIN" ? "Login" : "Registration"}
                 </h3>
                 <p className="text-gray-500 text-sm leading-relaxed">
-                  {type === "LOGIN" ? "Enter your email and password to login." : "Enter your details to create an account."}
+                  {type === "LOGIN"
+                    ? "Enter your email and password to login."
+                    : "Enter your details to create an account."}
                 </p>
               </div>
 
@@ -685,26 +759,62 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                       >
-                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                        {showPassword ? (
+                          <EyeOff size={20} />
+                        ) : (
+                          <Eye size={20} />
+                        )}
                       </button>
                     </div>
                     {password && (
                       <div className="mt-3 p-3 bg-gray-50 rounded-xl text-sm">
-                        <p className="text-xs font-bold text-gray-600 mb-2">Password Requirements:</p>
+                        <p className="text-xs font-bold text-gray-600 mb-2">
+                          Password Requirements:
+                        </p>
                         <div className="space-y-1 text-xs">
-                          <p className={validatePassword(password).hasMinLength ? "text-green-600" : "text-red-600"}>
+                          <p
+                            className={
+                              validatePassword(password).hasMinLength
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }
+                          >
                             ✓ At least 8 characters
                           </p>
-                          <p className={validatePassword(password).hasUpperCase ? "text-green-600" : "text-red-600"}>
+                          <p
+                            className={
+                              validatePassword(password).hasUpperCase
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }
+                          >
                             ✓ One uppercase letter
                           </p>
-                          <p className={validatePassword(password).hasLowerCase ? "text-green-600" : "text-red-600"}>
+                          <p
+                            className={
+                              validatePassword(password).hasLowerCase
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }
+                          >
                             ✓ One lowercase letter
                           </p>
-                          <p className={validatePassword(password).hasNumber ? "text-green-600" : "text-red-600"}>
+                          <p
+                            className={
+                              validatePassword(password).hasNumber
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }
+                          >
                             ✓ One number
                           </p>
-                          <p className={validatePassword(password).hasSpecialChar ? "text-green-600" : "text-red-600"}>
+                          <p
+                            className={
+                              validatePassword(password).hasSpecialChar
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }
+                          >
                             ✓ One special character (!@#$%^&*)
                           </p>
                         </div>
@@ -730,14 +840,22 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                       />
                       <button
                         type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        onClick={() =>
+                          setShowConfirmPassword(!showConfirmPassword)
+                        }
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                       >
-                        {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                        {showConfirmPassword ? (
+                          <EyeOff size={20} />
+                        ) : (
+                          <Eye size={20} />
+                        )}
                       </button>
                     </div>
                     {confirmPassword && password !== confirmPassword && (
-                      <p className="mt-2 text-sm text-red-600 font-medium">Passwords do not match</p>
+                      <p className="mt-2 text-sm text-red-600 font-medium">
+                        Passwords do not match
+                      </p>
                     )}
                   </div>
                 )}
@@ -762,7 +880,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                       >
-                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                        {showPassword ? (
+                          <EyeOff size={20} />
+                        ) : (
+                          <Eye size={20} />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -774,7 +896,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                   className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center group disabled:opacity-50"
                 >
                   {isLoading ? (
-                    type === "SIGNUP" ? "Creating Account..." : "Logging in..."
+                    type === "SIGNUP" ? (
+                      "Creating Account..."
+                    ) : (
+                      "Logging in..."
+                    )
                   ) : (
                     <>
                       {type === "SIGNUP" ? "Create Account" : "Login"}{" "}
@@ -792,7 +918,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                   <div className="pt-2 text-center">
                     <button
                       type="button"
-                      onClick={() => { setStep("FORGOT_PASSWORD"); setError(""); setResetEmail(email); }}
+                      onClick={() => {
+                        setStep("FORGOT_PASSWORD");
+                        setError("");
+                        setResetEmail(email);
+                      }}
                       className="text-sm text-blue-600 font-bold hover:underline"
                     >
                       Forgot password?
@@ -830,22 +960,26 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
             </form>
           ) : step === "OTP" ? (
             <div className="space-y-6">
-              <BackButton onClick={() => {
-                // If in signup flow, restore the email that was cleared
-                if (signupEmail) {
-                  setEmail(signupEmail);
-                  setSignupEmail("");
-                }
-                setStep("EMAIL");
-                setError("");
-              }} />
+              <BackButton
+                onClick={() => {
+                  // If in signup flow, restore the email that was cleared
+                  if (signupEmail) {
+                    setEmail(signupEmail);
+                    setSignupEmail("");
+                  }
+                  setStep("EMAIL");
+                  setError("");
+                }}
+              />
               <div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">
                   Verify it's you
                 </h3>
                 <p className="text-gray-500 text-sm">
                   We've sent a 6-digit code to{" "}
-                  <span className="text-gray-900 font-bold">{signupEmail || email}</span>
+                  <span className="text-gray-900 font-bold">
+                    {signupEmail || email}
+                  </span>
                 </p>
               </div>
 
@@ -893,13 +1027,20 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
             </div>
           ) : step === "FORGOT_PASSWORD" ? (
             <form onSubmit={handleForgotPassword} className="space-y-6">
-              <BackButton onClick={() => { setStep("EMAIL"); setError(""); setResetEmail(""); }} />
+              <BackButton
+                onClick={() => {
+                  setStep("EMAIL");
+                  setError("");
+                  setResetEmail("");
+                }}
+              />
               <div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">
                   Reset Your Password
                 </h3>
                 <p className="text-gray-500 text-sm leading-relaxed">
-                  Enter your email address and we'll send you a link to reset your password.
+                  Enter your email address and we'll send you a link to reset
+                  your password.
                 </p>
               </div>
 
@@ -941,7 +1082,12 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
             </form>
           ) : step === "RESET_PASSWORD" ? (
             <form onSubmit={handleResetPassword} className="space-y-6">
-              <BackButton onClick={() => { setStep("FORGOT_PASSWORD"); setError(""); }} />
+              <BackButton
+                onClick={() => {
+                  setStep("FORGOT_PASSWORD");
+                  setError("");
+                }}
+              />
               <div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">
                   Create New Password
@@ -991,21 +1137,53 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                   </div>
                   {newPassword && (
                     <div className="mt-3 p-3 bg-gray-50 rounded-xl text-sm">
-                      <p className="text-xs font-bold text-gray-600 mb-2">Password Requirements:</p>
+                      <p className="text-xs font-bold text-gray-600 mb-2">
+                        Password Requirements:
+                      </p>
                       <div className="space-y-1 text-xs">
-                        <p className={validatePassword(newPassword).hasMinLength ? "text-green-600" : "text-red-600"}>
+                        <p
+                          className={
+                            validatePassword(newPassword).hasMinLength
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }
+                        >
                           ✓ At least 8 characters
                         </p>
-                        <p className={validatePassword(newPassword).hasUpperCase ? "text-green-600" : "text-red-600"}>
+                        <p
+                          className={
+                            validatePassword(newPassword).hasUpperCase
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }
+                        >
                           ✓ One uppercase letter
                         </p>
-                        <p className={validatePassword(newPassword).hasLowerCase ? "text-green-600" : "text-red-600"}>
+                        <p
+                          className={
+                            validatePassword(newPassword).hasLowerCase
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }
+                        >
                           ✓ One lowercase letter
                         </p>
-                        <p className={validatePassword(newPassword).hasNumber ? "text-green-600" : "text-red-600"}>
+                        <p
+                          className={
+                            validatePassword(newPassword).hasNumber
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }
+                        >
                           ✓ One number
                         </p>
-                        <p className={validatePassword(newPassword).hasSpecialChar ? "text-green-600" : "text-red-600"}>
+                        <p
+                          className={
+                            validatePassword(newPassword).hasSpecialChar
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }
+                        >
                           ✓ One special character (!@#$%^&*)
                         </p>
                       </div>
@@ -1054,7 +1232,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
           </h4>
           <div className="text-xs text-blue-700 leading-relaxed space-y-1">
             <p>Backend Integration Active.</p>
-            <p>• Enter a valid email found in backend (or any new email to register).</p>
+            <p>
+              • Enter a valid email found in backend (or any new email to
+              register).
+            </p>
             <p>• Check backend logs for OTP if email sending fails locally.</p>
             <p>• Team members use the credentials provided by their admin.</p>
           </div>
@@ -1065,9 +1246,12 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       {showPasswordChangeModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 max-h-screen overflow-y-auto">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Change Password</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              Change Password
+            </h2>
             <p className="text-gray-600 text-sm mb-6">
-              This is your first login. Please set a permanent password for your account.
+              This is your first login. Please set a permanent password for your
+              account.
             </p>
 
             {error && (
@@ -1076,7 +1260,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
               </div>
             )}
 
-            <form onSubmit={handleChangePasswordFirstLogin} className="space-y-6">
+            <form
+              onSubmit={handleChangePasswordFirstLogin}
+              className="space-y-6"
+            >
               <div>
                 <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
                   New Password
@@ -1096,26 +1283,62 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                     onClick={() => setShowChangedPassword(!showChangedPassword)}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    {showChangedPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    {showChangedPassword ? (
+                      <EyeOff size={20} />
+                    ) : (
+                      <Eye size={20} />
+                    )}
                   </button>
                 </div>
                 {changedPassword && (
                   <div className="mt-3 p-3 bg-gray-50 rounded-xl text-sm">
-                    <p className="text-xs font-bold text-gray-600 mb-2">Password Requirements:</p>
+                    <p className="text-xs font-bold text-gray-600 mb-2">
+                      Password Requirements:
+                    </p>
                     <div className="space-y-1 text-xs">
-                      <p className={validatePassword(changedPassword).hasMinLength ? "text-green-600" : "text-red-600"}>
+                      <p
+                        className={
+                          validatePassword(changedPassword).hasMinLength
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }
+                      >
                         ✓ At least 8 characters
                       </p>
-                      <p className={validatePassword(changedPassword).hasUpperCase ? "text-green-600" : "text-red-600"}>
+                      <p
+                        className={
+                          validatePassword(changedPassword).hasUpperCase
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }
+                      >
                         ✓ One uppercase letter
                       </p>
-                      <p className={validatePassword(changedPassword).hasLowerCase ? "text-green-600" : "text-red-600"}>
+                      <p
+                        className={
+                          validatePassword(changedPassword).hasLowerCase
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }
+                      >
                         ✓ One lowercase letter
                       </p>
-                      <p className={validatePassword(changedPassword).hasNumber ? "text-green-600" : "text-red-600"}>
+                      <p
+                        className={
+                          validatePassword(changedPassword).hasNumber
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }
+                      >
                         ✓ One number
                       </p>
-                      <p className={validatePassword(changedPassword).hasSpecialChar ? "text-green-600" : "text-red-600"}>
+                      <p
+                        className={
+                          validatePassword(changedPassword).hasSpecialChar
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }
+                      >
                         ✓ One special character (!@#$%^&*)
                       </p>
                     </div>
@@ -1139,10 +1362,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                   />
                   <button
                     type="button"
-                    onClick={() => setShowChangedConfirmPassword(!showChangedConfirmPassword)}
+                    onClick={() =>
+                      setShowChangedConfirmPassword(!showChangedConfirmPassword)
+                    }
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    {showChangedConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    {showChangedConfirmPassword ? (
+                      <EyeOff size={20} />
+                    ) : (
+                      <Eye size={20} />
+                    )}
                   </button>
                 </div>
               </div>
