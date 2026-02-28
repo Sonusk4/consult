@@ -74,6 +74,8 @@ const TypeBadge: React.FC<{ type: string }> = ({ type }) => {
         DEBIT: "bg-red-100 text-red-700",
         EARNING: "bg-blue-100 text-blue-700",
         COMMISSION: "bg-purple-100 text-purple-700",
+        SUBSCRIPTION: "bg-indigo-100 text-indigo-700",
+        CHAT_CREDIT: "bg-orange-100 text-orange-700",
     };
     return (
         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${styles[type] || "bg-gray-100 text-gray-700"}`}>
@@ -443,10 +445,12 @@ const TransactionsPage: React.FC = () => {
                                     className="text-sm border rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500"
                                 >
                                     <option value="">All Types</option>
-                                    <option value="CREDIT">CREDIT</option>
-                                    <option value="DEBIT">DEBIT</option>
-                                    <option value="EARNING">EARNING</option>
-                                    <option value="COMMISSION">COMMISSION</option>
+                                    <option value="CREDIT">WALLET TOPUP</option>
+                                    <option value="DEBIT">BOOKING FEE</option>
+                                    <option value="EARNING">CONSULTANT EARNING</option>
+                                    <option value="COMMISSION">PLATFORM COMMISSION</option>
+                                    <option value="SUBSCRIPTION">SUBSCRIPTION</option>
+                                    <option value="CHAT_CREDIT">CHAT CREDITS</option>
                                 </select>
                             </div>
                             <div>
@@ -533,8 +537,8 @@ const TransactionsPage: React.FC = () => {
                                             </td>
                                             <td className="px-5 py-4"><TypeBadge type={txn.type} /></td>
                                             <td className="px-5 py-4">
-                                                <span className={`font-bold text-sm ${txn.type === "CREDIT" || txn.type === "EARNING" ? "text-green-600" : "text-red-600"}`}>
-                                                    {txn.type === "CREDIT" || txn.type === "EARNING" ? "+" : "-"}₹{txn.amount.toFixed(2)}
+                                                <span className={`font-bold text-sm ${txn.type === "CREDIT" || txn.type === "EARNING" || txn.type === "SUBSCRIPTION" || txn.type === "CHAT_CREDIT" ? "text-green-600" : "text-red-600"}`}>
+                                                    {txn.type === "CREDIT" || txn.type === "EARNING" || txn.type === "SUBSCRIPTION" || txn.type === "CHAT_CREDIT" ? "+" : "-"}₹{txn.amount.toFixed(2)}
                                                 </span>
                                             </td>
                                             <td className="px-5 py-4 text-sm text-gray-600">{txn.consultant?.name || "—"}</td>

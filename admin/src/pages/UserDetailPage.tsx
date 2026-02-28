@@ -96,15 +96,41 @@ const UserDetailPage: React.FC = () => {
                     <div className="p-6 grid grid-cols-2 gap-6">
                         <div className="space-y-4">
                             <h3 className="font-semibold text-gray-800 border-b pb-2">Account Details</h3>
-                            {[["User ID", `#${user.id}`], ["Email", user.email], ["Phone", user.phone || "—"], ["Role", user.role], ["Joined", fmtDate(user.created_at)], ["Enterprise", user.enterprise?.name || "—"]].map(([label, val]) => (
+                            {[
+                                ["User ID", `#${user.id}`],
+                                ["Email", user.email],
+                                ["Phone", user.phone || "—"],
+                                ["Joined", fmtDate(user.created_at)],
+                                ["Enterprise", user.enterprise?.name || "—"],
+                                ["Bonus Balance", `₹${(data.usageStats?.bonusBalance || 0).toFixed(2)}`]
+                            ].map(([label, val]) => (
                                 <div key={label} className="flex justify-between text-sm"><span className="text-gray-500">{label}</span><span className="font-medium text-gray-800">{val}</span></div>
                             ))}
                         </div>
+                        <div className="space-y-4">
+                            <h3 className="font-semibold text-gray-800 border-b pb-2">Subscription & Usage</h3>
+                            {data.usageStats ? (
+                                <>
+                                    {[
+                                        ["Current Plan", data.usageStats.plan],
+                                        ["Plan Expiry", data.usageStats.expiry ? fmtDate(data.usageStats.expiry) : "No expiry"],
+                                        ["Chat Limit", data.usageStats.chatLimit],
+                                        ["Chats Used", data.usageStats.chatUsed],
+                                        ["Chats Remaining", data.usageStats.chatRemaining],
+                                        ["Bookings Made", data.usageStats.bookingsMade]
+                                    ].map(([label, val]) => (
+                                        <div key={label} className="flex justify-between text-sm"><span className="text-gray-500">{label}</span><span className="font-medium text-gray-800">{val}</span></div>
+                                    ))}
+                                </>
+                            ) : (
+                                <p className="text-sm text-gray-500">No usage stats available</p>
+                            )}
+                        </div>
                         {user.profile && (
-                            <div className="space-y-4">
-                                <h3 className="font-semibold text-gray-800 border-b pb-2">Profile</h3>
+                            <div className="col-span-2 mt-4 space-y-4">
+                                <h3 className="font-semibold text-gray-800 border-b pb-2">Bio & Professional</h3>
                                 {[["Bio", user.profile.bio || "—"], ["Location", user.profile.location || "—"], ["Languages", user.profile.languages || "—"], ["KYC Status", user.profile.kyc_status || "—"]].map(([label, val]) => (
-                                    <div key={label} className="flex justify-between text-sm"><span className="text-gray-500">{label}</span><span className="font-medium text-gray-800 text-right max-w-xs truncate">{val}</span></div>
+                                    <div key={label} className="flex justify-between text-sm"><span className="text-gray-500">{label}</span><span className="font-medium text-gray-800 text-right max-w-xs">{val}</span></div>
                                 ))}
                             </div>
                         )}

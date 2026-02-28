@@ -441,14 +441,44 @@ export const wallet = {
 /* ========================================================= */
 
 export const subscriptions = {
-  subscribeUser: async (planName: string) => {
-    const response = await api.post("/user/subscribe", { planName });
+  createOrderUser: async (planName: string) => {
+    const response = await api.post("/user/subscription/create-order", { planName });
     return response.data;
   },
-  subscribeConsultant: async (planName: string) => {
-    const response = await api.post("/consultant/subscribe", { planName });
+  createOrderConsultant: async (planName: string) => {
+    const response = await api.post("/consultant/subscription/create-order", { planName });
     return response.data;
   },
+  verifyPayment: async (data: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    planName: string;
+    userType: "USER" | "CONSULTANT";
+  }) => {
+    const response = await api.post("/subscription/verify-payment", data);
+    return response.data;
+  },
+  getUsageMetrics: async () => {
+    const response = await api.get("/metrics/subscription-usage");
+    return response.data;
+  }
+};
+
+export const chatCredits = {
+  createOrder: async (packName: string) => {
+    const response = await api.post("/payment/chat-credits/create-order", { packName });
+    return response.data;
+  },
+  verifyPayment: async (data: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    packName: string;
+  }) => {
+    const response = await api.post("/payment/chat-credits/verify", data);
+    return response.data;
+  }
 };
 
 /* ========================================================= */

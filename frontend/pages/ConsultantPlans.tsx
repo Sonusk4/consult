@@ -1,8 +1,24 @@
 import React, { useState } from "react";
 import Layout from "../components/Layout";
-import { Crown, X } from "lucide-react";
-import { subscriptions } from "../services/api";
-import { useToast } from "../components/ui/use-toast";
+import { subscriptions, users } from "../services/api";
+import { X } from "lucide-react";
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 
 const BASE_PLATFORM_FEE = 20;
 const Row = ({ label, value }: any) => (
@@ -61,25 +77,68 @@ const plans = [
 const ConsultantPlans: React.FC = () => {
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
 
   const handleSubscribe = async () => {
     if (!selectedPlan) return;
     setLoading(true);
     try {
-      await subscriptions.subscribeConsultant(selectedPlan.name);
-      toast({
-        title: "Success",
-        description: `Successfully subscribed to ${selectedPlan.name} plan!`,
-      });
-      setSelectedPlan(null);
-      // Optionally reload profile
+      const res = await loadRazorpayScript();
+      if (!res) throw new Error("Razorpay SDK failed to load. Are you online?");
+
+      // 1. Create Order
+      const orderData = await subscriptions.createOrderConsultant(selectedPlan.name);
+
+      // 2. Fetch User Profile
+      let userName = "Consultant";
+      let userEmail = "consultant@example.com";
+      try {
+        const profileResponse = await users.getProfile();
+        if (profileResponse?.name) userName = profileResponse.name;
+        if (profileResponse?.email) userEmail = profileResponse.email;
+      } catch (e) {
+        // fail silently
+      }
+
+      // 3. Init Razorpay
+      const options = {
+        key: orderData.key_id,
+        amount: orderData.amount,
+        currency: "INR",
+        name: "ConsultPro",
+        description: `${selectedPlan.name} Subscription for Consultants`,
+        order_id: orderData.order.id,
+        handler: async function (response: any) {
+          try {
+            setLoading(true);
+            await subscriptions.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              planName: selectedPlan.name,
+              userType: "CONSULTANT",
+            });
+            alert(`Payment Successful! You are now on the ${selectedPlan.name} plan! An email receipt has been sent.`);
+            setSelectedPlan(null);
+          } catch (err: any) {
+            alert(`Verification failed: ${err.message}`);
+          } finally {
+            setLoading(false);
+          }
+        },
+        prefill: {
+          name: userName,
+          email: userEmail,
+        },
+        theme: {
+          color: "#2563EB",
+        },
+      };
+
+      const paymentObject = new window.Razorpay(options);
+      paymentObject.open();
+
     } catch (error: any) {
-      toast({
-        title: "Subscription failed",
-        description: error.response?.data?.error || error.message,
-        variant: "destructive",
-      });
+      alert(`Subscription failed: ${error.response?.data?.error || error.message}`);
     } finally {
       setLoading(false);
     }

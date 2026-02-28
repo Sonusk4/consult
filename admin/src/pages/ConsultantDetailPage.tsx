@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import {
     Loader, Calendar, Clock, TrendingUp, DollarSign, AlertCircle, CheckCircle2,
-    ArrowDownRight, ArrowUpRight, Send
+    ArrowDownRight, ArrowUpRight, Send, Linkedin, Globe, ExternalLink
 } from "lucide-react";
 
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
@@ -230,9 +230,26 @@ const ConsultantDetailPage: React.FC = () => {
                     <div className="p-6 grid grid-cols-2 gap-6">
                         <div className="space-y-4">
                             <h3 className="font-semibold text-gray-800 border-b pb-2">Consultant Info</h3>
-                            {[["ID", `#${consultant.id}`], ["Domain", consultant.domain || "—"], ["Type", consultant.type || "—"], ["Hourly Price", consultant.hourly_price ? `₹${consultant.hourly_price}` : "—"], ["Rating", `${consultant.rating} ⭐ (${consultant.total_reviews} reviews)`], ["Experience", consultant.years_experience ? `${consultant.years_experience} years` : "—"], ["Education", consultant.education || "—"]].map(([label, val]) => (
+                            {[["ID", `#${consultant.id}`], ["Domain", consultant.domain || "—"], ["Type", consultant.type || "—"], ["Hourly Price", consultant.hourly_price ? `₹${consultant.hourly_price}` : "—"], ["Rating", `${consultant.rating} ⭐ (${consultant.total_reviews} reviews)`], ["Plan", consultant.subscription_plan || "Free"], ["Platform Fee", `${consultant.platform_fee_pct || 20}%`]].map(([label, val]) => (
                                 <div key={label} className="flex justify-between text-sm"><span className="text-gray-500">{label}</span><span className="font-medium text-gray-800 text-right max-w-xs">{val}</span></div>
                             ))}
+                            <div className="pt-2 mt-2 border-t space-y-2">
+                                {consultant.linkedin_url && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-500 flex items-center gap-1"><Linkedin size={14} /> LinkedIn</span>
+                                        <a href={consultant.linkedin_url.startsWith("http") ? consultant.linkedin_url : `https://${consultant.linkedin_url}`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 font-medium">Link <ExternalLink size={12} /></a>
+                                    </div>
+                                )}
+                                {consultant.website_url && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-500 flex items-center gap-1"><Globe size={14} /> Website</span>
+                                        <a href={consultant.website_url.startsWith("http") ? consultant.website_url : `https://${consultant.website_url}`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 font-medium">Link <ExternalLink size={12} /></a>
+                                    </div>
+                                )}
+                                {!consultant.linkedin_url && !consultant.website_url && (
+                                    <p className="text-xs text-gray-400 italic text-center">No social links added</p>
+                                )}
+                            </div>
                         </div>
                         <div className="space-y-4">
                             <h3 className="font-semibold text-gray-800 border-b pb-2">Earning Summary</h3>

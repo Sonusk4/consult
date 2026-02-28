@@ -10,7 +10,6 @@ import {
   FileCheck,
   User,
   ArrowLeftRight,
-  ArrowLeftRight,
   UserCheck,
   Settings,
 } from "lucide-react";
@@ -25,17 +24,17 @@ interface AdminProfile {
 
 const navItems = [
   { to: "/admin", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/admin/transactions", icon: ArrowLeftRight, label: "Transactions" },
   { to: "/admin/users", icon: User, label: "Users" },
   { to: "/admin/consultants-list", icon: UserCheck, label: "Consultants" },
-  { to: "/admin/enterprise", icon: Building2, label: "Enterprise" },
-  { to: "/admin/enterprise-verify", icon: ShieldCheck, label: "Enterprise Verify" },
-  { to: "/admin/verification", icon: FileCheck, label: "Verifications" },
+  { to: "/admin/verification", icon: FileCheck, label: "Consultant Approvals" },
+  { to: "/admin/enterprise", icon: Building2, label: "Enterprises" },
+  { to: "/admin/enterprise-verify", icon: ShieldCheck, label: "Enterprise Approvals" },
   { to: "/admin/invoices", icon: FileText, label: "Invoices" },
-  { to: "/admin/transactions", icon: ArrowLeftRight, label: "Transactions" },
-  { to: "/admin/kyc", icon: ShieldCheck, label: "KYC" },
-  { to: "/admin/documents", icon: FileCheck, label: "Documents" },
-  { to: "/admin/profile", icon: User, label: "Profile" },
+  { to: "/admin/kyc", icon: ShieldCheck, label: "Identity KYC" },
+  { to: "/admin/documents", icon: FileText, label: "Documents" },
   { to: "/admin/settings", icon: Settings, label: "Global Settings" },
+  { to: "/admin/profile", icon: User, label: "Admin Profile" },
 ];
 
 const AdminLayout: React.FC = () => {

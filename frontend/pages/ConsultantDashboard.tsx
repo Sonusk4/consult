@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
-import { consultants as consultantsApi } from "../services/api";
+import { consultants as consultantsApi, subscriptions } from "../services/api";
 import { Consultant } from "../types";
 import { Loader, Users } from "lucide-react";
 import { useToast } from "../context/ToastContext";
@@ -21,10 +21,12 @@ const ConsultantDashboard: React.FC = () => {
 
   const [profile, setProfile] = useState<Consultant | null>(null);
   const [loading, setLoading] = useState(true);
-   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [usage, setUsage] = useState<any>(null);
+
   // 🔥 Extended Onboarding Data (Frontend Only Fields Included)
   const [onboardingData, setOnboardingData] = useState({
-    
+
     domain: "",
     hourly_price: "",
     bio: "",
@@ -37,21 +39,29 @@ const ConsultantDashboard: React.FC = () => {
     availability: "Flexible",
 
     linkedin: "",
-  other_social: "",
+    other_social: "",
   });
 
   // ✅ Load frontend-only fields from localStorage
-useEffect(() => {
-  const saved = localStorage.getItem("consultant_extra");
-  if (saved) {
-    const parsed = JSON.parse(saved);
-    setOnboardingData(parsed);
-    setProfilePhoto(parsed.profilePhoto || null);
-  }
-}, []);
+  useEffect(() => {
+    const saved = localStorage.getItem("consultant_extra");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      setOnboardingData(parsed);
+      setProfilePhoto(parsed.profilePhoto || null);
+    }
+  }, []);
   useEffect(() => {
     fetchProfile();
+    fetchUsage();
   }, []);
+
+  const fetchUsage = async () => {
+    try {
+      const data = await subscriptions.getUsageMetrics();
+      setUsage(data);
+    } catch { }
+  };
 
   const fetchProfile = async () => {
     try {
@@ -65,17 +75,17 @@ useEffect(() => {
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (e.target.files && e.target.files[0]) {
-    const file = e.target.files[0];
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setProfilePhoto(reader.result as string);
-    };
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfilePhoto(reader.result as string);
+      };
 
-    reader.readAsDataURL(file);
-  }
-};
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,7 +104,7 @@ useEffect(() => {
         availability,
         linkedin,
         other_social,
-        
+
 
         ...backendData
       } = onboardingData;
@@ -147,33 +157,33 @@ useEffect(() => {
             </div>
 
             <form onSubmit={handleRegister} className="space-y-4">
-            <div className="flex flex-col items-center mb-6">
+              <div className="flex flex-col items-center mb-6">
 
-  <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-blue-100 shadow-md bg-gray-100 flex items-center justify-center">
-    {profilePhoto ? (
-      <img
-        src={profilePhoto}
-        alt="Profile"
-        className="w-full h-full object-cover"
-      />
-    ) : (
-      <span className="text-3xl font-bold text-gray-400">
-        {onboardingData.domain?.charAt(0) || "C"}
-      </span>
-    )}
-  </div>
+                <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-blue-100 shadow-md bg-gray-100 flex items-center justify-center">
+                  {profilePhoto ? (
+                    <img
+                      src={profilePhoto}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-3xl font-bold text-gray-400">
+                      {onboardingData.domain?.charAt(0) || "C"}
+                    </span>
+                  )}
+                </div>
 
-  <label className="mt-3 text-sm text-blue-600 font-semibold cursor-pointer">
-    Change Photo
-    <input
-      type="file"
-      accept="image/*"
-      className="hidden"
-      onChange={handlePhotoUpload}
-    />
-  </label>
+                <label className="mt-3 text-sm text-blue-600 font-semibold cursor-pointer">
+                  Change Photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoUpload}
+                  />
+                </label>
 
-</div>
+              </div>
               <input
                 type="text"
                 placeholder="Domain (e.g. Tech)"
@@ -269,30 +279,30 @@ useEffect(() => {
               />
 
               <input
-  type="url"
-  placeholder="LinkedIn Profile (Frontend only)"
-  className="w-full border rounded-xl px-4 py-3"
-  value={onboardingData.linkedin}
-  onChange={(e) =>
-    setOnboardingData({
-      ...onboardingData,
-      linkedin: e.target.value,
-    })
-  }
-/>
+                type="url"
+                placeholder="LinkedIn Profile (Frontend only)"
+                className="w-full border rounded-xl px-4 py-3"
+                value={onboardingData.linkedin}
+                onChange={(e) =>
+                  setOnboardingData({
+                    ...onboardingData,
+                    linkedin: e.target.value,
+                  })
+                }
+              />
 
-<input
-  type="url"
-  placeholder="Other Social Media (Instagram / Twitter / Website)"
-  className="w-full border rounded-xl px-4 py-3"
-  value={onboardingData.other_social}
-  onChange={(e) =>
-    setOnboardingData({
-      ...onboardingData,
-      other_social: e.target.value,
-    })
-  }
-/>
+              <input
+                type="url"
+                placeholder="Other Social Media (Instagram / Twitter / Website)"
+                className="w-full border rounded-xl px-4 py-3"
+                value={onboardingData.other_social}
+                onChange={(e) =>
+                  setOnboardingData({
+                    ...onboardingData,
+                    other_social: e.target.value,
+                  })
+                }
+              />
 
               <select
                 className="w-full border rounded-xl px-4 py-3"
@@ -370,6 +380,36 @@ useEffect(() => {
             )}
           </div>
         </div>
+
+        {/* ================= USAGE LIMITS ================= */}
+        {usage && (
+          <div className="bg-white p-8 rounded-3xl shadow-sm border mt-6">
+            <h2 className="text-2xl font-bold mb-6">Subscription Usage</h2>
+            <div className="flex flex-col gap-6 md:flex-row">
+              <div className="flex-1 bg-blue-50 p-6 rounded-2xl border border-blue-100">
+                <h3 className="font-semibold text-blue-900 mb-2">Monthly Chat Messages</h3>
+                <div className="flex justify-between text-sm mb-2 font-medium">
+                  <span>{usage.chat_messages_used} Used</span>
+                  <span>{usage.chat_limit} Total</span>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-3">
+                  <div
+                    className="bg-blue-600 h-3 rounded-full transition-all"
+                    style={{ width: `${Math.min(100, (usage.chat_messages_used / usage.chat_limit) * 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 bg-green-50 p-6 rounded-2xl border border-green-100">
+                <h3 className="font-semibold text-green-900 mb-2">Days Remaining</h3>
+                <div className="text-3xl font-bold text-green-700">
+                  {usage.days_remaining}
+                </div>
+                <p className="text-sm text-green-800 mt-1">days left on {usage.plan} plan</p>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </Layout>

@@ -3,6 +3,7 @@ import Layout from "../../components/Layout";
 import {
   bookings as bookingsApi,
   consultants as consultantsApi,
+  subscriptions
 } from "../../services/api";
 import api from "../../services/api";
 import { Booking, Consultant } from "../../types";
@@ -29,7 +30,7 @@ const UserDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
-
+  const [usage, setUsage] = useState<any>(null);
 
   useEffect(() => {
     fetchBookings();
@@ -37,8 +38,15 @@ const UserDashboard: React.FC = () => {
     fetchConsultants();
     fetchNotifications();
     fetchTransactions();
-
+    fetchUsage();
   }, []);
+
+  const fetchUsage = async () => {
+    try {
+      const data = await subscriptions.getUsageMetrics();
+      setUsage(data);
+    } catch { }
+  };
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -321,57 +329,67 @@ const UserDashboard: React.FC = () => {
 
         {/* ================= CREDITS & SUBSCRIPTION ================= */}
         <div className="bg-gradient-to-br from-blue-900 to-blue-700 text-white p-8 rounded-3xl shadow-lg">
-
           <div className="flex justify-between items-start">
-
             <div>
-              <p className="text-sm opacity-80 mb-2">
-                Current Credit Balance
-              </p>
-
-              <h2 className="text-4xl font-bold mb-4">
-                ₹{walletBalance.toFixed(2)}
-              </h2>
-
-              <p className="text-sm opacity-80">
-                Active Plan: <span className="font-semibold">Basic</span>
-              </p>
-
-              <p className="text-sm opacity-80">
-                Plan Expiry: 31 Dec 2025
+              <p className="text-sm opacity-80 mb-2">Current Credit Balance</p>
+              <h2 className="text-4xl font-bold mb-1">₹{walletBalance.toFixed(2)}</h2>
+              {usage?.bonus_balance > 0 && (
+                <p className="text-sm font-semibold text-blue-200 mb-4">
+                  + ₹{usage.bonus_balance.toFixed(2)} Bonus
+                </p>
+              )}
+              <p className="text-sm opacity-80 mt-4">
+                Active Plan: <span className="font-semibold">{usage?.plan || "Basic"}</span>
               </p>
             </div>
-
             <Wallet size={36} className="text-white/70" />
-
           </div>
 
           <div className="flex flex-wrap gap-4 mt-6">
-
-            <button
-              onClick={() => navigate("/user/wallet")}
-              className="bg-white text-blue-900 px-6 py-2 rounded-xl font-semibold hover:scale-105 transition"
-            >
-              Buy Credits
-            </button>
-
-            <button
-              onClick={() => navigate("/user/wallet")}
-              className="border border-white px-6 py-2 rounded-xl hover:bg-white hover:text-blue-900 transition"
-            >
-              Upgrade Plan
-            </button>
-
-            <button
-              onClick={() => navigate("/user/wallet")}
-              className="border border-white px-6 py-2 rounded-xl hover:bg-white hover:text-blue-900 transition"
-            >
-              View Transactions
-            </button>
-
+            <button onClick={() => navigate("/user/wallet")} className="bg-white text-blue-900 px-6 py-2 rounded-xl font-semibold hover:scale-105 transition">Buy Credits</button>
+            <button onClick={() => navigate("/user/wallet")} className="border border-white px-6 py-2 rounded-xl hover:bg-white hover:text-blue-900 transition">Upgrade Plan</button>
+            <button onClick={() => navigate("/user/wallet")} className="border border-white px-6 py-2 rounded-xl hover:bg-white hover:text-blue-900 transition">View Transactions</button>
           </div>
-
         </div>
+
+        {/* ================= USAGE LIMITS ================= */}
+        {usage && (
+          <div className="bg-white p-8 rounded-3xl shadow-sm border mt-6">
+            <h2 className="text-2xl font-bold mb-6">Subscription Usage</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
+                <h3 className="font-semibold text-blue-900 mb-2">Monthly Chat Messages</h3>
+                <div className="flex justify-between text-sm mb-2 font-medium">
+                  <span>{usage.chat_messages_used} Used</span>
+                  <span>{usage.chat_limit} Total</span>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-3">
+                  <div
+                    className="bg-blue-600 h-3 rounded-full transition-all"
+                    style={{ width: `${Math.min(100, (usage.chat_messages_used / usage.chat_limit) * 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-purple-50 p-6 rounded-2xl border border-purple-100">
+                <h3 className="font-semibold text-purple-900 mb-2">Bookings Made</h3>
+                <div className="text-3xl font-bold text-purple-700">
+                  {usage.bookings_made || 0}
+                </div>
+                <p className="text-sm text-purple-800 mt-1">Total sessions booked</p>
+              </div>
+
+              <div className="bg-green-50 p-6 rounded-2xl border border-green-100">
+                <h3 className="font-semibold text-green-900 mb-2">Days Remaining</h3>
+                <div className="text-3xl font-bold text-green-700">
+                  {usage.days_remaining}
+                </div>
+                <p className="text-sm text-green-800 mt-1">days left on {usage.plan} plan</p>
+              </div>
+            </div>
+          </div>
+        )
+        }
 
         {/* ================= RECENT ACTIVITY ================= */}
         <div className="bg-white p-8 rounded-3xl shadow-sm border">
@@ -475,8 +493,8 @@ const UserDashboard: React.FC = () => {
 
 
 
-      </div>
-    </Layout>
+      </div >
+    </Layout >
   );
 };
 

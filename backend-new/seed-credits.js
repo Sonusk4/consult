@@ -11,10 +11,10 @@ async function seedCreditPackages() {
 
     // Create credit packages
     const packages = [
-      { amount: 500, bonus: 50 },    // ₹500 + ₹50 bonus
-      { amount: 1000, bonus: 120 },  // ₹1000 + ₹120 bonus  
-      { amount: 2000, bonus: 300 },  // ₹2000 + ₹300 bonus
-      { amount: 5000, bonus: 800 }   // ₹5000 + ₹800 bonus
+      { amount: 500, bonus: 10 },
+      { amount: 1000, bonus: 25 },
+      { amount: 2000, bonus: 100 },
+      { amount: 5000, bonus: 350 }
     ];
 
     for (const pkg of packages) {

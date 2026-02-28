@@ -213,7 +213,7 @@ const MessagesPage: React.FC = () => {
   // Derived session state
   const sessionStatus = selectedBooking ? getSessionStatus(selectedBooking, now) : "unknown";
   const slotWindow = selectedBooking ? getSlotWindow(selectedBooking) : null;
-  const canSendMessage = sessionStatus === "active" && isConnected;
+  const canSendMessage = isConnected;
   const canStartVideo = isConsultant && sessionStatus === "active" && isConnected;
 
   // Scroll to bottom
@@ -327,10 +327,13 @@ const MessagesPage: React.FC = () => {
     if (!socket || !selectedBooking || !currentUser || !newMessage.trim()) return;
 
     // Block if session not active
+    // REMOVED: sessionStatus check to allow chat anytime based on credits
+    /*
     if (sessionStatus !== "active") {
       setShowWarning(true);
       return;
     }
+    */
 
     const tempId = -Date.now();
     const tempMessage = {
@@ -584,7 +587,7 @@ const MessagesPage: React.FC = () => {
 
             {/* Message Input */}
             {selectedBooking && (
-              <div className={`p-5 border-t flex items-center gap-3 ${sessionStatus === "active" ? "bg-white" : "bg-gray-50"}`}>
+              <div className="p-5 border-t flex items-center gap-3 bg-white">
                 <button className="p-3 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition">
                   <Paperclip size={18} />
                 </button>
@@ -594,30 +597,22 @@ const MessagesPage: React.FC = () => {
                     onChange={(e) => setNewMessage(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                     placeholder={
-                      sessionStatus === "before"
-                        ? `Chat opens at ${slotWindow?.start.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}…`
-                        : sessionStatus === "ended"
-                          ? "Session has ended"
-                          : !isConnected ? "Connecting…" : "Type your message…"
+                      !isConnected ? "Connecting…" : "Type your message…"
                     }
                     className={`w-full rounded-2xl px-5 py-3.5 text-sm outline-none transition-all
-                      ${sessionStatus === "active" && isConnected
+                      ${isConnected
                         ? "bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-blue-500"
                         : "bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed"
                       }`}
                   />
-                  {sessionStatus !== "active" && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <Lock size={15} className="text-gray-400" />
-                    </div>
-                  )}
+                  {/* Removed Lock overlay for chat */}
                 </div>
                 <button
                   onClick={sendMessage}
                   disabled={!newMessage.trim()}
                   className={`p-4 rounded-2xl shadow transition-all
                     ${newMessage.trim()
-                      ? sessionStatus === "active" && isConnected
+                      ? isConnected
                         ? "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-100"
                         : "bg-amber-500 text-white hover:bg-amber-600"
                       : "bg-gray-200 text-gray-400 cursor-not-allowed"

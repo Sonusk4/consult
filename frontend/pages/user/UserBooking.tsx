@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import Layout from "../../components/Layout";
 import { bookings as bookingsApi } from "../../services/api";
 import { Booking } from "../../types";
-import { Calendar, Video, Loader } from "lucide-react";
+import { Calendar, Video, Loader, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const UserBooking: React.FC = () => {
@@ -52,11 +52,10 @@ const UserBooking: React.FC = () => {
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
-              className={`px-6 py-2 rounded-xl text-xs font-bold uppercase transition-all ${
-                activeTab === tab
+              className={`px-6 py-2 rounded-xl text-xs font-bold uppercase transition-all ${activeTab === tab
                   ? "bg-white text-blue-600 shadow-sm"
                   : "text-gray-400 hover:text-gray-600"
-              }`}
+                }`}
             >
               {tab}
             </button>
@@ -133,16 +132,23 @@ const UserBooking: React.FC = () => {
                     </button>
                   )}
 
+                  <button
+                    onClick={() => navigate("/user/messages")}
+                    className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-xl font-semibold hover:bg-gray-200 transition"
+                  >
+                    <MessageSquare size={18} />
+                    Chat
+                  </button>
+
                   <span
-                    className={`text-xs font-bold px-3 py-1 rounded-full ${
-                      session.status === "LIVE"
+                    className={`text-xs font-bold px-3 py-1 rounded-full ${session.status === "LIVE"
                         ? "bg-red-100 text-red-600"
                         : session.status === "CONFIRMED"
-                        ? "bg-blue-100 text-blue-600"
-                        : session.status === "COMPLETED"
-                        ? "bg-green-100 text-green-600"
-                        : "bg-gray-100 text-gray-600"
-                    }`}
+                          ? "bg-blue-100 text-blue-600"
+                          : session.status === "COMPLETED"
+                            ? "bg-green-100 text-green-600"
+                            : "bg-gray-100 text-gray-600"
+                      }`}
                   >
                     {session.status}
                   </span>

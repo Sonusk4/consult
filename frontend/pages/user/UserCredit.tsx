@@ -13,15 +13,17 @@ interface Transaction {
 }
 
 const creditPacks = [
-  {  price: 0, bonus: 0 },
-  {  price: 500, bonus: 200 },
-  {  price: 1000, bonus: 800 },
+  { price: 500, credits: 500, bonus: 10, bonusPercent: 2, validity: "30 days" },
+  { price: 1000, credits: 1000, bonus: 25, bonusPercent: 2.5, validity: "60 days" },
+  { price: 2000, credits: 2000, bonus: 100, bonusPercent: 5, validity: "90 days" },
+  { price: 5000, credits: 5000, bonus: 350, bonusPercent: 7, validity: "180 days" },
 ];
 
 const UserCredit: React.FC = () => {
   const { addToast } = useToast();
 
   const [walletBalance, setWalletBalance] = useState(0);
+  const [bonusBalance, setBonusBalance] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState<number | null>(null);
@@ -36,6 +38,7 @@ const UserCredit: React.FC = () => {
     try {
       const res = await api.get("/wallet");
       setWalletBalance(res.data.balance || 0);
+      setBonusBalance(res.data.bonus_balance || 0);
     } catch (err) {
       console.error("Wallet fetch failed");
       addToast("Failed to load wallet", "error");
@@ -87,18 +90,24 @@ const UserCredit: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-blue-200 text-sm font-semibold mb-2">
-                Available Balance
+                Available Main Balance
               </p>
-              <h2 className="text-4xl font-bold">
+              <h2 className="text-4xl font-bold mb-4">
                 ₹{walletBalance.toFixed(2)}
               </h2>
+              {bonusBalance > 0 && (
+                <div className="flex items-center gap-2 text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl w-fit border border-emerald-500/20">
+                  <Zap size={14} />
+                  <span className="text-sm font-bold">₹{bonusBalance.toFixed(2)} Bonus Balance</span>
+                </div>
+              )}
             </div>
-            <Zap className="text-blue-400" size={36} />
+            <Zap className="text-blue-400 opacity-50" size={48} />
           </div>
 
-          <div className="mt-6 flex items-center text-emerald-400 text-sm">
-            <ShieldCheck size={16} className="mr-2" />
-            Safe & Secure Wallet
+          <div className="mt-6 flex items-center text-blue-300 text-xs">
+            <ShieldCheck size={14} className="mr-2" />
+            Tokens can be used for any consultation booking
           </div>
         </div>
 
@@ -111,24 +120,30 @@ const UserCredit: React.FC = () => {
           <div className="grid md:grid-cols-3 gap-6">
             {creditPacks.map((pack) => (
               <div
-                key={pack.amount}
+                key={pack.credits}
                 className="bg-white p-6 rounded-3xl border shadow-sm hover:shadow-md transition text-center"
               >
 
-                <p className="text-gray-500 text-sm mb-4">
-                  + {pack.bonus} Bonus Credits
-                </p>
+                <div className="bg-blue-50 text-blue-700 py-2 px-3 rounded-lg mb-4 text-sm font-medium">
+                  +{pack.bonus} Bonus Credits ({pack.bonusPercent}%)
+                </div>
+
+                <div className="text-left text-xs text-gray-500 space-y-1 mb-6 h-16">
+                  <p>• Usable for platform fees only</p>
+                  <p>• Valid for {pack.validity}</p>
+                  <p>• Non-withdrawable</p>
+                </div>
 
                 <div className="text-2xl font-bold text-blue-600 mb-6">
                   ₹{pack.price}
                 </div>
 
                 <button
-                  onClick={() => handleBuyCredits(pack.amount, pack.price)}
-                  disabled={buying === pack.amount}
+                  onClick={() => handleBuyCredits(pack.credits, pack.price)}
+                  disabled={buying === pack.credits}
                   className="w-full bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition disabled:opacity-60"
                 >
-                  {buying === pack.amount ? "Processing..." : "Buy Now"}
+                  {buying === pack.credits ? "Processing..." : "Buy Now"}
                 </button>
               </div>
             ))}
@@ -141,7 +156,7 @@ const UserCredit: React.FC = () => {
             <h3 className="text-xl font-bold text-gray-900">Subscription Plans</h3>
             <p className="text-sm text-gray-500 mt-1">Choose the perfect plan for your needs</p>
           </div>
-          
+
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50">
@@ -294,8 +309,8 @@ const UserCredit: React.FC = () => {
 
                   <span
                     className={`font-bold ${txn.type === "CREDIT"
-                        ? "text-emerald-600"
-                        : "text-red-600"
+                      ? "text-emerald-600"
+                      : "text-red-600"
                       }`}
                   >
                     {txn.type === "CREDIT" ? "+" : "-"}

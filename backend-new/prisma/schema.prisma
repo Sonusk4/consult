@@ -67,6 +67,7 @@ model UserProfile {
   subscription_plan   String    @default("Free")
   subscription_expiry DateTime?
   chat_messages_used  Int       @default(0)
+  purchased_chat_credits Int    @default(0)
   last_limit_reset    DateTime  @default(now())
   
   created_at       DateTime @default(now())
@@ -107,6 +108,10 @@ model Consultant {
   subscription_plan   String    @default("Free")
   subscription_expiry DateTime?
   platform_fee_pct    Float     @default(20)
+
+  // Social & Web Links
+  linkedin_url        String?
+  website_url         String?
 
   availabilitySlots Availability[]
   bookings       Booking[]
@@ -182,6 +187,7 @@ model Wallet {
   id         Int      @id @default(autoincrement())
   userId     Int      @unique
   balance    Float    @default(0)
+  bonus_balance Float @default(0)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)

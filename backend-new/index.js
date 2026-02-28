@@ -14,6 +14,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
 
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const http = require("http");
@@ -1837,7 +1838,7 @@ app.post("/auth/reset-password", async (req, res) => {
  * Create a new consultant profile
  */
 app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
-  const { type, domain, bio, languages, hourly_price } = req.body;
+  const { type, domain, bio, languages, hourly_price, linkedin, other_social } = req.body;
 
   try {
     if (!domain || !hourly_price) {
@@ -1913,6 +1914,8 @@ app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
         type: type || "Individual",
         domain,
         hourly_price: parseFloat(hourly_price),
+        linkedin_url: linkedin || null,
+        website_url: other_social || null,
         is_verified: false, // Admin needs to verify
       },
     });
@@ -2424,6 +2427,9 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
+      // Social & Web Links
+      linkedin: user.consultant.linkedin_url || null,
+      other_social: user.consultant.website_url || null,
       // Backward compatibility fields
       kyc_document: kycDocuments.length > 0 ? kycDocuments[0].url : null,
       kyc_document_data: kycDocuments.length > 0 ? kycDocuments[0] : null,
@@ -2443,7 +2449,7 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
  * Update consultant profile
  */
 app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
-  const { type, domain, bio, languages, hourly_price, full_name, phone, expertise, availability, designation, years_experience, education } = req.body;
+  const { type, domain, bio, languages, hourly_price, full_name, phone, expertise, availability, designation, years_experience, education, linkedin, other_social } = req.body;
 
   try {
     // Use consistent user lookup (same as GET endpoint)
@@ -2481,6 +2487,8 @@ app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
         designation: designation || user.consultant.designation,
         years_experience: years_experience !== undefined ? parseInt(years_experience) : user.consultant.years_experience,
         education: education || user.consultant.education,
+        linkedin_url: linkedin !== undefined ? linkedin : user.consultant.linkedin_url,
+        website_url: other_social !== undefined ? other_social : user.consultant.website_url,
       },
     });
 
@@ -3605,12 +3613,20 @@ app.post("/payment/create-order", verifyFirebaseToken, async (req, res) => {
       if (creditPackage) {
         bonusAmount = creditPackage.bonus || 0;
       }
+    } else {
+      // Dynamic lookup based on amount
+      const creditPackage = await prisma.creditPackage.findFirst({
+        where: { amount: parseFloat(amount) }
+      });
+      if (creditPackage) {
+        bonusAmount = creditPackage.bonus || 0;
+      }
     }
 
-    const totalAmount = amount + bonusAmount;
-    const amountInPaise = totalAmount * 100; // Convert to paise
+    const totalCheckoutAmount = amount; // Do not charge the user for the bonus
+    const amountInPaise = totalCheckoutAmount * 100; // Convert to paise
 
-    console.log("💰 Creating order:", { totalAmount, amountInPaise });
+    console.log("💰 Creating order:", { totalCheckoutAmount, amountInPaise });
 
     // Create Razorpay order
     const options = {
@@ -3636,7 +3652,7 @@ app.post("/payment/create-order", verifyFirebaseToken, async (req, res) => {
           data: {
             user_id: user.id,
             razorpay_order_id: order.id,
-            amount: totalAmount,
+            amount: totalCheckoutAmount,
             credits: amount, // Amount without bonus
             bonus: bonusAmount,
             status: "PENDING",
@@ -3650,7 +3666,7 @@ app.post("/payment/create-order", verifyFirebaseToken, async (req, res) => {
 
     res.status(200).json({
       order_id: order.id,
-      amount: totalAmount,
+      amount: totalCheckoutAmount,
       currency: "INR",
       key_id: process.env.RAZORPAY_KEY_ID,
       bonus: bonusAmount,
@@ -3922,7 +3938,7 @@ app.post("/payment/verify", async (req, res) => {
       });
     }
 
-    const creditsToAdd = orderRecord.credits || amount;
+    const creditsToAdd = orderRecord.credits || 0;
     const bonusAmount = orderRecord.bonus || 0;
     const totalCredits = creditsToAdd + bonusAmount;
 
@@ -3930,7 +3946,8 @@ app.post("/payment/verify", async (req, res) => {
       const updatedWallet = await tx.wallet.update({
         where: { id: wallet.id },
         data: {
-          balance: wallet.balance + totalCredits,
+          balance: { increment: creditsToAdd },
+          bonus_balance: { increment: bonusAmount },
         },
       });
 
@@ -3938,9 +3955,8 @@ app.post("/payment/verify", async (req, res) => {
         data: {
           userId: user.id,
           type: "CREDIT",
-          amount: totalCredits,
-          description: `Added ${creditsToAdd} credits${bonusAmount > 0 ? ` with ${bonusAmount} bonus` : ""
-            } via Razorpay (Order: ${razorpay_order_id})`,
+          amount: creditsToAdd + bonusAmount,
+          description: `Wallet top-up: ₹${creditsToAdd} + ₹${bonusAmount} bonus credits`,
           payment_method: "RAZORPAY",
           status: "SUCCESS",
         },
@@ -4349,19 +4365,26 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
     const userMarkupFee = userPrice - basePrice;
 
     // Check if user has sufficient balance for MARKED UP price
-    if (wallet.balance < userPrice) {
+    const totalWalletBalance = (wallet.balance || 0) + (wallet.bonus_balance || 0);
+
+    // Check if user has sufficient balance for MARKED UP price
+    if (totalWalletBalance < userPrice) {
       return res.status(400).json({
         error: "Insufficient balance",
         required: userPrice,
-        current: wallet.balance,
+        current: totalWalletBalance,
       });
     }
 
-    // Deduct exact user price from wallet
+    // Deduct from wallet: Use bonus_balance first, then main balance
+    let bonusToDeduct = Math.min(wallet.bonus_balance || 0, userPrice);
+    let balanceToDeduct = userPrice - bonusToDeduct;
+
     const updatedWallet = await prisma.wallet.update({
       where: { id: wallet.id },
       data: {
-        balance: wallet.balance - userPrice,
+        balance: { decrement: balanceToDeduct },
+        bonus_balance: { decrement: bonusToDeduct },
       },
     });
 
@@ -4795,21 +4818,26 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
     if (isClient) {
       const profile = await prisma.userProfile.findUnique({ where: { userId: sender.id } });
       const plan = profile?.subscription_plan || "Free";
-      let chatLimit = 5;
-      if (plan === "Starter") chatLimit = 20;
-      else if (plan === "Growth") chatLimit = 50;
-      else if (plan === "Enterprise") chatLimit = 100;
+      let baseLimit = 5;
+      if (plan === "Starter") baseLimit = 20;
+      else if (plan === "Growth") baseLimit = 50;
+      else if (plan === "Enterprise") baseLimit = 100;
+
+      const totalLimit = baseLimit + (profile?.purchased_chat_credits || 0);
 
       let used = profile?.chat_messages_used || 0;
       let lastReset = profile?.last_limit_reset || new Date();
-      // Reset if older than 30 days
+
+      // Reset monthly usage if older than 30 days
       if ((new Date() - new Date(lastReset)) > 30 * 24 * 60 * 60 * 1000) {
         used = 0;
         lastReset = new Date();
       }
 
-      if (used >= chatLimit) {
-        return res.status(403).json({ error: `You have reached your monthly limit of ${chatLimit} messages on the ${plan} plan. Please upgrade to continue chatting.` });
+      if (used >= totalLimit) {
+        return res.status(403).json({
+          error: `Chat limit reached. Your current limit is ${totalLimit} messages (${baseLimit} from ${plan} plan + ${profile?.purchased_chat_credits || 0} purchased). Please upgrade or buy more credits to continue.`
+        });
       }
 
       await prisma.userProfile.update({
@@ -5136,31 +5164,22 @@ io.on("connection", (socket) => {
         });
       }
 
-      if (!booking.is_paid) {
-        const messageCount = await prisma.message.count({
-          where: { bookingId: id },
-        });
-
-        if (messageCount >= 5) {
-          return socket.emit("chat-blocked", {
-            message: "Free chat limit reached. Please complete payment.",
-          });
-        }
-      }
-
       // ==== User Subscription Chat Limit Check ====
       // Only throttle if the sender is the User (not Consultant)
       if (user.role === "USER" && booking.userId === user.id) {
         const userProfile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
         const plan = userProfile?.subscription_plan || "Free";
-        let maxMessages = 5;
-        if (plan === "Starter") maxMessages = 20;
-        else if (plan === "Growth") maxMessages = 50;
-        else if (plan === "Enterprise") maxMessages = 999999;
 
-        if (userProfile && userProfile.chat_messages_used >= maxMessages) {
+        let baseLimit = 5;
+        if (plan === "Starter") baseLimit = 20;
+        else if (plan === "Growth") baseLimit = 50;
+        else if (plan === "Enterprise") baseLimit = 100;
+
+        const totalLimit = baseLimit + (userProfile?.purchased_chat_credits || 0);
+
+        if (userProfile && userProfile.chat_messages_used >= totalLimit) {
           return socket.emit("chat-error", {
-            message: "Monthly chat limit reached for your plan. Please upgrade to continue.",
+            message: `Monthly chat limit of ${totalLimit} messages reached. Please upgrade or buy more credits to continue.`,
           });
         }
       }
@@ -6942,6 +6961,8 @@ app.get("/admin/transactions/stats", verifyAdminToken, async (req, res) => {
   try {
     const [
       totalCreditsAdded,
+      totalSubscriptions,
+      totalChatCredits,
       totalDebits,
       totalEarnings,
       totalCommissions,
@@ -6951,6 +6972,18 @@ app.get("/admin/transactions/stats", verifyAdminToken, async (req, res) => {
       // Total credits added to wallets (Razorpay top-ups)
       prisma.transaction.aggregate({
         where: { type: "CREDIT" },
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+      // Total subscription revenue
+      prisma.transaction.aggregate({
+        where: { type: "SUBSCRIPTION" },
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+      // Total chat credit revenue
+      prisma.transaction.aggregate({
+        where: { type: "CHAT_CREDIT" },
         _sum: { amount: true },
         _count: { id: true },
       }),
@@ -7020,8 +7053,10 @@ app.get("/admin/transactions/stats", verifyAdminToken, async (req, res) => {
     );
 
     res.json({
-      totalCreditsAdded: totalCreditsAdded._sum.amount || 0,
-      totalCreditTransactions: totalCreditsAdded._count.id,
+      totalCreditsAdded: (totalCreditsAdded._sum.amount || 0) + (totalSubscriptions._sum.amount || 0) + (totalChatCredits._sum.amount || 0),
+      totalCreditTransactions: totalCreditsAdded._count.id + totalSubscriptions._count.id + totalChatCredits._count.id,
+      totalSubscriptions: totalSubscriptions._sum.amount || 0,
+      totalChatCredits: totalChatCredits._sum.amount || 0,
       totalDebits: totalDebits._sum.amount || 0,
       totalDebitTransactions: totalDebits._count.id,
       totalEarnings: totalEarnings._sum.amount || 0,
@@ -7160,25 +7195,45 @@ app.get("/admin/users/:id", verifyAdminToken, async (req, res) => {
     });
     if (!user) return res.status(404).json({ error: "User not found" });
 
+    // Calculate usage stats
+    const profile = user.profile || {};
+    const plan = profile.subscription_plan || "Free";
+    let baseChatLimit = 5;
+    if (plan === "Starter") baseChatLimit = 20;
+    else if (plan === "Growth") baseChatLimit = 50;
+    else if (plan === "Enterprise") baseChatLimit = 100;
+
+    const totalChatLimit = baseChatLimit + (profile.purchased_chat_credits || 0);
+
+    // Fetch transactions and bookings for the user
     const [transactions, bookings] = await Promise.all([
       prisma.transaction.findMany({
-        where: { userId },
+        where: { userId: userId },
         orderBy: { created_at: "desc" },
-        take: 100,
+        take: 50,
       }),
       prisma.booking.findMany({
-        where: { userId },
-        include: {
-          consultant: {
-            include: { user: { select: { name: true, email: true } } },
-          },
-        },
+        where: { userId: userId },
+        include: { consultant: true },
         orderBy: { created_at: "desc" },
-        take: 100,
+        take: 50,
       }),
     ]);
 
-    res.json({ user, transactions, bookings });
+    res.json({
+      user,
+      transactions,
+      bookings,
+      usageStats: {
+        plan,
+        chatLimit: totalChatLimit,
+        chatUsed: profile.chat_messages_used || 0,
+        chatRemaining: Math.max(0, totalChatLimit - (profile.chat_messages_used || 0)),
+        bookingsMade: bookings.length,
+        bonusBalance: user.wallet?.bonus_balance || 0,
+        expiry: profile.subscription_expiry,
+      }
+    });
   } catch (err) {
     console.error("Admin user detail error:", err.message);
     res.status(500).json({ error: "Failed to fetch user detail" });
@@ -7758,76 +7813,315 @@ app.put("/admin/settings", verifyAdminToken, async (req, res) => {
   }
 });
 
-/* ================= SUBSCRIPTION PLANS ================= */
+/* ================= SUBSCRIPTION: CREATE ORDER ================= */
 
-app.post("/user/subscribe", verifyFirebaseToken, async (req, res) => {
+app.post("/user/subscription/create-order", verifyFirebaseToken, async (req, res) => {
   try {
     const { planName } = req.body;
     let user = await prisma.user.findFirst({ where: { firebase_uid: req.user.firebase_uid } });
-    if (!user && req.user.id) {
-      user = await prisma.user.findUnique({ where: { id: req.user.id } });
-    }
+    if (!user && req.user.id) user = await prisma.user.findUnique({ where: { id: req.user.id } });
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Mocking Razorpay payment verification internally (instant success)
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    let amount = 0;
+    if (planName === "Starter") amount = 199;
+    else if (planName === "Growth") amount = 499;
+    else if (planName === "Enterprise") amount = 999;
+    else return res.status(400).json({ error: "Invalid plan" });
 
-    const profile = await prisma.userProfile.upsert({
-      where: { userId: user.id },
-      update: {
-        subscription_plan: planName,
-        subscription_expiry: thirtyDaysFromNow,
-        chat_messages_used: 0,
-        last_limit_reset: new Date()
-      },
-      create: {
-        userId: user.id,
-        subscription_plan: planName,
-        subscription_expiry: thirtyDaysFromNow
-      }
+    if (!razorpay) return res.status(500).json({ error: "Razorpay not configured" });
+
+    const order = await razorpay.orders.create({
+      amount: amount * 100, // paise
+      currency: "INR",
+      receipt: `sub_u_${user.id}_${Date.now()}`
     });
 
-    res.json({ message: `Successfully subscribed to ${planName} plan`, profile });
+    res.json({ order, key_id: process.env.RAZORPAY_KEY_ID, amount, planName, userType: "USER" });
   } catch (error) {
-    console.error("User Subscribe Error:", error.message);
-    res.status(500).json({ error: "Failed to subscribe" });
+    console.error("User Create Order Error:", error);
+    res.status(500).json({ error: "Failed to create subscription order" });
   }
 });
 
-app.post("/consultant/subscribe", verifyFirebaseToken, async (req, res) => {
+app.post("/consultant/subscription/create-order", verifyFirebaseToken, async (req, res) => {
   try {
     const { planName } = req.body;
     let user = await prisma.user.findFirst({ where: { firebase_uid: req.user.firebase_uid } });
-    if (!user && req.user.id) {
-      user = await prisma.user.findUnique({ where: { id: req.user.id } });
-    }
+    if (!user && req.user.id) user = await prisma.user.findUnique({ where: { id: req.user.id } });
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    const consultant = await prisma.consultant.findUnique({ where: { userId: user.id } });
-    if (!consultant) return res.status(404).json({ error: "Consultant profile not found" });
+    let amount = 0;
+    if (planName === "Professional") amount = 1499;
+    else if (planName === "Premium") amount = 2999;
+    else if (planName === "Elite") amount = 4999;
+    else return res.status(400).json({ error: "Invalid plan." });
 
-    let platform_fee_pct = 20; // Default Base
-    if (planName === "Professional") platform_fee_pct = 18;
-    else if (planName === "Premium") platform_fee_pct = 15;
-    else if (planName === "Elite") platform_fee_pct = 10;
+    if (!razorpay) return res.status(500).json({ error: "Razorpay not configured" });
+
+    const order = await razorpay.orders.create({
+      amount: amount * 100, // paise
+      currency: "INR",
+      receipt: `sub_c_${user.id}_${Date.now()}`
+    });
+
+    res.json({ order, key_id: process.env.RAZORPAY_KEY_ID, amount, planName, userType: "CONSULTANT" });
+  } catch (error) {
+    console.error("Consultant Create Order Error:", error);
+    res.status(500).json({ error: "Failed to create subscription order" });
+  }
+});
+
+/* ================= SUBSCRIPTION: VERIFY PAYMENT ================= */
+
+app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planName, userType } = req.body;
+    let user = await prisma.user.findFirst({ where: { firebase_uid: req.user.firebase_uid } });
+    if (!user && req.user.id) user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Verify Signature
+    const body = razorpay_order_id + "|" + razorpay_payment_id;
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(body.toString())
+      .digest("hex");
+
+    if (expectedSignature !== razorpay_signature) {
+      return res.status(400).json({ error: "Invalid payment signature" });
+    }
 
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-    const updated = await prisma.consultant.update({
-      where: { id: consultant.id },
+    let updatedProfile = null;
+
+    if (userType === "USER") {
+      updatedProfile = await prisma.userProfile.upsert({
+        where: { userId: user.id },
+        update: { subscription_plan: planName, subscription_expiry: thirtyDaysFromNow, chat_messages_used: 0, last_limit_reset: new Date() },
+        create: { userId: user.id, subscription_plan: planName, subscription_expiry: thirtyDaysFromNow, chat_messages_used: 0, last_limit_reset: new Date() }
+      });
+    } else {
+      const consultant = await prisma.consultant.findUnique({ where: { userId: user.id } });
+      if (!consultant) return res.status(404).json({ error: "Consultant not found" });
+
+      let platform_fee_pct = 20;
+      if (planName === "Professional") platform_fee_pct = 18;
+      else if (planName === "Premium") platform_fee_pct = 15;
+      else if (planName === "Elite") platform_fee_pct = 10;
+
+      updatedProfile = await prisma.consultant.update({
+        where: { id: consultant.id },
+        data: { subscription_plan: planName, subscription_expiry: thirtyDaysFromNow, platform_fee_pct }
+      });
+    }
+
+    // Create transaction record for subscription
+    let subscriptionAmount = 0;
+    if (userType === "USER") {
+      if (planName === "Starter") subscriptionAmount = 199;
+      else if (planName === "Growth") subscriptionAmount = 499;
+      else if (planName === "Enterprise") subscriptionAmount = 999;
+    } else {
+      if (planName === "Professional") subscriptionAmount = 499;
+      else if (planName === "Premium") subscriptionAmount = 999;
+      else if (planName === "Elite") subscriptionAmount = 1999;
+    }
+
+    await prisma.transaction.create({
       data: {
-        subscription_plan: planName,
-        subscription_expiry: thirtyDaysFromNow,
-        platform_fee_pct
+        userId: user.id,
+        type: "SUBSCRIPTION",
+        amount: subscriptionAmount,
+        description: `${userType === "USER" ? "User" : "Consultant"} Subscription: ${planName}`,
+        payment_method: "RAZORPAY",
+        status: "SUCCESS",
+      },
+    });
+
+    // Send confirmation email
+    if (transporter && user.email) {
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: user.email,
+        subject: `Your ConsultPro ${planName} Subscription is Active!`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-w: 600px; margin: 0 auto; padding: 20px; text-align: center;">
+            <h1 style="color: #2563EB;">Subscription Confirmed! 🎉</h1>
+            <p>Hi ${user.name || 'there'},</p>
+            <p>Thank you for upgrading to the <strong>${planName}</strong> plan on ConsultPro.</p>
+            <div style="background-color: #F3F4F6; padding: 20px; border-radius: 10px; margin: 20px 0;">
+              <p style="margin: 5px 0;"><strong>Payment ID:</strong> ${razorpay_payment_id}</p>
+              <p style="margin: 5px 0;"><strong>Expires:</strong> ${thirtyDaysFromNow.toDateString()}</p>
+            </div>
+            <p>Your new limits and benefits have been instantly applied to your account. You can view your current usage in your dashboard.</p>
+            <p>Thank you for choosing ConsultPro.</p>
+          </div>
+        `
+      };
+      transporter.sendMail(mailOptions).catch(err => console.error("Email send failed:", err));
+    }
+
+    res.json({ message: "Subscription activated successfully", profile: updatedProfile });
+  } catch (error) {
+    console.error("Subscription Verify Error:", error);
+    res.status(500).json({ error: "Failed to verify subscription payment" });
+  }
+});
+
+/* ================= METRICS & USAGE DASHBOARD ================= */
+
+app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => {
+  try {
+    let user = await prisma.user.findFirst({
+      where: { firebase_uid: req.user.firebase_uid },
+      include: { wallet: true }
+    });
+    if (!user && req.user.id) {
+      user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        include: { wallet: true }
+      });
+    }
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const profile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
+    if (!profile) return res.json({});
+
+    const plan = profile.subscription_plan || "Free";
+    let chatLimit = 5;
+    if (plan === "Starter") chatLimit = 20;
+    else if (plan === "Growth") chatLimit = 50;
+    else if (plan === "Enterprise") chatLimit = 100;
+
+    // Add any separate credits bought via Razorpay
+    chatLimit += (profile.purchased_chat_credits || 0);
+
+    // Fetch bookings count
+    const bookingsCount = await prisma.booking.count({
+      where: { userId: user.id }
+    });
+
+    res.json({
+      plan,
+      chat_messages_used: profile.chat_messages_used || 0,
+      chat_limit: chatLimit,
+      bonus_balance: user.wallet?.bonus_balance || 0,
+      bookings_made: bookingsCount,
+      days_remaining: profile.subscription_expiry ? Math.max(0, Math.ceil((new Date(profile.subscription_expiry) - new Date()) / (1000 * 60 * 60 * 24))) : 0
+    });
+  } catch (error) {
+    console.error("Metrics Usage Error:", error);
+    res.status(500).json({ error: "Failed to fetch usage metrics" });
+  }
+});
+
+/* ================= CHAT CREDITS PURCHASING ================= */
+
+app.post("/payment/chat-credits/create-order", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { packName } = req.body;
+    let user = await prisma.user.findFirst({ where: { firebase_uid: req.user.firebase_uid } });
+    if (!user && req.user.id) user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    let amount = 0;
+    if (packName === "Mini Pack") amount = 49;
+    else if (packName === "Starter Pack") amount = 99;
+    else if (packName === "Pro Pack") amount = 199;
+    else return res.status(400).json({ error: "Invalid Chat Credit Pack." });
+
+    if (!razorpay) return res.status(500).json({ error: "Razorpay not configured" });
+
+    const order = await razorpay.orders.create({
+      amount: amount * 100, // paise
+      currency: "INR",
+      receipt: `cc_u_${user.id}_${Date.now()}`
+    });
+
+    res.json({ order, key_id: process.env.RAZORPAY_KEY_ID, amount, packName });
+  } catch (error) {
+    console.error("Chat Credits Create Order Error:", error);
+    res.status(500).json({ error: "Failed to create chat credits order" });
+  }
+});
+
+app.post("/payment/chat-credits/verify", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, packName } = req.body;
+    let user = await prisma.user.findFirst({ where: { firebase_uid: req.user.firebase_uid } });
+    if (!user && req.user.id) user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Verify Signature
+    const body = razorpay_order_id + "|" + razorpay_payment_id;
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(body.toString())
+      .digest("hex");
+
+    if (expectedSignature !== razorpay_signature) {
+      return res.status(400).json({ error: "Invalid payment signature" });
+    }
+
+    let messagesToAdd = 0;
+    if (packName === "Mini Pack") messagesToAdd = 10;
+    else if (packName === "Starter Pack") messagesToAdd = 25;
+    else if (packName === "Pro Pack") messagesToAdd = 60;
+
+    // Instead of decrementing usage, we track purchased credits separately
+    const updatedProfile = await prisma.userProfile.update({
+      where: { userId: user.id },
+      data: {
+        purchased_chat_credits: { increment: messagesToAdd }
       }
     });
 
-    res.json({ message: `Successfully subscribed to ${planName} plan`, consultant: updated });
+    // Create transaction record for chat credits
+    let chatPackAmount = 0;
+    if (packName === "Mini Pack") chatPackAmount = 49;
+    else if (packName === "Starter Pack") chatPackAmount = 99;
+    else if (packName === "Pro Pack") chatPackAmount = 199;
+
+    await prisma.transaction.create({
+      data: {
+        userId: user.id,
+        type: "CHAT_CREDIT",
+        amount: chatPackAmount,
+        description: `Purchased Chat Credit Pack: ${packName}`,
+        payment_method: "RAZORPAY",
+        status: "SUCCESS",
+      },
+    });
+
+    // Send confirmation email
+    if (transporter && user.email) {
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: user.email,
+        subject: `Your ConsultPro Chat Credits are ready!`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-w: 600px; margin: 0 auto; padding: 20px; text-align: center;">
+            <h1 style="color: #2563EB;">Chat Credits Purchase Confirmed! 🎉</h1>
+            <p>Hi ${user.name || 'there'},</p>
+            <p>Thank you for purchasing the <strong>${packName}</strong> on ConsultPro.</p>
+            <div style="background-color: #F3F4F6; padding: 20px; border-radius: 10px; margin: 20px 0;">
+              <p style="margin: 5px 0;"><strong>Payment ID:</strong> ${razorpay_payment_id}</p>
+              <p style="margin: 5px 0;"><strong>Messages Added:</strong> ${messagesToAdd} messages</p>
+            </div>
+            <p>Your limits have been refreshed and you can continue chatting immediately. View your current usage in your dashboard.</p>
+            <p>Thank you for choosing ConsultPro.</p>
+          </div>
+        `
+      };
+      transporter.sendMail(mailOptions).catch(err => console.error("Email send failed:", err));
+    }
+
+    res.json({ message: "Chat credits added successfully", profile: updatedProfile });
   } catch (error) {
-    console.error("Consultant Subscribe Error:", error.message);
-    res.status(500).json({ error: "Failed to subscribe" });
+    console.error("Chat Credits Verify Error:", error);
+    res.status(500).json({ error: "Failed to verify chat credits payment" });
   }
 });
 

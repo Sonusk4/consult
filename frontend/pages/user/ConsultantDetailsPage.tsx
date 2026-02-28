@@ -4,7 +4,7 @@ import Layout from '../../components/Layout';
 import { consultants as consultantsApi, bookings } from '../../services/api';
 import api from '../../services/api';
 import { Consultant } from '../../types';
-import { Star, Calendar, Clock, DollarSign, ArrowLeft, Video, MessageCircle, Loader, AlertTriangle, CreditCard, CheckCircle, X, Wallet } from 'lucide-react';
+import { Star, Calendar, Clock, DollarSign, ArrowLeft, Video, MessageCircle, Loader, AlertTriangle, CreditCard, CheckCircle, X, Wallet, Linkedin, Globe } from 'lucide-react';
 
 interface TimeSlot {
   id: number;
@@ -485,6 +485,32 @@ const ConsultantDetailsPage: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Social Links */}
+              <div className="flex flex-wrap gap-4 mt-6">
+                {consultant.linkedin_url && (
+                  <a
+                    href={consultant.linkedin_url.startsWith('http') ? consultant.linkedin_url : `https://${consultant.linkedin_url}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 bg-[#0077b5] text-white rounded-xl hover:bg-[#006699] transition shadow-sm"
+                  >
+                    <Linkedin size={18} />
+                    <span className="text-sm font-medium">LinkedIn</span>
+                  </a>
+                )}
+                {consultant.website_url && (
+                  <a
+                    href={consultant.website_url.startsWith('http') ? consultant.website_url : `https://${consultant.website_url}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-xl hover:bg-gray-900 transition shadow-sm"
+                  >
+                    <Globe size={18} />
+                    <span className="text-sm font-medium">Website</span>
+                  </a>
+                )}
+              </div>
             </div>
           </div>
 
@@ -550,8 +576,8 @@ const ConsultantDetailsPage: React.FC = () => {
                         key={slot.id}
                         onClick={() => setSelectedSlot(slot.available_time)}
                         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${isSelected
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100'
-                            : 'bg-white border-gray-200 text-gray-700 hover:border-blue-300 hover:bg-blue-50'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100'
+                          : 'bg-white border-gray-200 text-gray-700 hover:border-blue-300 hover:bg-blue-50'
                           }`}
                       >
                         <Clock size={13} />

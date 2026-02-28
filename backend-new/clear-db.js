@@ -59,6 +59,15 @@ async function clearDatabase() {
         console.log("🗑️  Deleting Users...");
         await prisma.user.deleteMany({});
 
+        console.log("🗑️  Deleting ConsultantPayouts...");
+        await prisma.consultantPayout.deleteMany({});
+
+        console.log("🗑️  Deleting Admins...");
+        await prisma.admin.deleteMany({});
+
+        console.log("🗑️  Deleting GlobalSettings...");
+        await prisma.globalSettings.deleteMany({});
+
         console.log("🗑️  Deleting CreditPackages...");
         await prisma.creditPackage.deleteMany({});
 

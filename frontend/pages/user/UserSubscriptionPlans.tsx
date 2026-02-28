@@ -1,32 +1,152 @@
 import React from 'react';
 import Layout from '../../components/Layout';
 import { Check, X, Crown, Zap, Shield, Trophy } from 'lucide-react';
-import { subscriptions } from '../../services/api';
-import { useToast } from '../../components/ui/use-toast';
+import { subscriptions, chatCredits, users } from '../../services/api';
 
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 export default function UserSubscriptionPlans() {
   const [selectedPlan, setSelectedPlan] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
-  const { toast } = useToast();
+  const [buyingCredit, setBuyingCredit] = React.useState<string | null>(null);
 
   const handleSubscribe = async () => {
-    if (!selectedPlan || selectedPlan.name === 'Enterprise') return;
+    if (!selectedPlan) return;
     setLoading(true);
     try {
-      await subscriptions.subscribeUser(selectedPlan.name);
-      toast({
-        title: "Success",
-        description: `Successfully subscribed to ${selectedPlan.name} plan!`,
-      });
-      setSelectedPlan(null);
+      const res = await loadRazorpayScript();
+      if (!res) throw new Error("Razorpay SDK failed to load. Are you online?");
+
+      // 1. Create Order
+      const orderData = await subscriptions.createOrderUser(selectedPlan.name);
+
+      // 2. Fetch User Profile
+      let userName = "User";
+      let userEmail = "test@example.com";
+      try {
+        const profileResponse = await users.getProfile();
+        if (profileResponse?.name) userName = profileResponse.name;
+        if (profileResponse?.email) userEmail = profileResponse.email;
+      } catch (e) {
+        // fail silently
+      }
+
+      // 3. Init Razorpay
+      const options = {
+        key: orderData.key_id,
+        amount: orderData.amount,
+        currency: "INR",
+        name: "ConsultPro",
+        description: `${selectedPlan.name} Subscription`,
+        order_id: orderData.order.id,
+        handler: async function (response: any) {
+          try {
+            setLoading(true);
+            await subscriptions.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              planName: selectedPlan.name,
+              userType: "USER",
+            });
+            alert(`Payment Successful! You are now on the ${selectedPlan.name} plan! An email receipt has been sent.`);
+            setSelectedPlan(null);
+          } catch (err: any) {
+            alert(`Verification failed: ${err.message}`);
+          } finally {
+            setLoading(false);
+          }
+        },
+        prefill: {
+          name: userName,
+          email: userEmail,
+        },
+        theme: {
+          color: "#2563EB",
+        },
+      };
+
+      const paymentObject = new window.Razorpay(options);
+      paymentObject.open();
+
     } catch (error: any) {
-      toast({
-        title: "Subscription failed",
-        description: error.response?.data?.error || error.message,
-        variant: "destructive",
-      });
+      alert(`Subscription failed: ${error.response?.data?.error || error.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBuyCredits = async (packName: string) => {
+    setBuyingCredit(packName);
+    try {
+      const res = await loadRazorpayScript();
+      if (!res) {
+        alert("Razorpay SDK failed to load. Are you online?");
+        return;
+      }
+
+      const orderData = await chatCredits.createOrder(packName);
+
+      let userName = "User";
+      let userEmail = "user@example.com";
+      try {
+        const profileResponse = await users.getProfile();
+        if (profileResponse?.name) userName = profileResponse.name;
+        if (profileResponse?.email) userEmail = profileResponse.email;
+      } catch (e) { }
+
+      const options = {
+        key: orderData.key_id,
+        amount: orderData.amount * 100, // paise
+        currency: "INR",
+        name: "ConsultPro",
+        description: `Purchase ${packName} `,
+        order_id: orderData.order.id,
+        handler: async function (response: any) {
+          try {
+            setBuyingCredit("verifying");
+            await chatCredits.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              packName: packName,
+            });
+            alert(`Payment Successful! Your limits have been bumped and you are ready to chat!`);
+          } catch (err: any) {
+            alert(`Verification failed: ${err.message}`);
+          } finally {
+            setBuyingCredit(null);
+          }
+        },
+        prefill: {
+          name: userName,
+          email: userEmail,
+        },
+        theme: {
+          color: "#2563EB",
+        },
+      };
+
+      const paymentObject = new window.Razorpay(options);
+      paymentObject.open();
+    } catch (error: any) {
+      alert(`Chat credits purchase failed: ${error.response?.data?.error || error.message}`);
+    } finally {
+      if (buyingCredit !== "verifying") setBuyingCredit(null);
     }
   };
 
@@ -52,7 +172,7 @@ export default function UserSubscriptionPlans() {
     },
     {
       name: 'Starter',
-      price: '₹499/mo',
+      price: '₹199/mo',
       description: 'For individual professionals',
       color: 'blue',
       icon: <Zap size={24} />,
@@ -71,7 +191,7 @@ export default function UserSubscriptionPlans() {
     },
     {
       name: 'Growth',
-      price: '₹999/mo',
+      price: '₹499/mo',
       description: 'For growing teams',
       color: 'green',
       icon: <Trophy size={24} />,
@@ -90,7 +210,7 @@ export default function UserSubscriptionPlans() {
     },
     {
       name: 'Enterprise',
-      price: 'Custom',
+      price: '₹999/mo',
       description: 'For large organizations',
       color: 'purple',
       icon: <Crown size={24} />,
@@ -167,7 +287,7 @@ export default function UserSubscriptionPlans() {
                 {plan.popular && (
                   <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
                     <span className="bg-blue-600 text-white px-4 py-1 rounded-full text-sm font-bold">
-                      MOSTPOPULAR
+                      MOST POPULAR
                     </span>
                   </div>
                 )}
@@ -353,6 +473,13 @@ export default function UserSubscriptionPlans() {
                 <span>30 days validity</span>
               </div>
             </div>
+            <button
+              onClick={() => handleBuyCredits("Mini Pack")}
+              disabled={buyingCredit !== null}
+              className="w-full mt-6 bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition disabled:opacity-60 font-semibold"
+            >
+              {buyingCredit === "Mini Pack" ? "Processing..." : "Buy Mini Pack"}
+            </button>
           </div>
 
           <div className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-shadow relative">
@@ -371,6 +498,13 @@ export default function UserSubscriptionPlans() {
                 <span>45 days validity</span>
               </div>
             </div>
+            <button
+              onClick={() => handleBuyCredits("Starter Pack")}
+              disabled={buyingCredit !== null}
+              className="w-full mt-6 bg-green-600 text-white py-3 rounded-xl hover:bg-green-700 transition disabled:opacity-60 font-semibold"
+            >
+              {buyingCredit === "Starter Pack" ? "Processing..." : "Buy Starter Pack"}
+            </button>
           </div>
 
           <div className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
@@ -386,6 +520,13 @@ export default function UserSubscriptionPlans() {
                 <span>60 days validity</span>
               </div>
             </div>
+            <button
+              onClick={() => handleBuyCredits("Pro Pack")}
+              disabled={buyingCredit !== null}
+              className="w-full mt-6 bg-purple-600 text-white py-3 rounded-xl hover:bg-purple-700 transition disabled:opacity-60 font-semibold"
+            >
+              {buyingCredit === "Pro Pack" ? "Processing..." : "Buy Pro Pack"}
+            </button>
           </div>
         </div>
       </div>
