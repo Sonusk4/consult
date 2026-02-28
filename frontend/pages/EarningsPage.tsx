@@ -96,15 +96,17 @@ const WithdrawModal = ({ open, onClose, maxAmount, onWithdraw }) => {
             Cancel
           </button>
           <button
-            disabled={!amount || Number(amount) > Number(maxAmount)}
             className={`px-6 py-2 rounded-xl font-black shadow-lg text-white ${
               amount && Number(amount) <= Number(maxAmount)
                 ? "bg-blue-600"
                 : "bg-gray-400 cursor-not-allowed"
             }`}
             onClick={() => {
-              onWithdraw(amount);
-              onClose();
+              const withdrawAmount = Number(amount);
+              if (withdrawAmount > 0 && withdrawAmount <= Number(maxAmount)) {
+                onWithdraw(withdrawAmount);
+                onClose();
+              }
             }}
           >
             Withdraw
@@ -341,10 +343,20 @@ const EarningsPage: React.FC = () => {
                 </div>
 
                 <button
-                  className="w-full bg-blue-600 py-4 rounded-2xl font-black text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/50"
-                  onClick={() => setOpenWithdrawModal(true)}
+                  className={`w-full py-4 rounded-2xl font-black text-lg transition-all shadow-xl ${
+                    totalRevenue > 0 
+                      ? "bg-blue-600 hover:bg-blue-700 shadow-blue-900/50 text-white" 
+                      : "bg-gray-400 cursor-not-allowed text-gray-200"
+                  }`}
+                  onClick={() => {
+                    console.log("Withdraw button clicked, totalRevenue:", totalRevenue);
+                    if (totalRevenue > 0) {
+                      setOpenWithdrawModal(true);
+                    }
+                  }}
+                  disabled={totalRevenue <= 0}
                 >
-                  Withdraw ₹{totalRevenue}
+                  {totalRevenue > 0 ? `Withdraw ₹${totalRevenue}` : "No Funds to Withdraw"}
                 </button>
               </div>
 

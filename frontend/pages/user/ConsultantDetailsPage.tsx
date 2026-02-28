@@ -386,8 +386,29 @@ const ConsultantDetailsPage: React.FC = () => {
     );
   }
 
+  // Guard clause - don't render if consultant data is not available
+  if (!consultant) {
+    return (
+      <Layout title="Consultant Not Found">
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <AlertTriangle size={48} className="mx-auto mb-4 text-gray-400" />
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Consultant Not Found</h2>
+            <p className="text-gray-600 mb-6">The consultant you're looking for doesn't exist or has been removed.</p>
+            <button
+              onClick={() => navigate('/search')}
+              className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition"
+            >
+              Back to Search
+            </button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
-    <Layout title={`${consultant.name} - Consultant Details`}>
+    <Layout title={`${consultant?.name || 'Consultant'} - Consultant Details`}>
       {/* Modals */}
       {showConfirmModal && (
         <BookingConfirmationModal
@@ -475,10 +496,10 @@ const ConsultantDetailsPage: React.FC = () => {
               <div className="space-y-2">
                 <div className="flex items-center text-gray-600">
                   <DollarSign size={16} className="mr-2" />
-                  <span className="font-semibold">₹{consultant.hourly_price} / session</span>
+                  <span className="font-semibold">₹{consultant?.hourly_price} / session</span>
                 </div>
 
-                {consultant.languages && (
+                {consultant?.languages && (
                   <div className="flex items-center text-gray-600">
                     <MessageCircle size={16} className="mr-2" />
                     <span>{consultant.languages}</span>
@@ -488,7 +509,7 @@ const ConsultantDetailsPage: React.FC = () => {
 
               {/* Social Links */}
               <div className="flex flex-wrap gap-4 mt-6">
-                {consultant.linkedin_url && (
+                {consultant?.linkedin_url && (
                   <a
                     href={consultant.linkedin_url.startsWith('http') ? consultant.linkedin_url : `https://${consultant.linkedin_url}`}
                     target="_blank"
@@ -499,7 +520,7 @@ const ConsultantDetailsPage: React.FC = () => {
                     <span className="text-sm font-medium">LinkedIn</span>
                   </a>
                 )}
-                {consultant.website_url && (
+                {consultant?.website_url && (
                   <a
                     href={consultant.website_url.startsWith('http') ? consultant.website_url : `https://${consultant.website_url}`}
                     target="_blank"

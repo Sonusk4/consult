@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { Calendar, ChevronLeft, ChevronRight, Plus, Trash2, CheckCircle, Clock, Loader, Check } from 'lucide-react';
 import api from '../services/api';
+import { useToast } from '../context/ToastContext';
 
 interface Slot {
   id: number;
@@ -29,6 +30,7 @@ const AvailabilityPage: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const { addToast } = useToast();
 
   useEffect(() => { fetchSlots(); }, []);
 

@@ -1,8 +1,56 @@
 import React, { useState } from "react";
 import Layout from "../components/Layout";
 import { subscriptions, users } from "../services/api";
-import { X, Check, Star, TrendingUp, MessageCircle, Wallet, ArrowUp, AlertCircle, Crown, Zap, Shield, Sparkles } from "lucide-react";
+import { X, Check, Star, TrendingUp, MessageCircle, Wallet, ArrowUp, AlertCircle, Crown, Zap, Shield, Sparkles, CheckCircle } from "lucide-react";
 import { useToast } from "../context/ToastContext";
+
+// Payment Success Modal Component
+const PaymentSuccessModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  message: string;
+}> = ({ isOpen, onClose, message }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Overlay */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      
+      {/* Modal Content */}
+      <div className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 transform transition-all">
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <X size={20} />
+        </button>
+
+        {/* Success Icon */}
+        <div className="flex justify-center mb-6">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+            <CheckCircle className="w-8 h-8 text-green-600" />
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">Payment Successful!</h2>
+          <p className="text-gray-600 mb-8">{message}</p>
+        </div>
+
+        {/* OK Button */}
+        <button
+          onClick={onClose}
+          className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  );
+};
 
 declare global {
   interface Window {
@@ -175,6 +223,8 @@ const importantTerms = [
 const ConsultantPlans: React.FC = () => {
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [paymentSuccessMessage, setPaymentSuccessMessage] = useState('');
   const { addToast } = useToast();
 
   const handleSubscribe = async () => {
@@ -216,7 +266,8 @@ const ConsultantPlans: React.FC = () => {
               planName: selectedPlan.name,
               userType: "CONSULTANT",
             });
-            addToast(`Payment Successful! You are now on the ${selectedPlan.name} plan! An email receipt has been sent.`, 'success');
+            setPaymentSuccessMessage(`You are now on the ${selectedPlan.name} plan! An email receipt has been sent.`);
+            setShowPaymentSuccess(true);
             setSelectedPlan(null);
           } catch (err: any) {
             addToast(`Verification failed: ${err.message}`, 'error');
@@ -242,6 +293,21 @@ const ConsultantPlans: React.FC = () => {
       setLoading(false);
     }
   };
+
+  function getPayoutExplanation(payout: string): string {
+    switch (payout) {
+      case "T+7":
+        return "Paid 7 days after transaction completion";
+      case "T+5":
+        return "Paid 5 days after transaction completion";
+      case "T+3":
+        return "Paid 3 days after transaction completion";
+      case "Instant":
+        return "Immediate payout after transaction";
+      default:
+        return "Standard payout timing";
+    }
+  }
 
   return (
     <Layout title="Subscription Plans">
@@ -729,7 +795,13 @@ const ConsultantPlans: React.FC = () => {
             </div>
           </div>
         )}
-
+        
+        {/* Payment Success Modal */}
+        <PaymentSuccessModal
+          isOpen={showPaymentSuccess}
+          onClose={() => setShowPaymentSuccess(false)}
+          message={paymentSuccessMessage}
+        />
       </div>
     </Layout>
   );
@@ -741,13 +813,5 @@ const Detail = ({ title, description }: any) => (
     <p className="text-gray-600 whitespace-pre-line">{description}</p>
   </div>
 );
-
-const getPayoutExplanation = (payout: string) => {
-  if (payout === "T+7") return "paid after 7 days from session completion";
-  if (payout === "T+5") return "paid after 5 days from session completion";
-  if (payout === "T+3") return "paid after 3 days from session completion";
-  if (payout === "Instant") return "paid instantly after session completion";
-  return "";
-};
 
 export default ConsultantPlans;
