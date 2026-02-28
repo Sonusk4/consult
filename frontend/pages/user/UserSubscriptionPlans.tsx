@@ -611,7 +611,7 @@ export default function UserSubscriptionPlans() {
         <p className="text-gray-500 text-xs -mt-1">per month</p>
       </div>
 
-      {/* Features - COMPACT */}
+      {/* Features */}
       <div className="px-6 py-6 space-y-4">
         <h3 className="text-lg font-semibold text-gray-900">
           Features & Benefits
@@ -634,7 +634,7 @@ export default function UserSubscriptionPlans() {
         </div>
       </div>
 
-      {/* Footer - COMPACT */}
+      {/* Footer */}
       <div className="px-6 py-4 flex justify-center gap-3 
                       border-t border-gray-100 bg-white/70">
 
