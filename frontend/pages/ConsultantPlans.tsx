@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import Layout from "../components/Layout";
 import { Crown, X } from "lucide-react";
+import { subscriptions } from "../services/api";
+import { useToast } from "../components/ui/use-toast";
 
 const BASE_PLATFORM_FEE = 20;
 const Row = ({ label, value }: any) => (
@@ -58,6 +60,30 @@ const plans = [
 
 const ConsultantPlans: React.FC = () => {
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleSubscribe = async () => {
+    if (!selectedPlan) return;
+    setLoading(true);
+    try {
+      await subscriptions.subscribeConsultant(selectedPlan.name);
+      toast({
+        title: "Success",
+        description: `Successfully subscribed to ${selectedPlan.name} plan!`,
+      });
+      setSelectedPlan(null);
+      // Optionally reload profile
+    } catch (error: any) {
+      toast({
+        title: "Subscription failed",
+        description: error.response?.data?.error || error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Layout title="Subscription Plans">
@@ -69,54 +95,53 @@ const ConsultantPlans: React.FC = () => {
 
         {/* ================= PLAN CARDS ================= */}
         <div className="grid md:grid-cols-4 gap-6">
-  {plans.map((plan) => {
-    const finalFee = BASE_PLATFORM_FEE - plan.reduction;
+          {plans.map((plan) => {
+            const finalFee = BASE_PLATFORM_FEE - plan.reduction;
 
-    return (
-      <div
-        key={plan.name}
-        className={`p-6 rounded-3xl border transition-all duration-300 hover:shadow-xl hover:scale-105
+            return (
+              <div
+                key={plan.name}
+                className={`p-6 rounded-3xl border transition-all duration-300 hover:shadow-xl hover:scale-105
         ${plan.highlight ? "border-blue-600 shadow-md" : "border-gray-200"}`}
-      >
-        {plan.highlight && (
-          <div className="text-center mb-4">
-            <span className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full">
-              Most Popular
-            </span>
-          </div>
-        )}
+              >
+                {plan.highlight && (
+                  <div className="text-center mb-4">
+                    <span className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full">
+                      Most Popular
+                    </span>
+                  </div>
+                )}
 
-        <h2 className="text-xl font-bold text-center mb-6">
-          {plan.name}
-        </h2>
+                <h2 className="text-xl font-bold text-center mb-6">
+                  {plan.name}
+                </h2>
 
-        <div className="space-y-3 text-sm">
+                <div className="space-y-3 text-sm">
 
-          <Row label="Search Ranking" value={plan.ranking} />
-          <Row label="Inbound Chat Limit" value={plan.chat} />
-          <Row label="Badge" value={plan.badge} />
-          <Row label="Featured Placement" value={plan.placement} />
-          <Row label="Platform Fee Reduction" value={`${plan.reduction}%`} />
-          <Row label="Payout Frequency" value={plan.payout} />
-          <Row label="Dedicated Manager" value={plan.manager} />
+                  <Row label="Search Ranking" value={plan.ranking} />
+                  <Row label="Inbound Chat Limit" value={plan.chat} />
+                  <Row label="Badge" value={plan.badge} />
+                  <Row label="Featured Placement" value={plan.placement} />
+                  <Row label="Platform Fee Reduction" value={`${plan.reduction}%`} />
+                  <Row label="Payout Frequency" value={plan.payout} />
+                  <Row label="Dedicated Manager" value={plan.manager} />
 
+                </div>
+
+                <button
+                  onClick={() => setSelectedPlan(plan)}
+                  className={`mt-6 w-full py-3 rounded-xl font-semibold transition
+          ${plan.highlight
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      : "border border-gray-300 hover:bg-gray-100"
+                    }`}
+                >
+                  Choose Plan
+                </button>
+              </div>
+            );
+          })}
         </div>
-
-        <button
-          onClick={() => setSelectedPlan(plan)}
-          className={`mt-6 w-full py-3 rounded-xl font-semibold transition
-          ${
-            plan.highlight
-              ? "bg-blue-600 text-white hover:bg-blue-700"
-              : "border border-gray-300 hover:bg-gray-100"
-          }`}
-        >
-          Choose Plan
-        </button>
-      </div>
-    );
-  })}
-</div>
 
         {/* ================= MODAL ================= */}
         {selectedPlan && (
@@ -161,11 +186,10 @@ const ConsultantPlans: React.FC = () => {
                   description={`Base platform fee is fixed at ${BASE_PLATFORM_FEE}%.
 This plan provides a ${selectedPlan.reduction}% reduction.
 Final platform fee = ${BASE_PLATFORM_FEE - selectedPlan.reduction}%.
-${
-  selectedPlan.reduction === 0
-    ? "Free plan does not include fee reduction."
-    : "Higher plans reduce platform commission."
-}`}
+${selectedPlan.reduction === 0
+                      ? "Free plan does not include fee reduction."
+                      : "Higher plans reduce platform commission."
+                    }`}
                 />
 
                 <Detail
@@ -206,8 +230,12 @@ ${
 
               </div>
 
-              <button className="mt-8 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition">
-                Buy Now
+              <button
+                onClick={handleSubscribe}
+                disabled={loading}
+                className="mt-8 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+              >
+                {loading ? "Processing..." : "Buy Now"}
               </button>
 
             </div>

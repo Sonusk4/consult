@@ -63,6 +63,12 @@ model UserProfile {
   address_proof_url String?        // URL to address proof document (PDF/Image)
   kyc_documents    Json?           // Array of additional KYC documents with metadata
   kyc_submitted_at DateTime?
+  // Subscription Tracking & Chat Limits
+  subscription_plan   String    @default("Free")
+  subscription_expiry DateTime?
+  chat_messages_used  Int       @default(0)
+  last_limit_reset    DateTime  @default(now())
+  
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -90,12 +96,17 @@ model Consultant {
   kyc_status      String          @default("PENDING") // PENDING, SUBMITTED, APPROVED, REJECTED
   kyc_documents   Json?           // Store KYC document URLs and metadata
   
-  // Certificate Fields
+  // Certificates
   certificates    Json?           // Store certificate URLs and metadata
 
-  // Commission Settings (set by admin only, not exposed to consultant or user)
-  consultant_commission_pct  Float?   // % deducted from consultant's payout (e.g. 15 means admin keeps 15%)
-  user_commission_pct        Float?   // % markup added to user's price (e.g. 10 means user pays +10%)
+  // Single Overrides for Commissions (optional)
+  consultant_commission_pct  Float?   // Override % deducted from consultant payout
+  user_commission_pct        Float?   // Override % added to user's price markup
+
+  // Subscription Tracking & Subscription-driven Fee override
+  subscription_plan   String    @default("Free")
+  subscription_expiry DateTime?
+  platform_fee_pct    Float     @default(20)
 
   availabilitySlots Availability[]
   bookings       Booking[]
@@ -309,4 +320,10 @@ model ConsultantPayout {
   created_at   DateTime   @default(now())
   updated_at   DateTime   @updatedAt
   consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+}
+
+model GlobalSettings {
+  id                        Int    @id @default(1)
+  default_consultant_comm   Float  @default(20)
+  default_user_comm         Float  @default(10)
 }

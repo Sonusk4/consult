@@ -2921,7 +2921,7 @@ app.post(
  * Update regular user's name and phone (Bug 4 fix)
  */
 app.put("/user/profile", verifyFirebaseToken, async (req, res) => {
-  const { name, phone, bio, location } = req.body;
+  const { name, phone, bio, location, designation } = req.body;
 
   try {
     // Find user by firebase_uid or id (dev mode)
@@ -2951,11 +2951,13 @@ app.put("/user/profile", verifyFirebaseToken, async (req, res) => {
       update: {
         bio: bio !== undefined ? bio : undefined,
         location: location !== undefined ? location : undefined,
+        designation: designation !== undefined ? designation : undefined,
       },
       create: {
         userId: user.id,
         bio: bio || null,
         location: location || null,
+        designation: designation || null,
       },
     });
 
@@ -2968,6 +2970,7 @@ app.put("/user/profile", verifyFirebaseToken, async (req, res) => {
       role: updatedUser.role,
       bio: profile.bio,
       location: profile.location,
+      designation: profile.designation,
       avatar: profile.avatar,
     });
   } catch (error) {
@@ -3020,6 +3023,7 @@ app.get("/user/profile", verifyFirebaseToken, async (req, res) => {
       avatar: user.profile?.avatar || null,
       bio: user.profile?.bio || null,
       location: user.profile?.location || null,
+      designation: user.profile?.designation || null,
       languages: user.profile?.languages || null,
       wallet: user.wallet,
       created_at: user.created_at,
@@ -4188,7 +4192,15 @@ app.post("/wallet/add-credits", verifyFirebaseToken, async (req, res) => {
       }
     }
 
-    const totalCredits = amount + bonusAmount;
+    // Calculate subscription plan bonus
+    const profile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
+    let subBonusPercent = 0;
+    if (profile?.subscription_plan === "Starter") subBonusPercent = 0.02;
+    else if (profile?.subscription_plan === "Growth") subBonusPercent = 0.05;
+    else if (profile?.subscription_plan === "Enterprise") subBonusPercent = 0.10;
+
+    const subBonusAmount = amount * subBonusPercent;
+    const totalCredits = amount + bonusAmount + subBonusAmount;
 
     // Update wallet balance
     const updatedWallet = await prisma.wallet.update({
@@ -4204,8 +4216,7 @@ app.post("/wallet/add-credits", verifyFirebaseToken, async (req, res) => {
         userId: user.id,
         type: "CREDIT",
         amount: totalCredits,
-        description: `Added ₹${amount} credits${bonusAmount > 0 ? ` with ₹${bonusAmount} bonus` : ""
-          }`,
+        description: `Added ₹${amount} credits${bonusAmount > 0 ? ` with ₹${bonusAmount} package bonus` : ""}${subBonusAmount > 0 ? ` and ₹${subBonusAmount} subscription bonus` : ""}`,
         payment_method: "CREDIT_CARD",
         status: "SUCCESS",
       },
@@ -4305,12 +4316,35 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
     }
 
     // Calculate commission and final prices
-    const consultantCommPct = consultant.consultant_commission_pct || 10; // Default 10% if not set
-    const userMarkupPct = consultant.user_commission_pct || 0; // Default 0% if not set
+    const basePrice = consultant.hourly_price; // Keep this line
+    const globalSettings = await prisma.globalSettings.findUnique({ where: { id: 1 } });
+    const defaultConsultantComm = globalSettings?.default_consultant_comm ?? 20;
+    const defaultUserComm = globalSettings?.default_user_comm ?? 10;
 
-    const basePrice = consultant.hourly_price;
-    const userPrice = basePrice * (1 + userMarkupPct / 100);
-    const consultantNet = basePrice * (1 - consultantCommPct / 100);
+    const consultantCommPct = consultant.consultant_commission_pct ?? defaultConsultantComm;
+    const userMarkupPct = consultant.user_commission_pct ?? defaultUserComm;
+
+    // Apply User Subscription Discounts
+    const userProfile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
+    const userPlan = userProfile?.subscription_plan || "Free";
+    let userDiscountPct = 0;
+    if (userPlan === "Starter") userDiscountPct = 10;
+    else if (userPlan === "Growth") userDiscountPct = 15;
+    else if (userPlan === "Enterprise") userDiscountPct = 50;
+
+    const finalUserMarkupPct = Math.max(0, userMarkupPct - (userMarkupPct * (userDiscountPct / 100)));
+    const userPrice = basePrice * (1 + finalUserMarkupPct / 100);
+
+    // Apply Consultant Subscription Discounts
+    const consultantPlan = consultant.subscription_plan || "Free";
+    let consultantDiscountPct = 0;
+    if (consultantPlan === "Professional") consultantDiscountPct = 2; // Flat 2% off
+    else if (consultantPlan === "Premium") consultantDiscountPct = 5;
+    else if (consultantPlan === "Elite") consultantDiscountPct = 10;
+
+    const finalConsultantCommPct = Math.max(0, consultantCommPct - consultantDiscountPct);
+    const consultantNet = basePrice * (1 - finalConsultantCommPct / 100);
+
     const platformRev = userPrice - consultantNet;
     const userMarkupFee = userPrice - basePrice;
 
@@ -4757,6 +4791,33 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
       return res.status(403).json({ error: "Not authorized to send messages" });
     }
 
+    // Enforce Monthly Chat Limits for Clients based on Subscription Plan
+    if (isClient) {
+      const profile = await prisma.userProfile.findUnique({ where: { userId: sender.id } });
+      const plan = profile?.subscription_plan || "Free";
+      let chatLimit = 5;
+      if (plan === "Starter") chatLimit = 20;
+      else if (plan === "Growth") chatLimit = 50;
+      else if (plan === "Enterprise") chatLimit = 100;
+
+      let used = profile?.chat_messages_used || 0;
+      let lastReset = profile?.last_limit_reset || new Date();
+      // Reset if older than 30 days
+      if ((new Date() - new Date(lastReset)) > 30 * 24 * 60 * 60 * 1000) {
+        used = 0;
+        lastReset = new Date();
+      }
+
+      if (used >= chatLimit) {
+        return res.status(403).json({ error: `You have reached your monthly limit of ${chatLimit} messages on the ${plan} plan. Please upgrade to continue chatting.` });
+      }
+
+      await prisma.userProfile.update({
+        where: { userId: sender.id },
+        data: { chat_messages_used: used + 1, last_limit_reset: lastReset }
+      });
+    }
+
     // Create message
     const message = await prisma.message.create({
       data: {
@@ -5087,7 +5148,24 @@ io.on("connection", (socket) => {
         }
       }
 
-      // 3️⃣ Save message with user info - NO CHANGE
+      // ==== User Subscription Chat Limit Check ====
+      // Only throttle if the sender is the User (not Consultant)
+      if (user.role === "USER" && booking.userId === user.id) {
+        const userProfile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
+        const plan = userProfile?.subscription_plan || "Free";
+        let maxMessages = 5;
+        if (plan === "Starter") maxMessages = 20;
+        else if (plan === "Growth") maxMessages = 50;
+        else if (plan === "Enterprise") maxMessages = 999999;
+
+        if (userProfile && userProfile.chat_messages_used >= maxMessages) {
+          return socket.emit("chat-error", {
+            message: "Monthly chat limit reached for your plan. Please upgrade to continue.",
+          });
+        }
+      }
+
+      // 3️⃣ Save message with user info
       const message = await prisma.message.create({
         data: {
           bookingId: id,
@@ -5095,6 +5173,14 @@ io.on("connection", (socket) => {
           content,
         },
       });
+
+      // Increment User's monthly chat usage if sender is the User
+      if (user.role === "USER" && booking.userId === user.id) {
+        await prisma.userProfile.update({
+          where: { userId: user.id },
+          data: { chat_messages_used: { increment: 1 } }
+        });
+      }
 
       // 4️⃣ 👇 MODIFY THIS - add role to sender info
       const messageWithSender = {
@@ -7543,11 +7629,35 @@ app.post("/bookings/slot-book", verifyFirebaseToken, async (req, res) => {
     if (!slot) return res.status(400).json({ error: "This slot is no longer available" });
 
     const basePrice = consultant.hourly_price || 0;
-    const consultantCommPct = consultant.consultant_commission_pct || 10;
-    const userMarkupPct = consultant.user_commission_pct || 0;
+    // Calculate commission and final prices from Global Settings -> Overrides -> Subscriptions
+    const globalSettings = await prisma.globalSettings.findUnique({ where: { id: 1 } });
+    const defaultConsultantComm = globalSettings?.default_consultant_comm ?? 20;
+    const defaultUserComm = globalSettings?.default_user_comm ?? 10;
 
-    const userPrice = basePrice * (1 + userMarkupPct / 100);
-    const consultantNet = basePrice * (1 - consultantCommPct / 100);
+    const consultantCommPct = consultant.consultant_commission_pct ?? defaultConsultantComm;
+    const userMarkupPct = consultant.user_commission_pct ?? defaultUserComm;
+
+    // Apply User Subscription Discounts
+    const userProfile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
+    const userPlan = userProfile?.subscription_plan || "Free";
+    let userDiscountPct = 0;
+    if (userPlan === "Starter") userDiscountPct = 10;
+    else if (userPlan === "Growth") userDiscountPct = 15;
+    else if (userPlan === "Enterprise") userDiscountPct = 50;
+
+    const finalUserMarkupPct = Math.max(0, userMarkupPct - (userMarkupPct * (userDiscountPct / 100)));
+    const userPrice = basePrice * (1 + finalUserMarkupPct / 100);
+
+    // Apply Consultant Subscription Discounts
+    const consultantPlan = consultant.subscription_plan || "Free";
+    let consultantDiscountPct = 0;
+    if (consultantPlan === "Professional") consultantDiscountPct = 2; // Flat 2% off
+    else if (consultantPlan === "Premium") consultantDiscountPct = 5;
+    else if (consultantPlan === "Elite") consultantDiscountPct = 10;
+
+    const finalConsultantCommPct = Math.max(0, consultantCommPct - consultantDiscountPct);
+    const consultantNet = basePrice * (1 - finalConsultantCommPct / 100);
+
     const platformRev = userPrice - consultantNet;
     const userMarkupFee = userPrice - basePrice;
 
@@ -7597,7 +7707,129 @@ app.post("/bookings/slot-book", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-/* ============================================================ */
+/* ================= GLOBAL SETTINGS ================= */
+
+// Automatically seed global settings if they don't exist
+const seedGlobalSettings = async () => {
+  try {
+    await prisma.globalSettings.upsert({
+      where: { id: 1 },
+      update: {},
+      create: {
+        id: 1,
+        default_consultant_comm: 20,
+        default_user_comm: 10,
+      }
+    });
+    console.log("✅ GlobalSettings seeded");
+  } catch (error) {
+    console.error("❌ Failed to seed GlobalSettings", error.message);
+  }
+};
+seedGlobalSettings();
+
+app.get("/admin/settings", verifyAdminToken, async (req, res) => {
+  try {
+    let settings = await prisma.globalSettings.findUnique({ where: { id: 1 } });
+    if (!settings) {
+      settings = await prisma.globalSettings.create({
+        data: { id: 1, default_consultant_comm: 20, default_user_comm: 10 }
+      });
+    }
+    res.json(settings);
+  } catch (error) {
+    console.error("Get Global Settings Error:", error.message);
+    res.status(500).json({ error: "Failed to fetch settings" });
+  }
+});
+
+app.put("/admin/settings", verifyAdminToken, async (req, res) => {
+  try {
+    const { default_consultant_comm, default_user_comm } = req.body;
+    const settings = await prisma.globalSettings.upsert({
+      where: { id: 1 },
+      update: { default_consultant_comm, default_user_comm },
+      create: { id: 1, default_consultant_comm, default_user_comm }
+    });
+    res.json({ message: "Settings updated successfully", settings });
+  } catch (error) {
+    console.error("Update Global Settings Error:", error.message);
+    res.status(500).json({ error: "Failed to update settings" });
+  }
+});
+
+/* ================= SUBSCRIPTION PLANS ================= */
+
+app.post("/user/subscribe", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { planName } = req.body;
+    let user = await prisma.user.findFirst({ where: { firebase_uid: req.user.firebase_uid } });
+    if (!user && req.user.id) {
+      user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    }
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Mocking Razorpay payment verification internally (instant success)
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+    const profile = await prisma.userProfile.upsert({
+      where: { userId: user.id },
+      update: {
+        subscription_plan: planName,
+        subscription_expiry: thirtyDaysFromNow,
+        chat_messages_used: 0,
+        last_limit_reset: new Date()
+      },
+      create: {
+        userId: user.id,
+        subscription_plan: planName,
+        subscription_expiry: thirtyDaysFromNow
+      }
+    });
+
+    res.json({ message: `Successfully subscribed to ${planName} plan`, profile });
+  } catch (error) {
+    console.error("User Subscribe Error:", error.message);
+    res.status(500).json({ error: "Failed to subscribe" });
+  }
+});
+
+app.post("/consultant/subscribe", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { planName } = req.body;
+    let user = await prisma.user.findFirst({ where: { firebase_uid: req.user.firebase_uid } });
+    if (!user && req.user.id) {
+      user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    }
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const consultant = await prisma.consultant.findUnique({ where: { userId: user.id } });
+    if (!consultant) return res.status(404).json({ error: "Consultant profile not found" });
+
+    let platform_fee_pct = 20; // Default Base
+    if (planName === "Professional") platform_fee_pct = 18;
+    else if (planName === "Premium") platform_fee_pct = 15;
+    else if (planName === "Elite") platform_fee_pct = 10;
+
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+    const updated = await prisma.consultant.update({
+      where: { id: consultant.id },
+      data: {
+        subscription_plan: planName,
+        subscription_expiry: thirtyDaysFromNow,
+        platform_fee_pct
+      }
+    });
+
+    res.json({ message: `Successfully subscribed to ${planName} plan`, consultant: updated });
+  } catch (error) {
+    console.error("Consultant Subscribe Error:", error.message);
+    res.status(500).json({ error: "Failed to subscribe" });
+  }
+});
 
 const SERVER_PORT = process.env.PORT || 5000;
 server.listen(SERVER_PORT, () => {

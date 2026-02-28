@@ -437,6 +437,21 @@ export const wallet = {
 };
 
 /* ========================================================= */
+/* ===================== SUBSCRIPTIONS ===================== */
+/* ========================================================= */
+
+export const subscriptions = {
+  subscribeUser: async (planName: string) => {
+    const response = await api.post("/user/subscribe", { planName });
+    return response.data;
+  },
+  subscribeConsultant: async (planName: string) => {
+    const response = await api.post("/consultant/subscribe", { planName });
+    return response.data;
+  },
+};
+
+/* ========================================================= */
 /* ======================== BOOKINGS ======================== */
 /* ========================================================= */
 

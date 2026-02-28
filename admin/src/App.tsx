@@ -22,6 +22,7 @@ import UserDetailPage from "./pages/UserDetailPage";
 import ConsultantsListPage from "./pages/ConsultantsListPage";
 import ConsultantDetailPage from "./pages/ConsultantDetailPage";
 import EnterpriseDetailPage from "./pages/EnterpriseDetailPage";
+import SettingsPage from "./pages/SettingsPage";
 import { adminAuth } from "./services/api";
 
 const queryClient = new QueryClient();
@@ -99,6 +100,7 @@ const AppContent = () => {
         <Route path="kyc" element={<KYCPage />} />
         <Route path="documents" element={<DocumentsPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
         <Route path="users" element={<UsersListPage />} />
         <Route path="users/:id" element={<UserDetailPage />} />

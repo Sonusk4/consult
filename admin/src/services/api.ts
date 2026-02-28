@@ -164,6 +164,18 @@ export const dashboard = {
   },
 };
 
+/* ================= GLOBAL SETTINGS ================= */
+export const settings = {
+  get: async () => {
+    const response = await api.get("/admin/settings");
+    return response.data;
+  },
+  update: async (data: { default_consultant_comm: number; default_user_comm: number }) => {
+    const response = await api.put("/admin/settings", data);
+    return response.data;
+  },
+};
+
 /* ================= CONSULTANTS ================= */
 
 export const consultants = {

@@ -1,9 +1,34 @@
 import React from 'react';
 import Layout from '../../components/Layout';
 import { Check, X, Crown, Zap, Shield, Trophy } from 'lucide-react';
+import { subscriptions } from '../../services/api';
+import { useToast } from '../../components/ui/use-toast';
 
 export default function UserSubscriptionPlans() {
   const [selectedPlan, setSelectedPlan] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(false);
+  const { toast } = useToast();
+
+  const handleSubscribe = async () => {
+    if (!selectedPlan || selectedPlan.name === 'Enterprise') return;
+    setLoading(true);
+    try {
+      await subscriptions.subscribeUser(selectedPlan.name);
+      toast({
+        title: "Success",
+        description: `Successfully subscribed to ${selectedPlan.name} plan!`,
+      });
+      setSelectedPlan(null);
+    } catch (error: any) {
+      toast({
+        title: "Subscription failed",
+        description: error.response?.data?.error || error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const plans = [
     {
@@ -278,7 +303,7 @@ export default function UserSubscriptionPlans() {
             <h3 className="text-2xl font-bold text-gray-900 mb-3">When you exhaust your monthly chat limit</h3>
             <p className="text-lg text-gray-700 font-medium">"You've reached your monthly limit. Continue instantly using Chat Credits."</p>
           </div>
-          
+
           <div className="grid md:grid-cols-3 gap-6 mb-8">
             <div className="bg-white rounded-xl p-6 text-center border border-gray-200">
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -287,7 +312,7 @@ export default function UserSubscriptionPlans() {
               <h4 className="font-bold text-gray-900 mb-2">Upgrade Plan</h4>
               <p className="text-sm text-gray-600">Better value with higher limits</p>
             </div>
-            
+
             <div className="bg-white rounded-xl p-6 text-center border border-gray-200">
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-green-600 font-bold text-lg">💬</span>
@@ -295,7 +320,7 @@ export default function UserSubscriptionPlans() {
               <h4 className="font-bold text-gray-900 mb-2">Buy Chat Credits</h4>
               <p className="text-sm text-gray-600">Quick fix to continue chatting</p>
             </div>
-            
+
             <div className="bg-white rounded-xl p-6 text-center border border-gray-200">
               <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-purple-600 font-bold text-lg">💰</span>
@@ -443,10 +468,17 @@ export default function UserSubscriptionPlans() {
                 Close
               </button>
 
-              <button className="px-8 py-3 rounded-xl bg-blue-600 text-white">
-                {selectedPlan.name === 'Enterprise'
-                  ? 'Contact Sales'
-                  : `Choose ${selectedPlan.name}`}
+              <button
+                disabled={loading}
+                onClick={handleSubscribe}
+                className="px-8 py-3 rounded-xl bg-blue-600 text-white disabled:opacity-50"
+              >
+                {loading
+                  ? "Processing..."
+                  : selectedPlan.name === 'Enterprise'
+                    ? 'Contact Sales'
+                    : `Choose ${selectedPlan.name}`
+                }
               </button>
             </div>
 

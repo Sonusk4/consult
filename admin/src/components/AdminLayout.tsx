@@ -10,7 +10,9 @@ import {
   FileCheck,
   User,
   ArrowLeftRight,
+  ArrowLeftRight,
   UserCheck,
+  Settings,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { adminAuth } from "../services/api";
@@ -33,6 +35,7 @@ const navItems = [
   { to: "/admin/kyc", icon: ShieldCheck, label: "KYC" },
   { to: "/admin/documents", icon: FileCheck, label: "Documents" },
   { to: "/admin/profile", icon: User, label: "Profile" },
+  { to: "/admin/settings", icon: Settings, label: "Global Settings" },
 ];
 
 const AdminLayout: React.FC = () => {
