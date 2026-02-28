@@ -142,42 +142,79 @@ const CompanyProfile: React.FC = () => {
       <div className="max-w-6xl mx-auto space-y-8 pb-12">
 
         {/* HEADER */}
-        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center">
-              <Building2 size={32} className="text-blue-600" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">{companyData.name || "Company Profile"}</h1>
-              <p className="text-gray-500">Manage enterprise information and verification</p>
-            </div>
-          </div>
+        {/* HEADER WITH LOGO CENTERED */}
+        <div className="bg-white rounded-3xl p-10 border border-gray-100 shadow-sm text-center relative">
 
-          {!isEditing ? (
+          {/* EDIT BUTTON TOP RIGHT */}
+          {!isEditing && (
             <button
               onClick={() => setIsEditing(true)}
-              className="flex items-center gap-2 text-blue-600 font-semibold hover:text-blue-700 transition"
+              className="absolute top-6 right-6 flex items-center gap-2 text-blue-600 font-semibold hover:text-blue-700 transition"
             >
-              <Pencil size={18} /> Edit Profile
+              <Pencil size={18} /> Edit
             </button>
-          ) : (
-            <div className="flex gap-3">
+          )}
+
+          {/* SAVE / CANCEL BUTTONS */}
+          {isEditing && (
+            <div className="absolute top-6 right-6 flex gap-3">
               <button
                 onClick={handleCancel}
                 disabled={saving}
-                className="px-5 py-2 rounded-xl border-2 border-gray-300 text-gray-700 font-medium hover:border-gray-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="bg-blue-600 text-white px-6 py-2 rounded-xl flex items-center gap-2 font-medium hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="bg-blue-600 text-white px-5 py-2 rounded-xl text-sm"
               >
-                {saving ? "Saving..." : "Save Changes"}
+                {saving ? "Saving..." : "Save"}
               </button>
             </div>
           )}
+
+          {/* COMPANY LOGO */}
+          <div className="flex flex-col items-center space-y-4">
+
+            <div className="w-28 h-28 rounded-3xl bg-blue-50 border border-blue-100 overflow-hidden flex items-center justify-center">
+              {companyData.logoUrl ? (
+                <img
+                  src={companyData.logoUrl}
+                  alt="Company Logo"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-3xl font-bold text-blue-600">
+                  {companyData.name?.charAt(0) || "C"}
+                </span>
+              )}
+            </div>
+
+            {/* Upload button visible only in edit mode */}
+            {isEditing && (
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) =>
+                  setCompanyData({
+                    ...companyData,
+                    logo: e.target.files ? e.target.files[0] : null,
+                  })
+                }
+              />
+            )}
+
+            <h1 className="text-3xl font-bold text-gray-900">
+              {companyData.name || "Company Profile"}
+            </h1>
+
+            <p className="text-gray-500">
+              Manage enterprise information and verification
+            </p>
+
+          </div>
         </div>
 
         {/* COMPANY INFORMATION */}
@@ -265,30 +302,7 @@ const CompanyProfile: React.FC = () => {
             </div>
           </div>
 
-          <div>
-            <label className="text-sm font-semibold text-gray-700 block mb-2">Company Logo</label>
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center">
-                {companyData.logoUrl ? (
-                  <img src={companyData.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-gray-400 font-bold">{companyData.name?.charAt(0) || "C"}</span>
-                )}
-              </div>
-              {isEditing && (
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) =>
-                    setCompanyData({
-                      ...companyData,
-                      logo: e.target.files ? e.target.files[0] : null,
-                    })
-                  }
-                />
-              )}
-            </div>
-          </div>
+          
         </div>
 
         {/* BUSINESS KYC DOCUMENTS */}
