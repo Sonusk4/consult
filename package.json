@@ -11,12 +11,22 @@
     "start": "cd backend-new && npm start",
     "start:backend": "cd backend-new && npm start"
   },
-  "keywords": ["consultancy", "platform", "react", "nodejs", "video-calls", "booking"],
+  "keywords": [
+    "consultancy",
+    "platform",
+    "react",
+    "nodejs",
+    "video-calls",
+    "booking"
+  ],
   "author": "ConsultaPro Team",
   "license": "MIT",
   "dependencies": {
+    "axios": "^1.13.5",
     "concurrently": "^8.2.2"
   },
-  "devDependencies": {},
-  "workspaces": ["frontend", "backend-new"]
+  "workspaces": [
+    "frontend",
+    "backend-new"
+  ]
 }

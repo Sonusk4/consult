@@ -198,6 +198,11 @@ export const SIDEBAR_LINKS = {
       path: "/consultant/profile",
     },
     {
+      label:"Plans & Pricing",
+      icon: <CreditCard size={20} />,
+      path: "/consultant/plans",
+    },
+    {
       label: "Reviews",
       icon: <TrendingUp size={20} />,
       path: "/consultant/reviews",

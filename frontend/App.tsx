@@ -33,6 +33,7 @@ import AvailabilityPage from "./pages/AvailabilityPage";
 import EarningsPage from "./pages/EarningsPage";
 import ProfilePage from "./pages/ProfilePage";
 import ReviewsPage from "./pages/ReviewsPage";
+import ConsultantPlans from "./pages/ConsultantPlans";
 
 /* ENTERPRISE ADMIN */
 import EnterpriseDashboard from "./pages/enterprise/EnterpriseDashboard";
@@ -252,6 +253,10 @@ const App: React.FC = () => {
               element={
                 isConsultant ? <EarningsPage /> : <Navigate to="/auth" />
               }
+            />  
+            <Route
+              path="/consultant/plans"
+              element={<ConsultantPlans />}
             />
             <Route
               path="/consultant/profile"

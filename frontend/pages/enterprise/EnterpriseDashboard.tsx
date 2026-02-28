@@ -8,17 +8,37 @@ import {
   Users,
   Activity,
   Loader,
+  Building2,
 } from "lucide-react";
+import { useToast } from "../../context/ToastContext";
 
 const EnterpriseDashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { addToast } = useToast();
+
+  const [loading, setLoading] = useState(true);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  const [companyData, setCompanyData] = useState({
+  company_name: "",
+  registration_no: "",
+  gst_number: "",
+  company_website: "",
+  services_offered: "",
+  company_description: "",
+  representative_name: "",
+  representative_email: "",
+  representative_phone: "",
+
+  logo: null as File | null,
+  logoPreview: "",
+  kycDocs: [] as File[],
+});
 
   const [sessions, setSessions] = useState<any[]>([]);
   const [team, setTeam] = useState<any[]>([]);
   const [wallet, setWallet] = useState(0);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     init();
@@ -26,30 +46,90 @@ const EnterpriseDashboard: React.FC = () => {
 
   const init = async () => {
     try {
+      await fetchProfile();
       await Promise.all([
         fetchSessions(),
         fetchTeam(),
         fetchWallet(),
-        fetchNotifications(),
       ]);
     } finally {
       setLoading(false);
     }
   };
 
-  /* ================= SAFE FETCH ================= */
+  /* ================= FETCH PROFILE ================= */
+
+  const fetchProfile = async () => {
+    try {
+      const res = await api.get("/enterprise/settings");
+      const data = res.data || {};
+
+      if (data.company_name) {
+        setProfileLoaded(true);
+      }
+
+      setCompanyData({
+  company_name: data.company_name || "",
+  registration_no: data.registration_no || "",
+  gst_number: data.gst_number || "",
+  company_website: data.company_website || "",
+  services_offered: data.services_offered || "",
+  company_description:
+    data.company_description || data.description || "",
+  representative_name: data.representative_name || "",
+  representative_email: data.representative_email || "",
+  representative_phone: data.representative_phone || "",
+
+  // 🔥 NEW FIELDS
+  logo: null, // file object should not come from backend
+  logoPreview: data.logo || "", // existing logo URL from backend
+  kycDocs: [], // uploaded files only (not from backend)
+});
+    } catch {
+      setProfileLoaded(false);
+    }
+  };
+
+  /* ================= SAVE PROFILE ================= */
+
+  const handleSaveProfile = async () => {
+  try {
+    const formData = new FormData();
+
+    Object.entries(companyData).forEach(([key, value]) => {
+      if (
+        key !== "logo" &&
+        key !== "logoPreview" &&
+        key !== "kycDocs"
+      ) {
+        formData.append(key, value as string);
+      }
+    });
+
+    if (companyData.logo) {
+      formData.append("logo", companyData.logo);
+    }
+
+    companyData.kycDocs.forEach((doc) =>
+      formData.append("documents", doc)
+    );
+
+    await api.put("/enterprise/settings", formData);
+
+    addToast("Company profile created", "success");
+    setProfileLoaded(true);
+  } catch {
+    addToast("Failed to save profile", "error");
+  }
+};
+
+  /* ================= FETCH OTHER DATA ================= */
 
   const fetchSessions = async () => {
     try {
       const res = await api.get("/enterprise/bookings");
-
-      const data = Array.isArray(res.data)
-        ? res.data
-        : res.data?.bookings || res.data?.data || [];
-
-      setSessions(data);
-    } catch (err) {
-      console.error("Sessions fetch failed");
+      setSessions(Array.isArray(res.data) ? res.data : []);
+    } catch {
       setSessions([]);
     }
   };
@@ -57,12 +137,7 @@ const EnterpriseDashboard: React.FC = () => {
   const fetchTeam = async () => {
     try {
       const res = await api.get("/enterprise/team");
-
-      const data = Array.isArray(res.data)
-        ? res.data
-        : res.data?.team || [];
-
-      setTeam(data);
+      setTeam(Array.isArray(res.data) ? res.data : []);
     } catch {
       setTeam([]);
     }
@@ -77,33 +152,9 @@ const EnterpriseDashboard: React.FC = () => {
     }
   };
 
-  const fetchNotifications = async () => {
-    try {
-      // TODO: Implement notifications endpoint
-      // const res = await api.get("/notifications");
-      // const data = Array.isArray(res.data)
-      //   ? res.data
-      //   : res.data?.notifications || [];
-      // setNotifications(data.slice(0, 3));
-      setNotifications([]);
-    } catch {
-      setNotifications([]);
-    }
-  };
+  /* ================= CALCULATIONS ================= */
 
-  /* ================= SAFE CALCULATIONS ================= */
-
-  const safeSessions = Array.isArray(sessions) ? sessions : [];
-
-  const liveSession = safeSessions.find(
-    (s) => s?.status === "LIVE"
-  );
-
-  const upcomingSessions = safeSessions
-    .filter((s) => s?.status === "CONFIRMED")
-    .slice(0, 3);
-
-  const completedSessions = safeSessions.filter(
+  const completedSessions = sessions.filter(
     (s) => s?.status === "COMPLETED"
   );
 
@@ -115,30 +166,11 @@ const EnterpriseDashboard: React.FC = () => {
   }, [completedSessions]);
 
   const completionRate = useMemo(() => {
-    if (!safeSessions.length) return 0;
+    if (!sessions.length) return 0;
     return Math.round(
-      (completedSessions.length / safeSessions.length) * 100
+      (completedSessions.length / sessions.length) * 100
     );
-  }, [safeSessions, completedSessions]);
-
-  const totalSessions = safeSessions.length;
-
-  const profileCompletion = useMemo(() => {
-    if (!user) return 0;
-
-    const fields = [
-      user?.name,
-      user?.email,
-      user?.phone,
-      user?.profile_pic,
-      user?.enterpriseId,
-    ];
-
-    const filled = fields.filter(Boolean).length;
-    return Math.round((filled / fields.length) * 100);
-  }, [user]);
-
-  /* ================= LOADING ================= */
+  }, [sessions, completedSessions]);
 
   if (loading) {
     return (
@@ -150,55 +182,228 @@ const EnterpriseDashboard: React.FC = () => {
     );
   }
 
+  /* ========================================================= */
+  /* ================= ONBOARDING FLOW ======================= */
+  /* ========================================================= */
+
+ if (!profileLoaded) {
   return (
-    <Layout title="Enterprise Dashboard">
-      <div className="max-w-7xl mx-auto space-y-10">
+    <Layout title="Enterprise Onboarding">
+      <div className="max-w-3xl mx-auto py-12">
+        <div className="bg-white p-10 rounded-3xl shadow-sm space-y-8">
 
-        {/* ================= LIVE SESSION ================= */}
-        {liveSession && (
-          <div className="bg-red-600 text-white p-8 rounded-3xl flex justify-between items-center shadow-lg">
-            <div>
-              <p className="text-xs bg-white/20 px-3 py-1 rounded-full inline-block mb-2">
-                LIVE SESSION
-              </p>
-              <h2 className="text-2xl font-bold">
-                Client: {liveSession?.client?.name || "Client"}
-              </h2>
-              <p>{liveSession?.domain || ""}</p>
+          {/* ================= LOGO TOP CENTER ================= */}
+          <div className="flex flex-col items-center space-y-4">
+
+            <div className="w-24 h-24 rounded-3xl bg-blue-50 border border-blue-100 flex items-center justify-center overflow-hidden">
+              {companyData.logoPreview ? (
+                <img
+                  src={companyData.logoPreview}
+                  alt="Company Logo"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-3xl font-bold text-blue-600">
+                  {companyData.company_name?.charAt(0) || "C"}
+                </span>
+              )}
             </div>
-            <button className="bg-white text-red-600 px-6 py-2 rounded-xl font-semibold">
-              Join Now →
-            </button>
-          </div>
-        )}
 
-        {/* ================= WELCOME ================= */}
-        <div className="bg-white p-8 rounded-3xl border shadow-sm flex justify-between items-center">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setCompanyData({
+                    ...companyData,
+                    logo: file,
+                    logoPreview: URL.createObjectURL(file),
+                  });
+                }
+              }}
+              className="text-sm"
+            />
+
+            <h2 className="text-2xl font-bold text-center">
+              Complete Company Profile
+            </h2>
+          </div>
+
+          {/* ================= COMPANY DETAILS ================= */}
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <input
+              placeholder="Company Name"
+              value={companyData.company_name}
+              onChange={(e) =>
+                setCompanyData({
+                  ...companyData,
+                  company_name: e.target.value,
+                })
+              }
+              className="border rounded-xl px-4 py-3"
+            />
+
+            <input
+              placeholder="Registration Number"
+              value={companyData.registration_no}
+              onChange={(e) =>
+                setCompanyData({
+                  ...companyData,
+                  registration_no: e.target.value,
+                })
+              }
+              className="border rounded-xl px-4 py-3"
+            />
+
+            <input
+              placeholder="GST Number"
+              value={companyData.gst_number}
+              onChange={(e) =>
+                setCompanyData({
+                  ...companyData,
+                  gst_number: e.target.value,
+                })
+              }
+              className="border rounded-xl px-4 py-3"
+            />
+
+            <input
+              placeholder="Company Website"
+              value={companyData.company_website}
+              onChange={(e) =>
+                setCompanyData({
+                  ...companyData,
+                  company_website: e.target.value,
+                })
+              }
+              className="border rounded-xl px-4 py-3"
+            />
+          </div>
+
+          <textarea
+            placeholder="Services Offered"
+            value={companyData.services_offered}
+            onChange={(e) =>
+              setCompanyData({
+                ...companyData,
+                services_offered: e.target.value,
+              })
+            }
+            className="w-full border rounded-xl px-4 py-3"
+          />
+
+          <textarea
+            placeholder="Company Description"
+            value={companyData.company_description}
+            onChange={(e) =>
+              setCompanyData({
+                ...companyData,
+                company_description: e.target.value,
+              })
+            }
+            className="w-full border rounded-xl px-4 py-3"
+          />
+
+          {/* ================= REPRESENTATIVE ================= */}
+
+          <div className="grid md:grid-cols-3 gap-4">
+            <input
+              placeholder="Representative Name"
+              value={companyData.representative_name}
+              onChange={(e) =>
+                setCompanyData({
+                  ...companyData,
+                  representative_name: e.target.value,
+                })
+              }
+              className="border rounded-xl px-4 py-3"
+            />
+
+            <input
+              placeholder="Representative Email"
+              value={companyData.representative_email}
+              onChange={(e) =>
+                setCompanyData({
+                  ...companyData,
+                  representative_email: e.target.value,
+                })
+              }
+              className="border rounded-xl px-4 py-3"
+            />
+
+            <input
+              placeholder="Representative Phone"
+              value={companyData.representative_phone}
+              onChange={(e) =>
+                setCompanyData({
+                  ...companyData,
+                  representative_phone: e.target.value,
+                })
+              }
+              className="border rounded-xl px-4 py-3"
+            />
+          </div>
+
+          {/* ================= KYC DOCUMENTS ================= */}
+
           <div>
-            <h1 className="text-3xl font-bold mb-2">
-              Welcome, {user?.email?.split("@")[0] || "Admin"} 👋
-            </h1>
+            <label className="block text-sm font-semibold mb-2">
+              Upload Business KYC Documents
+            </label>
 
-            <div className="flex items-center gap-3 mt-3">
-              <span className="px-3 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full">
-                {user?.verification_status || "Pending"}
-              </span>
+            <input
+              type="file"
+              multiple
+              onChange={(e) =>
+                setCompanyData({
+                  ...companyData,
+                  kycDocs: Array.from(e.target.files || []),
+                })
+              }
+            />
 
-              <span className="text-sm text-gray-500">
-                Profile Completion: {profileCompletion}%
-              </span>
-            </div>
+            {companyData.kycDocs?.length > 0 && (
+              <p className="text-xs text-gray-500 mt-2">
+                {companyData.kycDocs.length} document(s) selected
+              </p>
+            )}
           </div>
+
+          {/* ================= SAVE BUTTON ================= */}
 
           <button
-            onClick={() => navigate("/enterprise/bookings")}
-            className="bg-blue-600 text-white px-6 py-3 rounded-xl"
+            onClick={handleSaveProfile}
+            className="w-full bg-blue-600 text-white px-6 py-3 rounded-xl"
           >
-            View Bookings
+            Save & Continue
           </button>
+
+        </div>
+      </div>
+    </Layout>
+  );
+}
+
+  /* ========================================================= */
+  /* ================= DASHBOARD VIEW ======================== */
+  /* ========================================================= */
+
+  return (
+    <Layout title="Enterprise Dashboard">
+      <div className="max-w-7xl mx-auto space-y-8">
+
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-8 rounded-3xl">
+          <h1 className="text-3xl font-bold mb-2">
+            Welcome, {companyData.company_name} 👋
+          </h1>
+          <p>{companyData.services_offered}</p>
+          <p className="text-blue-100 mt-2">
+            Representative: {companyData.representative_name}
+          </p>
         </div>
 
-        {/* ================= SUMMARY CARDS ================= */}
         <div className="grid md:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-3xl border shadow-sm">
             <Wallet className="text-blue-600 mb-3" />
@@ -229,58 +434,6 @@ const EnterpriseDashboard: React.FC = () => {
               Session Success Rate
             </p>
           </div>
-        </div>
-
-        {/* ================= UPCOMING ================= */}
-        <div className="bg-white p-8 rounded-3xl border shadow-sm">
-          <h2 className="text-2xl font-bold mb-6">
-            Upcoming Sessions
-          </h2>
-
-          {upcomingSessions.length === 0 ? (
-            <p className="text-gray-500">
-              No upcoming sessions.
-            </p>
-          ) : (
-            upcomingSessions.map((s, i) => (
-              <div key={i} className="border-b py-4 flex justify-between">
-                <div>
-                  <p className="font-semibold">
-                    {s?.client?.name || "Client"}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {s?.startTime
-                      ? new Date(s.startTime).toLocaleString()
-                      : ""}
-                  </p>
-                </div>
-
-                <button className="text-blue-600">
-                  View Details
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* ================= NOTIFICATIONS ================= */}
-        <div className="bg-white p-8 rounded-3xl border shadow-sm">
-          <div className="flex justify-between mb-6">
-            <h2 className="text-2xl font-bold">Notifications</h2>
-          </div>
-
-          {notifications.length === 0 ? (
-            <p className="text-gray-500">No notifications</p>
-          ) : (
-            notifications.map((n, i) => (
-              <div key={i} className="border-b py-3">
-                <p className="font-semibold">{n?.title}</p>
-                <p className="text-sm text-gray-500">
-                  {n?.message}
-                </p>
-              </div>
-            ))
-          )}
         </div>
 
       </div>

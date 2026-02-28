@@ -9,6 +9,7 @@ import {
   Eye, Edit2, CheckCircle, Clock, PlusCircle
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { link } from 'node:fs';
 
 const ProfilePage: React.FC = () => {
   const { user, setUser } = useAuth();
@@ -41,6 +42,9 @@ const ProfilePage: React.FC = () => {
     designation: '',
     years_experience: '',
     education: '',
+    linkedin: '',
+    other_social: '',
+    
   });
 
   const isConsultant = user?.role === 'CONSULTANT' || user?.role === 'ENTERPRISE_ADMIN';
@@ -65,6 +69,8 @@ const ProfilePage: React.FC = () => {
           designation: data.designation || '',
           years_experience: data.years_experience?.toString() || '',
           education: data.education || '',
+          linkedin: data.linkedin || '',
+          other_social: data.other_social || '',
         });
       } else {
         setFormData({
@@ -80,6 +86,8 @@ const ProfilePage: React.FC = () => {
           designation: '',
           years_experience: '',
           education: '',
+          linkedin: '',
+          other_social: '',
         });
       }
     } catch (err) {
@@ -149,7 +157,9 @@ const ProfilePage: React.FC = () => {
           availability: formData.availability,
           designation: formData.designation,
           years_experience: formData.years_experience ? parseInt(formData.years_experience) : null,
-          education: formData.education
+          education: formData.education,
+          linkedin: formData.linkedin,
+          other_social: formData.other_social
         });
         // Refresh profile data to show latest
         const fresh = await consultantsApi.getProfile();
@@ -162,7 +172,9 @@ const ProfilePage: React.FC = () => {
           availability: formData.availability,
           designation: formData.designation,
           years_experience: formData.years_experience ? parseInt(formData.years_experience) : null,
-          education: formData.education
+          education: formData.education,
+          linkedin: formData.linkedin,
+          other_social: formData.other_social
         });
       }
       if (setUser) {
@@ -462,6 +474,30 @@ const ProfilePage: React.FC = () => {
                       />
                     </Field>
                   </div>
+
+                  <Field label="LinkedIn Profile">
+                    <input
+                      name="linkedin"
+                      type="text"
+                      value={formData.linkedin}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      placeholder="https://linkedin.com/in/yourprofile"
+                      className={inputClass(isEditing)}
+                    />
+                  </Field>
+
+                  <Field label="Other Social Media">
+                    <input
+                      name="other_social"
+                      type="text"
+                      value={formData.other_social}
+                      onChange={handleChange}
+                      disabled={!isEditing}
+                      placeholder="Twitter, Instagram, or website URL"
+                      className={inputClass(isEditing)}
+                    />
+                  </Field>
                 </>
               )}
             </div>

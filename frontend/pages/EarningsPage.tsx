@@ -124,6 +124,7 @@ const EarningsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState<any>(null);
+  const [timePeriod, setTimePeriod] = useState<"7days" | "30days">("7days");
 
   const [payoutMethod, setPayoutMethod] = useState("Visa •••• 9012");
   const [openPayoutModal, setOpenPayoutModal] = useState(false);
@@ -132,10 +133,14 @@ const EarningsPage: React.FC = () => {
 
   useEffect(() => {
     const fetchEarnings = async () => {
+      setLoading(true);
       try {
-        const res = await api.get("/consultant/earnings");
-        setData(res.data);
+        const earnings = await consultantsApi.getConsultantEarnings(timePeriod);
+        console.log("Earnings data:", earnings);
+        setData(earnings);
+        setError("");
       } catch (err) {
+        console.error("Failed to fetch earnings:", err);
         setError("Failed to load earnings data");
       } finally {
         setLoading(false);
@@ -143,7 +148,7 @@ const EarningsPage: React.FC = () => {
     };
 
     fetchEarnings();
-  }, []);
+  }, [timePeriod]);
 
   if (loading)
     return (
@@ -250,35 +255,62 @@ const EarningsPage: React.FC = () => {
             {/* Earnings Trend */}
             <div className="bg-white rounded-[40px] p-8 border border-gray-100 shadow-sm">
               <div className="flex items-center justify-between mb-8">
-                <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight">
-                  Earnings Trend
-                </h3>
+                <div>
+                  <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight">
+                    Earnings Trend
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {timePeriod === "7days" ? "Last 7 Days" : "Last 30 Days"}
+                  </p>
+                </div>
+                <select
+                  className="bg-gray-50 border-none rounded-xl text-sm font-bold px-4 py-2 outline-none"
+                  value={timePeriod}
+                  onChange={(e) =>
+                    setTimePeriod(e.target.value as "7days" | "30days")
+                  }
+                >
+                  <option value="7days">Last 7 Days</option>
+                  <option value="30days">Last 30 Days</option>
+                </select>
               </div>
 
-              <div className="h-64 flex items-end justify-between space-x-2">
-                {data?.map((item: any, i: number) => (
-                  <div key={i} className="flex-1 group relative">
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-black px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                      ₹{item.revenue}
-                    </div>
-                    <div
-                      className="bg-blue-100 rounded-t-lg transition-all group-hover:bg-blue-600"
-                      style={{ height: `${item.revenue > 0 ? (item.revenue / (totalRevenue || 1)) * 100 : 5}%` }}
-                    ></div>
+              {!data || data.length === 0 ? (
+                <div className="h-64 flex items-center justify-center text-gray-400">
+                  <div className="text-center">
+                    <TrendingUp size={48} className="mx-auto mb-3 opacity-30" />
+                    <p className="text-sm font-medium">No earnings data yet</p>
+                    <p className="text-xs mt-1">Complete bookings to see earnings</p>
                   </div>
-                ))}
-              </div>
+                </div>
+              ) : (
+                <>
+                  <div className="h-64 flex items-end justify-between space-x-2">
+                    {data?.map((item: any, i: number) => (
+                      <div key={i} className="flex-1 group relative">
+                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-black px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                          ₹{item.revenue}
+                        </div>
+                        <div
+                          className="bg-blue-100 rounded-t-lg transition-all group-hover:bg-blue-600"
+                          style={{ height: `${item.revenue > 0 ? Math.max((item.revenue / (totalRevenue || 1)) * 100, 5) : 5}%` }}
+                        ></div>
+                      </div>
+                    ))}
+                  </div>
 
-              <div className="flex justify-between mt-6 px-2">
-                {data?.map((item: any, i: number) => (
-                  <span
-                    key={i}
-                    className="text-[10px] font-black text-gray-400 uppercase"
-                  >
-                    {item.name.slice(0, 3)}
-                  </span>
-                ))}
-              </div>
+                  <div className="flex justify-between mt-6 px-2">
+                    {data?.map((item: any, i: number) => (
+                      <span
+                        key={i}
+                        className="text-[10px] font-black text-gray-400 uppercase"
+                      >
+                        {item.name.slice(0, 3)}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
