@@ -28,6 +28,15 @@ model User {
   password_changed          Boolean         @default(false)
   created_at                DateTime        @default(now())
   updated_at                DateTime?       @updatedAt
+  
+  // Subscription Fields
+  currentPlan               String?         // Current subscription plan name
+  subscriptionStatus        String?         // Active, Expired, Cancelled
+  subscriptionStartDate     DateTime?       // When subscription started
+  subscriptionEndDate       DateTime?       // When subscription ends
+  planFeatures             Json?           // Store plan features as JSON
+  paymentId               String?          // Payment ID for the subscription
+  
   bookings                  Booking[]
   consultant                Consultant?
   enterpriseId              Int?
@@ -40,6 +49,7 @@ model User {
   transactions              Transaction[]
   profile                   UserProfile?
   wallet                    Wallet?
+  subscriptions             Subscription[]
   enterpriseBookings        Booking[] @relation("EnterpriseMemberBookings")
 }
 
@@ -112,6 +122,14 @@ model Consultant {
   // Social & Web Links
   linkedin_url        String?
   website_url         String?
+
+  // Subscription Fields
+  currentPlan               String?         // Current subscription plan name
+  subscriptionStatus        String?         // Active, Expired, Cancelled
+  subscriptionStartDate     DateTime?       // When subscription started
+  subscriptionEndDate       DateTime?       // When subscription ends
+  planFeatures             Json?           // Store plan features as JSON
+  paymentId               String?          // Payment ID for the subscription
 
   availabilitySlots Availability[]
   bookings       Booking[]
@@ -326,6 +344,24 @@ model ConsultantPayout {
   created_at   DateTime   @default(now())
   updated_at   DateTime   @updatedAt
   consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  planName    String
+  price       Float
+  features    Json     // Store plan features as JSON
+  startDate   DateTime @default(now())
+  endDate     DateTime
+  status      String   @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED
+  paymentId   String?  // Razorpay payment ID
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, status]) // Only one active subscription per user
 }
 
 model GlobalSettings {

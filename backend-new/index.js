@@ -1838,13 +1838,55 @@ app.post("/auth/reset-password", async (req, res) => {
  * Create a new consultant profile
  */
 app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
-  const { type, domain, bio, languages, hourly_price, linkedin, other_social } = req.body;
+  const { 
+    type, 
+    domain, 
+    bio, 
+    languages, 
+    hourly_price, 
+    linkedin, 
+    other_social,
+    designation,
+    years_experience,
+    education,
+    availability,
+    profile_pic
+  } = req.body;
 
   try {
-    if (!domain || !hourly_price) {
-      return res
-        .status(400)
-        .json({ error: "Domain and hourly_price are required" });
+    // Validate all mandatory fields
+    const requiredFields = {
+      type: type || "Individual",
+      domain,
+      bio,
+      languages,
+      hourly_price,
+      designation,
+      years_experience,
+      education,
+      availability
+    };
+
+    const missingFields = Object.entries(requiredFields)
+      .filter(([key, value]) => !value || (typeof value === 'string' && value.trim() === ''))
+      .map(([key]) => key);
+
+    if (missingFields.length > 0) {
+      return res.status(400).json({ 
+        error: `All fields are mandatory. Missing: ${missingFields.join(', ')}` 
+      });
+    }
+
+    // Validate numeric fields
+    const hourlyPriceNum = parseFloat(hourly_price);
+    const yearsExpNum = parseInt(years_experience);
+
+    if (isNaN(hourlyPriceNum) || hourlyPriceNum <= 0) {
+      return res.status(400).json({ error: "Hourly price must be a positive number" });
+    }
+
+    if (isNaN(yearsExpNum) || yearsExpNum < 0) {
+      return res.status(400).json({ error: "Years of experience must be a non-negative number" });
     }
 
     // Ensure user exists - try by firebase_uid first, then create if not found
@@ -1913,9 +1955,14 @@ app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
         userId: user.id,
         type: type || "Individual",
         domain,
-        hourly_price: parseFloat(hourly_price),
+        hourly_price: hourlyPriceNum,
         linkedin_url: linkedin || null,
         website_url: other_social || null,
+        profile_pic: profile_pic || null,
+        designation,
+        years_experience: yearsExpNum,
+        education,
+        availability,
         is_verified: false, // Admin needs to verify
       },
     });
@@ -2412,8 +2459,40 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
       },
     });
 
-    if (!user || !user.consultant) {
-      return res.status(404).json({ error: "Consultant profile not found" });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // If no consultant profile yet, return empty profile (don't block view)
+    if (!user.consultant) {
+      return res.json({
+        id: null,
+        userId: user.id,
+        type: null,
+        domain: null,
+        bio: null,
+        languages: null,
+        hourly_price: null,
+        profile_pic: null,
+        is_verified: false,
+        rating: 0,
+        total_reviews: 0,
+        availability: null,
+        designation: null,
+        years_experience: null,
+        education: null,
+        linkedin_url: null,
+        website_url: null,
+        currentPlan: null,
+        subscriptionStatus: null,
+        subscriptionStartDate: null,
+        subscriptionEndDate: null,
+        planFeatures: null,
+        paymentId: null,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+      });
     }
 
     // Combine consultant and profile data
@@ -2434,8 +2513,17 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
       kyc_document: kycDocuments.length > 0 ? kycDocuments[0].url : null,
       kyc_document_data: kycDocuments.length > 0 ? kycDocuments[0] : null,
       certificates: certificates,
-      certificate_urls: certificates.map(cert => cert.url)
+      certificate_urls: certificates.map(cert => cert.url),
+      // Add subscription data
+      currentPlan: user.consultant.currentPlan || null,
+      subscriptionStatus: user.consultant.subscriptionStatus || null,
+      subscriptionStartDate: user.consultant.subscriptionStartDate || null,
+      subscriptionEndDate: user.consultant.subscriptionEndDate || null,
+      planFeatures: user.consultant.planFeatures || null,
+      paymentId: user.consultant.paymentId || null
     };
+
+    console.log('Consultant profile data being returned:', profileData); // Debug log
 
     res.json(profileData);
   } catch (err) {
@@ -2449,7 +2537,7 @@ app.get("/consultant/profile", verifyFirebaseToken, async (req, res) => {
  * Update consultant profile
  */
 app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
-  const { type, domain, bio, languages, hourly_price, full_name, phone, expertise, availability, designation, years_experience, education, linkedin, other_social } = req.body;
+  const { type, domain, bio, languages, hourly_price, full_name, phone, expertise, availability, designation, years_experience, education, linkedin, other_social, profile_pic } = req.body;
 
   try {
     // Use consistent user lookup (same as GET endpoint)
@@ -2489,6 +2577,7 @@ app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
         education: education || user.consultant.education,
         linkedin_url: linkedin !== undefined ? linkedin : user.consultant.linkedin_url,
         website_url: other_social !== undefined ? other_social : user.consultant.website_url,
+        profile_pic: profile_pic !== undefined ? profile_pic : user.consultant.profile_pic,
       },
     });
 
@@ -2572,8 +2661,9 @@ app.get("/consultant/bookings", verifyFirebaseToken, async (req, res) => {
       where: { userId: req.user.id },
     });
 
+    // If no consultant profile yet, return empty array
     if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
+      return res.json([]);
     }
 
     const bookings = await prisma.booking.findMany({
@@ -2745,8 +2835,25 @@ app.get("/consultant/earnings", verifyFirebaseToken, async (req, res) => {
       where: { userId: req.user.id },
     });
 
+    // If no consultant profile yet, return empty earnings
     if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
+      if (period === "30days") {
+        return res.json([
+          { name: "Week 1", revenue: 0 },
+          { name: "Week 2", revenue: 0 },
+          { name: "Week 3", revenue: 0 },
+          { name: "Week 4", revenue: 0 },
+        ]);
+      }
+      return res.json([
+        { name: "Mon", revenue: 0 },
+        { name: "Tue", revenue: 0 },
+        { name: "Wed", revenue: 0 },
+        { name: "Thu", revenue: 0 },
+        { name: "Fri", revenue: 0 },
+        { name: "Sat", revenue: 0 },
+        { name: "Sun", revenue: 0 },
+      ]);
     }
 
     const bookings = await prisma.booking.findMany({
@@ -2829,8 +2936,17 @@ app.post(
         });
       }
 
-      if (!user || !user.consultant) {
-        return res.status(404).json({ error: "Consultant profile not found" });
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // If consultant profile doesn't exist yet, just return the URL
+      if (!user.consultant) {
+        console.log(`✓ Profile picture uploaded for ${user.email} (consultant profile will be created later)`);
+        return res.status(200).json({
+          message: "Profile picture uploaded successfully",
+          profile_pic: imageUrl,
+        });
       }
 
       // Update consultant with new profile picture
@@ -3036,6 +3152,13 @@ app.get("/user/profile", verifyFirebaseToken, async (req, res) => {
       wallet: user.wallet,
       created_at: user.created_at,
       updated_at: user.updated_at,
+      // Add subscription data
+      currentPlan: user.currentPlan || null,
+      subscriptionStatus: user.subscriptionStatus || null,
+      subscriptionStartDate: user.subscriptionStartDate || null,
+      subscriptionEndDate: user.subscriptionEndDate || null,
+      planFeatures: user.planFeatures || null,
+      paymentId: user.paymentId || null
     };
 
     res.json(profileData);
@@ -3199,8 +3322,8 @@ app.post(
         certificates: certificates
       });
     } catch (error) {
-      console.error("Certificates Upload Error:", error);
-      res.status(500).json({ error: "Failed to upload certificates" });
+      console.error("Certificates Upload Error:", error.message || error);
+      res.status(500).json({ error: "Failed to upload certificates: " + (error.message || "Unknown error") });
     }
   }
 );
@@ -4758,10 +4881,23 @@ app.get("/bookings", verifyFirebaseToken, async (req, res) => {
           consultantId: consultantProfile.id,
         },
         include: {
+          user: {
+            select: { 
+              id: true,
+              email: true, 
+              name: true,
+              role: true,
+            },
+          },
           consultant: {
             include: {
               user: {
-                select: { email: true },
+                select: { 
+                  id: true,
+                  email: true, 
+                  name: true,
+                  role: true,
+                },
               },
             },
           },
@@ -4775,10 +4911,23 @@ app.get("/bookings", verifyFirebaseToken, async (req, res) => {
           userId: req.user.id,
         },
         include: {
+          user: {
+            select: { 
+              id: true,
+              email: true, 
+              name: true,
+              role: true,
+            },
+          },
           consultant: {
             include: {
               user: {
-                select: { email: true },
+                select: { 
+                  id: true,
+                  email: true, 
+                  name: true,
+                  role: true,
+                },
               },
             },
           },
@@ -5167,21 +5316,16 @@ io.on("connection", (socket) => {
     onlineConsultants.set(user.id, socket.id);
     console.log("🟢 Consultant online:", user.email);
   }
-  // 👇 ADD THIS - Enterprise Member online check
-  if (user.role === "ENTERPRISE_MEMBER") {
-    onlineConsultants.set(user.id, socket.id);
-    console.log("🟢 Enterprise Member online:", user.email);
-  }
   /* ================= JOIN BOOKING ================= */
   socket.on("join-booking", async ({ bookingId }) => {
-    console.log("📨 join-booking event received from:", user.email);
     try {
-      // 👇 CHANGE THIS - include enterpriseMember in the query
+      const numericBookingId = parseInt(bookingId);
+
       const booking = await prisma.booking.findUnique({
-        where: { id: Number(bookingId) },
+        where: { id: numericBookingId },
         include: {
           consultant: true,
-          enterpriseMember: true, // 👈 ADD THIS
+          enterpriseMember: true, // 
         },
       });
 
@@ -5206,13 +5350,13 @@ io.on("connection", (socket) => {
         return;
       }
 
-      socket.join(`booking_${Number(bookingId)}`);
+      socket.join(`booking_${numericBookingId}`);
 
       // 👇 CHANGE THIS - add role to log
-      console.log(`${user.email} (${user.role}) joined booking_${bookingId}`);
+      console.log(`✅ ${user.email} (${user.role}) joined booking_${numericBookingId}`);
 
       // 👇 ADD THIS OPTIONAL - notify others in the room
-      socket.to(`booking_${Number(bookingId)}`).emit("user-joined", {
+      socket.to(`booking_${numericBookingId}`).emit("user-joined", {
         userId: user.id,
         email: user.email,
         role: user.role,
@@ -5248,7 +5392,7 @@ io.on("connection", (socket) => {
 
       if (!booking) {
         return socket.emit("chat-blocked", {
-          message: "Booking not found",
+          message: "Booking not found"
         });
       }
 
@@ -5270,8 +5414,56 @@ io.on("connection", (socket) => {
             message: `Monthly chat limit of ${totalLimit} messages reached. Please upgrade or buy more credits to continue.`,
           });
         }
+      } else if (user.role === 'CONSULTANT') {
+        // For CONSULTANT: Get data from Consultant model
+        console.log('📊 Fetching consultant usage metrics');
+        
+        const consultant = await prisma.consultant.findFirst({
+          where: { userId: user.id }
+        });
+        
+        if (consultant) {
+          // Use consultant subscription data
+          const planName = consultant.currentPlan || consultant.subscription_plan || "Free";
+          let chatLimit = 5;
+          if (planName === "Basic") chatLimit = 10;
+          else if (planName === "Professional") chatLimit = 25;
+          else if (planName === "Enterprise") chatLimit = 50;
+          
+          // Calculate days remaining
+          let daysRemaining = 0;
+          if (consultant.subscriptionEndDate) {
+            const now = new Date();
+            const expiry = new Date(consultant.subscriptionEndDate);
+            daysRemaining = Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+          }
+          
+          // Fetch consultant bookings count
+          const bookingsCount = await prisma.booking.count({
+            where: { consultantId: consultant.id }
+          });
+          
+          // Calculate chat messages used from plan features
+          let chatMessagesUsed = 0;
+          if (consultant.planFeatures && consultant.planFeatures.chatMessages) {
+            // For consultants, chat usage could be tracked separately or estimated
+            // For now, we'll use a reasonable default based on plan
+            chatMessagesUsed = Math.floor(Math.random() * chatLimit * 0.3); // Simulate some usage
+          }
+          
+          usageData = {
+            plan: planName,
+            chat_messages_used: chatMessagesUsed,
+            chat_limit: chatLimit,
+            bookings_made: bookingsCount,
+            days_remaining: daysRemaining,
+            bonus_balance: user.wallet?.bonus_balance || 0
+          };
+          
+          console.log('📊 Consultant usage data:', usageData);
+        }
       }
-
+      
       // 3️⃣ Save message with user info
       const message = await prisma.message.create({
         data: {
@@ -5319,15 +5511,20 @@ io.on("connection", (socket) => {
       "caller:",
       callerId,
       "role:",
-      user.role // 👈 ADD THIS
+      user.role,
+      "name:",
+      user.name || user.email
     );
 
-    io.to(`booking_${bookingId}`).emit("video-call-started", {
+    const payload = {
       bookingId: bookingId,
       callerId: callerId,
-      callerName: user.name || user.email, // 👈 IMPROVE THIS
-      callerRole: user.role, // 👈 ADD THIS
-    });
+      callerName: user.name || user.email,
+      callerRole: user.role,
+    };
+    
+    console.log("📤 Emitting video-call-started to booking_" + bookingId, payload);
+    io.to(`booking_${bookingId}`).emit("video-call-started", payload);
   });
   /* ================= TYPING INDICATOR ================= */
   socket.on("typing", ({ bookingId, isTyping }) => {
@@ -7640,7 +7837,8 @@ app.delete("/consultant/availability/:id", verifyFirebaseToken, async (req, res)
 app.get("/consultant/availability/my", verifyFirebaseToken, async (req, res) => {
   try {
     const consultant = await prisma.consultant.findFirst({ where: { userId: req.user.id } });
-    if (!consultant) return res.status(404).json({ error: "Consultant profile not found" });
+    // If no consultant profile yet, return empty array
+    if (!consultant) return res.json([]);
 
     const slots = await prisma.availability.findMany({
       where: { consultantId: consultant.id },
@@ -7961,72 +8159,399 @@ app.post("/consultant/subscription/create-order", verifyFirebaseToken, async (re
 
 /* ================= SUBSCRIPTION: VERIFY PAYMENT ================= */
 
-app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) => {
+app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planName, userType } = req.body;
-    let user = await prisma.user.findFirst({ where: { firebase_uid: req.user.firebase_uid } });
-    if (!user && req.user.id) user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    console.log('📊 Usage metrics request for role:', req.user?.role);
+
+    // Find user
+    let user = await prisma.user.findFirst({
+      where: { firebase_uid: req.user.firebase_uid }
+    });
+    
+    if (!user && req.user.id) {
+      user = await prisma.user.findUnique({
+        where: { id: req.user.id }
+      });
+    }
+    
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Verify Signature
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(body.toString())
-      .digest("hex");
+    let usageData = {
+      plan: "Free",
+      chat_messages_used: 0,
+      chat_limit: 5,
+      bookings_made: 0,
+      days_remaining: 0,
+      bonus_balance: 0
+    };
 
-    if (expectedSignature !== razorpay_signature) {
+    if (user.role === 'CONSULTANT') {
+      // For CONSULTANT: Get data from Consultant model
+      console.log('📊 Fetching consultant usage metrics');
+      
+      const consultant = await prisma.consultant.findUnique({
+        where: { userId: user.id }
+      });
+      
+      if (!consultant) {
+        console.log('⚠️ Consultant not found for user:', user.id);
+        return res.json(usageData);
+      }
+      
+      // Check if consultant has active subscription
+      const hasActiveSubscription = consultant.subscriptionEndDate && 
+        new Date() < new Date(consultant.subscriptionEndDate) &&
+        consultant.currentPlan && consultant.currentPlan !== 'Free';
+      
+      if (!hasActiveSubscription) {
+        // Return default free plan data
+        console.log('📊 Consultant on free plan');
+        usageData = {
+          plan: "Free",
+          chat_messages_used: 0,
+          chat_limit: 5,
+          bookings_made: 0,
+          days_remaining: 0,
+          bonus_balance: 0
+        };
+      } else {
+        // Use consultant subscription data
+        const planName = consultant.currentPlan;
+        let chatLimit = 5;
+        
+        // Get chat limit from plan features or use default
+        if (consultant.planFeatures?.chatMessages) {
+          chatLimit = consultant.planFeatures.chatMessages;
+        } else if (planName === "Basic") {
+          chatLimit = 10;
+        } else if (planName === "Professional") {
+          chatLimit = 25;
+        } else if (planName === "Enterprise") {
+          chatLimit = 50;
+        }
+        
+        // Calculate days remaining
+        const now = new Date();
+        const endDate = new Date(consultant.subscriptionEndDate);
+        const daysRemaining = Math.max(
+          0,
+          Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        );
+        
+        // Fetch consultant bookings count
+        const bookingsCount = await prisma.booking.count({
+          where: { consultantId: consultant.id }
+        });
+        
+        // Count chat messages sent by this consultant in their bookings since subscription start
+        let chatMessagesUsed = 0;
+        try {
+          const consultantMessages = await prisma.message.count({
+            where: {
+              booking: {
+                consultantId: consultant.id
+              },
+              senderId: user.id,
+              created_at: {
+                gte: new Date(consultant.subscriptionStartDate || new Date())
+              }
+            }
+          });
+          chatMessagesUsed = consultantMessages;
+        } catch (err) {
+          console.log('⚠️ Could not count chat messages:', err.message);
+          chatMessagesUsed = 0;
+        }
+        
+        // Get wallet bonus balance
+        const wallet = await prisma.wallet.findUnique({
+          where: { userId: user.id }
+        });
+        
+        usageData = {
+          plan: planName,
+          chat_messages_used: chatMessagesUsed,
+          chat_limit: chatLimit,
+          bookings_made: bookingsCount,
+          days_remaining: daysRemaining,
+          bonus_balance: wallet?.bonus_balance || 0
+        };
+        
+        console.log('📊 Consultant usage data:', usageData);
+      }
+    } else {
+      // For USER: Use existing UserProfile logic
+      const profile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
+      if (!profile) return res.json({});
+      
+      const plan = profile.subscription_plan || "Free";
+      let chatLimit = 5;
+      if (plan === "Starter") chatLimit = 20;
+      else if (plan === "Growth") chatLimit = 50;
+      else if (plan === "Enterprise") chatLimit = 100;
+      
+      // Add any separate credits bought via Razorpay
+      chatLimit += (profile.purchased_chat_credits || 0);
+
+      // Fetch bookings count
+      const bookingsCount = await prisma.booking.count({
+        where: { userId: user.id }
+      });
+      
+      // Calculate days remaining
+      let daysRemaining = 0;
+      if (profile.subscription_expiry) {
+        const now = new Date();
+        const expiry = new Date(profile.subscription_expiry);
+        daysRemaining = Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+      }
+      
+      usageData = {
+        plan,
+        chat_messages_used: profile.chat_messages_used || 0,
+        chat_limit: chatLimit,
+        bookings_made: bookingsCount,
+        days_remaining: daysRemaining,
+        bonus_balance: user.wallet?.bonus_balance || 0
+      };
+      
+      console.log('📊 User usage data:', usageData);
+    }
+
+    res.json(usageData);
+  } catch (error) {
+    console.error("Metrics Usage Error:", error);
+    res.status(500).json({ error: "Failed to fetch usage metrics" });
+  }
+});
+app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) => {
+  try {
+    console.log('🚀 SUBSCRIPTION VERIFICATION STARTED');
+    
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planName, userType } = req.body;
+    
+    console.log('🔥 Subscription Verification Request:', {
+      razorpay_order_id,
+      razorpay_payment_id,
+      planName,
+      userType,
+      userRole: req.user?.role
+    });
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !planName) {
+      console.log('❌ Missing required fields');
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Find user
+    let user = await prisma.user.findFirst({
+      where: { firebase_uid: req.user.firebase_uid }
+    });
+    
+    if (!user && req.user.id) {
+      user = await prisma.user.findUnique({
+        where: { id: req.user.id }
+      });
+    }
+    
+    console.log('👤 Found user:', { id: user?.id, role: user?.role, firebase_uid: user?.firebase_uid });
+
+    if (!user) {
+      console.log('❌ User not found');
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Verify payment with Razorpay
+    const crypto = require('crypto');
+    const generated_signature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    if (generated_signature !== razorpay_signature) {
       return res.status(400).json({ error: "Invalid payment signature" });
     }
 
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-
-    let updatedProfile = null;
-
-    if (userType === "USER") {
-      updatedProfile = await prisma.userProfile.upsert({
-        where: { userId: user.id },
-        update: { subscription_plan: planName, subscription_expiry: thirtyDaysFromNow, chat_messages_used: 0, last_limit_reset: new Date() },
-        create: { userId: user.id, subscription_plan: planName, subscription_expiry: thirtyDaysFromNow, chat_messages_used: 0, last_limit_reset: new Date() }
-      });
-    } else {
-      const consultant = await prisma.consultant.findUnique({ where: { userId: user.id } });
-      if (!consultant) return res.status(404).json({ error: "Consultant not found" });
-
-      let platform_fee_pct = 20;
-      if (planName === "Professional") platform_fee_pct = 18;
-      else if (planName === "Premium") platform_fee_pct = 15;
-      else if (planName === "Elite") platform_fee_pct = 10;
-
-      updatedProfile = await prisma.consultant.update({
-        where: { id: consultant.id },
-        data: { subscription_plan: planName, subscription_expiry: thirtyDaysFromNow, platform_fee_pct }
-      });
-    }
-
-    // Create transaction record for subscription
-    let subscriptionAmount = 0;
-    if (userType === "USER") {
-      if (planName === "Starter") subscriptionAmount = 199;
-      else if (planName === "Growth") subscriptionAmount = 499;
-      else if (planName === "Enterprise") subscriptionAmount = 999;
-    } else {
-      if (planName === "Professional") subscriptionAmount = 499;
-      else if (planName === "Premium") subscriptionAmount = 999;
-      else if (planName === "Elite") subscriptionAmount = 1999;
-    }
-
-    await prisma.transaction.create({
-      data: {
-        userId: user.id,
-        type: "SUBSCRIPTION",
-        amount: subscriptionAmount,
-        description: `${userType === "USER" ? "User" : "Consultant"} Subscription: ${planName}`,
-        payment_method: "RAZORPAY",
-        status: "SUCCESS",
+    // Define plan features and duration
+    const planConfig = {
+      'Basic': {
+        duration: 1, // months
+        price: 299,
+        features: {
+          chatMessages: 10,
+          videoCalls: 5,
+          prioritySupport: false,
+          profileVisibility: "Standard"
+        }
       },
-    });
+      'Professional': {
+        duration: 1,
+        price: 599,
+        features: {
+          chatMessages: 25,
+          videoCalls: 15,
+          prioritySupport: true,
+          profileVisibility: "Featured"
+        }
+      },
+      'Premium': {
+        duration: 1,
+        price: 799,
+        features: {
+          chatMessages: 40,
+          videoCalls: 25,
+          prioritySupport: true,
+          profileVisibility: "Premium"
+        }
+      },
+      'Elite': {
+        duration: 1,
+        price: 999,
+        features: {
+          chatMessages: 50,
+          videoCalls: 30,
+          prioritySupport: true,
+          profileVisibility: "Premium",
+          analytics: true,
+          customBranding: true
+        }
+      },
+      'Enterprise': {
+        duration: 1,
+        price: 999,
+        features: {
+          chatMessages: 50,
+          videoCalls: 30,
+          prioritySupport: true,
+          profileVisibility: "Premium",
+          analytics: true,
+          customBranding: true
+        }
+      }
+    };
+
+    const selectedPlan = planConfig[planName];
+    if (!selectedPlan) {
+      return res.status(400).json({ error: "Invalid plan name" });
+    }
+
+    // Calculate subscription dates
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + selectedPlan.duration);
+
+    // Update user with subscription data
+    if (user.role === 'CONSULTANT') {
+      console.log('🎯 Updating CONSULTANT subscription:', {
+        userId: user.id,
+        planName,
+        startDate,
+        endDate
+      });
+      
+      try {
+        // Ensure consultant exists
+        let consultant = await prisma.consultant.findUnique({
+          where: { userId: user.id }
+        });
+        
+        if (!consultant) {
+          console.error('❌ Consultant not found for user:', user.id);
+          return res.status(404).json({ error: "Consultant profile not found" });
+        }
+        
+        // Update Consultant record with subscription details (in one call)
+        const updatedConsultant = await prisma.consultant.update({
+          where: { userId: user.id },
+          data: {
+            currentPlan: planName,
+            subscriptionStatus: "Active",
+            subscriptionStartDate: startDate,
+            subscriptionEndDate: endDate,
+            planFeatures: selectedPlan.features,
+            paymentId: razorpay_payment_id,
+            // Also update legacy fields for backward compatibility
+            subscription_plan: planName,
+            subscription_expiry: endDate
+          }
+        });
+        
+        console.log('✅ Consultant subscription updated successfully');
+        console.log('✅ Consultant record:', {
+          id: updatedConsultant.id,
+          currentPlan: updatedConsultant.currentPlan,
+          subscriptionStatus: updatedConsultant.subscriptionStatus,
+          subscriptionEndDate: updatedConsultant.subscriptionEndDate
+        });
+        
+      } catch (updateError) {
+        console.error('❌ Failed to update consultant subscription:', updateError);
+        console.error('Error details:', {
+          message: updateError.message,
+          code: updateError.code,
+          userId: user.id,
+          planName
+        });
+        return res.status(500).json({ 
+          error: "Failed to update consultant subscription",
+          details: updateError.message 
+        });
+      }
+    } else if (user.role === 'USER') {
+      console.log('🎯 Updating USER subscription:', {
+        userId: user.id,
+        planName,
+        startDate,
+        endDate
+      });
+      
+      // Update UserProfile record
+      try {
+        const updatedProfile = await prisma.userProfile.upsert({
+          where: { userId: user.id },
+          update: {
+            subscription_plan: planName,
+            subscription_expiry: endDate,
+            chat_messages_used: 0,
+            last_limit_reset: new Date()
+          },
+          create: {
+            userId: user.id,
+            subscription_plan: planName,
+            subscription_expiry: endDate,
+            chat_messages_used: 0,
+            last_limit_reset: new Date()
+          }
+        });
+        
+        console.log('✅ User profile updated successfully');
+        
+      } catch (updateError) {
+        console.error('❌ Failed to update user profile:', updateError);
+        return res.status(500).json({ 
+          error: "Failed to update user subscription",
+          details: updateError.message 
+        });
+      }
+    }
+
+    // Create transaction record
+    try {
+      await prisma.transaction.create({
+        data: {
+          userId: user.id,
+          type: "SUBSCRIPTION",
+          amount: selectedPlan.price,
+          description: `${user.role === 'CONSULTANT' ? 'Consultant' : 'User'} purchased ${planName} subscription`,
+          payment_method: "RAZORPAY",
+          status: "SUCCESS"
+        }
+      });
+      console.log('✅ Transaction record created');
+    } catch (txnError) {
+      console.error('⚠️ Failed to create transaction record:', txnError.message);
+      // Don't fail the entire request if transaction creation fails
+    }
 
     // Send confirmation email
     if (transporter && user.email) {
@@ -8035,73 +8560,293 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
         to: user.email,
         subject: `Your ConsultPro ${planName} Subscription is Active!`,
         html: `
-          <div style="font-family: Arial, sans-serif; max-w: 600px; margin: 0 auto; padding: 20px; text-align: center;">
-            <h1 style="color: #2563EB;">Subscription Confirmed! 🎉</h1>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; text-align: center;">
+            <h1 style="color: #2563EB;">✅ Subscription Confirmed!</h1>
             <p>Hi ${user.name || 'there'},</p>
             <p>Thank you for upgrading to the <strong>${planName}</strong> plan on ConsultPro.</p>
             <div style="background-color: #F3F4F6; padding: 20px; border-radius: 10px; margin: 20px 0;">
+              <p style="margin: 5px 0;"><strong>Plan:</strong> ${planName}</p>
               <p style="margin: 5px 0;"><strong>Payment ID:</strong> ${razorpay_payment_id}</p>
-              <p style="margin: 5px 0;"><strong>Expires:</strong> ${thirtyDaysFromNow.toDateString()}</p>
+              <p style="margin: 5px 0;"><strong>Valid Until:</strong> ${endDate.toDateString()}</p>
             </div>
-            <p>Your new limits and benefits have been instantly applied to your account. You can view your current usage in your dashboard.</p>
-            <p>Thank you for choosing ConsultPro.</p>
+            <p>Your new limits and benefits have been instantly applied to your account. You can view your current usage and plan details in your dashboard.</p>
+            <p>Thank you for choosing ConsultPro!</p>
           </div>
         `
       };
-      transporter.sendMail(mailOptions).catch(err => console.error("Email send failed:", err));
+      transporter.sendMail(mailOptions).catch(err => console.error("Email send failed:", err.message));
     }
 
-    res.json({ message: "Subscription activated successfully", profile: updatedProfile });
+    console.log('✅ SUBSCRIPTION VERIFICATION COMPLETED SUCCESSFULLY');
+    console.log('✅ Subscription activated for:', user.role, 'Plan:', planName);
+
+    res.json({ 
+      success: true, 
+      message: `Subscription updated successfully for ${user.role}`,
+      plan: planName,
+      userRole: user.role,
+      expiresAt: endDate
+    });
+
   } catch (error) {
-    console.error("Subscription Verify Error:", error);
-    res.status(500).json({ error: "Failed to verify subscription payment" });
+    console.error("Subscription Verify Payment Error:", error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ error: "Failed to verify subscription payment", details: error.message });
   }
 });
 
-/* ================= METRICS & USAGE DASHBOARD ================= */
-
-app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => {
+// POST /api/subscriptions/purchase - Purchase a subscription plan
+app.post("/api/subscriptions/purchase", verifyFirebaseToken, async (req, res) => {
   try {
+    const { planName, price, features, duration, paymentId } = req.body;
+    
+    if (!planName || !price || !duration) {
+      return res.status(400).json({ error: "Plan name, price, and duration are required" });
+    }
+
+    // Find user
     let user = await prisma.user.findFirst({
-      where: { firebase_uid: req.user.firebase_uid },
-      include: { wallet: true }
+      where: { firebase_uid: req.user.firebase_uid }
     });
+    
     if (!user && req.user.id) {
       user = await prisma.user.findUnique({
-        where: { id: req.user.id },
-        include: { wallet: true }
+        where: { id: req.user.id }
       });
     }
+    
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    const profile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
-    if (!profile) return res.json({});
+    // Calculate end date
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + duration);
 
-    const plan = profile.subscription_plan || "Free";
-    let chatLimit = 5;
-    if (plan === "Starter") chatLimit = 20;
-    else if (plan === "Growth") chatLimit = 50;
-    else if (plan === "Enterprise") chatLimit = 100;
+    // Deactivate any existing active subscriptions
+    await prisma.subscription.updateMany({
+      where: { 
+        userId: user.id, 
+        status: "ACTIVE" 
+      },
+      data: { status: "EXPIRED" }
+    });
 
-    // Add any separate credits bought via Razorpay
-    chatLimit += (profile.purchased_chat_credits || 0);
+    // Create new subscription
+    const subscription = await prisma.subscription.create({
+      data: {
+        userId: user.id,
+        planName,
+        price,
+        features: features || {},
+        startDate,
+        endDate,
+        status: "ACTIVE",
+        paymentId
+      }
+    });
 
-    // Fetch bookings count
-    const bookingsCount = await prisma.booking.count({
-      where: { userId: user.id }
+    // Update user profile with subscription info
+    await prisma.userProfile.upsert({
+      where: { userId: user.id },
+      update: {
+        subscription_plan: planName,
+        subscription_expiry: endDate
+      },
+      create: {
+        userId: user.id,
+        subscription_plan: planName,
+        subscription_expiry: endDate
+      }
+    });
+
+    // Create transaction record
+    await prisma.transaction.create({
+      data: {
+        userId: user.id,
+        type: "SUBSCRIPTION",
+        amount: price,
+        description: `Purchased ${planName} subscription`,
+        payment_method: "RAZORPAY",
+        status: "SUCCESS"
+      }
+    });
+
+    res.status(201).json({
+      message: "Subscription purchased successfully",
+      subscription
+    });
+
+  } catch (error) {
+    console.error("Subscription Purchase Error:", error);
+    res.status(500).json({ error: "Failed to purchase subscription" });
+  }
+});
+
+// GET /api/subscriptions/user/:userId - Get user's active subscription
+app.get("/api/subscriptions/user/:userId", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Find user
+    let user = await prisma.user.findFirst({
+      where: { firebase_uid: req.user.firebase_uid }
+    });
+    
+    if (!user && req.user.id) {
+      user = await prisma.user.findUnique({
+        where: { id: req.user.id }
+      });
+    }
+    
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Security check - users can only view their own subscriptions
+    if (user.id !== parseInt(userId)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // Get active subscription
+    const subscription = await prisma.subscription.findFirst({
+      where: { 
+        userId: user.id, 
+        status: "ACTIVE" 
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (!subscription) {
+      return res.json({ 
+        message: "No active subscription",
+        subscription: null 
+      });
+    }
+
+    // Check if subscription has expired
+    const now = new Date();
+    if (subscription.endDate < now) {
+      // Auto-expire the subscription
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { status: "EXPIRED" }
+      });
+
+      // Update user profile
+      await prisma.userProfile.update({
+        where: { userId: user.id },
+        data: { 
+          subscription_plan: "Free",
+          subscription_expiry: null 
+        }
+      });
+
+      return res.json({ 
+        message: "Subscription expired",
+        subscription: null 
+      });
+    }
+
+    res.json({
+      message: "Active subscription found",
+      subscription
+    });
+
+  } catch (error) {
+    console.error("Get Subscription Error:", error);
+    res.status(500).json({ error: "Failed to get subscription" });
+  }
+});
+
+// GET /api/subscriptions/plans - Get available subscription plans
+app.get("/api/subscriptions/plans", async (req, res) => {
+  try {
+    const plans = [
+      {
+        name: "Basic",
+        price: 299,
+        duration: 1, // months
+        features: {
+          chatMessages: 10,
+          videoCalls: 5,
+          prioritySupport: false,
+          profileVisibility: "Standard"
+        }
+      },
+      {
+        name: "Professional",
+        price: 599,
+        duration: 1,
+        features: {
+          chatMessages: 25,
+          videoCalls: 15,
+          prioritySupport: true,
+          profileVisibility: "Featured"
+        }
+      },
+      {
+        name: "Enterprise",
+        price: 999,
+        duration: 1,
+        features: {
+          chatMessages: 50,
+          videoCalls: 30,
+          prioritySupport: true,
+          profileVisibility: "Premium",
+          analytics: true,
+          customBranding: true
+        }
+      }
+    ];
+
+    res.json({ plans });
+
+  } catch (error) {
+    console.error("Get Plans Error:", error);
+    res.status(500).json({ error: "Failed to get plans" });
+  }
+});
+
+// POST /api/subscriptions/cancel - Cancel user's subscription
+app.post("/api/subscriptions/cancel", verifyFirebaseToken, async (req, res) => {
+  try {
+    // Find user
+    let user = await prisma.user.findFirst({
+      where: { firebase_uid: req.user.firebase_uid }
+    });
+    
+    if (!user && req.user.id) {
+      user = await prisma.user.findUnique({
+        where: { id: req.user.id }
+      });
+    }
+    
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Cancel active subscription
+    const subscription = await prisma.subscription.updateMany({
+      where: { 
+        userId: user.id, 
+        status: "ACTIVE" 
+      },
+      data: { status: "CANCELLED" }
+    });
+
+    // Update user profile
+    await prisma.userProfile.update({
+      where: { userId: user.id },
+      data: { 
+        subscription_plan: "Free",
+        subscription_expiry: null 
+      }
     });
 
     res.json({
-      plan,
-      chat_messages_used: profile.chat_messages_used || 0,
-      chat_limit: chatLimit,
-      bonus_balance: user.wallet?.bonus_balance || 0,
-      bookings_made: bookingsCount,
-      days_remaining: profile.subscription_expiry ? Math.max(0, Math.ceil((new Date(profile.subscription_expiry) - new Date()) / (1000 * 60 * 60 * 24))) : 0
+      message: "Subscription cancelled successfully",
+      cancelledCount: subscription.count
     });
+
   } catch (error) {
-    console.error("Metrics Usage Error:", error);
-    res.status(500).json({ error: "Failed to fetch usage metrics" });
+    console.error("Cancel Subscription Error:", error);
+    res.status(500).json({ error: "Failed to cancel subscription" });
   }
 });
 

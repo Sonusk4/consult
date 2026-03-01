@@ -114,7 +114,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
       if (signupRes.devMode) {
         console.log("Dev mode detected - storing JWT token");
-        localStorage.setItem("devToken", signupRes.customToken);
+        sessionStorage.setItem("devToken", signupRes.customToken);
       } else {
         console.log("Production mode - signing in with Firebase");
         const { signInWithCustomToken } = await import("firebase/auth");
@@ -123,7 +123,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       }
 
       if (signupRes.user) {
-        localStorage.setItem("user", JSON.stringify(signupRes.user));
+        sessionStorage.setItem("user", JSON.stringify(signupRes.user));
       }
 
       const user = await login(signupRes.user?.email || email, selectedRole, fullName);
@@ -179,7 +179,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
       if (loginRes.devMode) {
         console.log("Dev mode detected - storing JWT token");
-        localStorage.setItem("devToken", loginRes.customToken);
+        sessionStorage.setItem("devToken", loginRes.customToken);
       } else {
         console.log("Production mode - signing in with Firebase");
         const { signInWithCustomToken } = await import("firebase/auth");
@@ -188,7 +188,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       }
 
       if (loginRes.user) {
-        localStorage.setItem("user", JSON.stringify(loginRes.user));
+        sessionStorage.setItem("user", JSON.stringify(loginRes.user));
       }
 
       const user = await login(loginRes.user?.email);
@@ -274,7 +274,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       console.log("Password reset successful");
 
       if (resetRes.devMode) {
-        localStorage.setItem("devToken", resetRes.customToken);
+        sessionStorage.setItem("devToken", resetRes.customToken);
       } else {
         const { signInWithCustomToken } = await import("firebase/auth");
         const { auth: firebaseAuth } = await import("../src/services/firebase");
@@ -282,7 +282,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       }
 
       if (resetRes.user) {
-        localStorage.setItem("user", JSON.stringify(resetRes.user));
+        sessionStorage.setItem("user", JSON.stringify(resetRes.user));
       }
 
       const user = await login(resetRes.user?.email);
@@ -330,7 +330,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       console.log("Password changed successfully");
 
       if (changeRes.devMode) {
-        localStorage.setItem("devToken", changeRes.customToken);
+        sessionStorage.setItem("devToken", changeRes.customToken);
       } else {
         const { signInWithCustomToken } = await import("firebase/auth");
         const { auth: firebaseAuth } = await import("../src/services/firebase");
@@ -338,7 +338,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       }
 
       if (changeRes.user) {
-        localStorage.setItem("user", JSON.stringify(changeRes.user));
+        sessionStorage.setItem("user", JSON.stringify(changeRes.user));
       }
 
       const user = await login(changeRes.user?.email);
@@ -447,7 +447,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       if (verifyRes.devMode) {
         console.log("Dev mode detected - storing JWT token");
         // Store dev JWT token for API requests
-        localStorage.setItem("devToken", verifyRes.customToken);
+        sessionStorage.setItem("devToken", verifyRes.customToken);
       } else {
         // Step 2: Sign in with Firebase using custom token (production mode)
         console.log("Production mode - signing in with Firebase custom token");

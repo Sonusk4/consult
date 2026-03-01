@@ -160,7 +160,7 @@ const MemberProfile: React.FC = () => {
         if (user) {
           const updatedUser = { ...user, profile_photo: newAvatar };
           setUser(updatedUser);
-          localStorage.setItem("user", JSON.stringify(updatedUser));
+          sessionStorage.setItem("user", JSON.stringify(updatedUser));
         }
 
         setMessage("Profile picture updated successfully!");

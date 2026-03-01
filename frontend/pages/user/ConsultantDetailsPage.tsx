@@ -418,9 +418,12 @@ const ConsultantDetailsPage: React.FC = () => {
       </Layout>
     );
   }
-
+const consultantName =
+  consultant?.user?.name ||
+  consultant?.name ||
+  'Unknown Consultant';
   return (
-    <Layout title={`${consultant.user?.name || consultant.name || 'Unknown Consultant'} - Consultant Details`}>
+    <Layout title={`${consultantName} - Consultant Details`}>
       {/* Modals */}
       {showConfirmModal && (
         <BookingConfirmationModal
@@ -444,7 +447,7 @@ const ConsultantDetailsPage: React.FC = () => {
           onClose={() => setShowInsufficientModal(false)}
           onAddCredits={() => {
             setShowInsufficientModal(false);
-            navigate('/credits');
+            navigate('/user/credits');
           }}
         />
       )}

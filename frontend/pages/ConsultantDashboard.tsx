@@ -1,11 +1,28 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
-import { consultants as consultantsApi, subscriptions, bookings } from "../services/api";
+import { consultants as consultantsApi, subscriptions, bookings, payments } from "../services/api";
 import { Consultant } from "../types";
-import { Loader, Users, Calendar, DollarSign, Star, MessageSquare, TrendingUp, Bell, Clock, CheckCircle, XCircle, AlertCircle, Video, Edit, Trash2, Plus, ArrowRight, Eye, Check } from "lucide-react";
+import { Loader, Users, Calendar, DollarSign, Star, MessageSquare, TrendingUp, Bell, Clock, CheckCircle, XCircle, AlertCircle, Video, Edit, Trash2, Plus, ArrowRight, Eye, Check, Crown } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../App";
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 
 // Badge Components (matching plans page)
 const VerifiedBadge = () => (
@@ -43,56 +60,76 @@ const getGreeting = () => {
   return "Good Evening";
 };
 
-const ConsultantDashboard: React.FC = () => {
-  const navigate = useNavigate();
+// Helper function to check if a booking is currently live
+const isBookingLive = (booking: any): boolean => {
+  if (!booking?.date || !booking?.time_slot) return false;
+  try {
+    const bookingDate = new Date(booking.date);
+    const [slotHour, slotMin] = booking.time_slot.split(":").map(Number);
+    const start = new Date(bookingDate);
+    start.setHours(slotHour, slotMin, 0, 0);
+    const end = new Date(start);
+    end.setHours(slotHour + 1, slotMin, 0, 0);
+    const now = new Date();
+    return now >= start && now < end;
+  } catch {
+    return false;
+  }
+};
+
+const ConsultantDashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { addToast } = useToast();
 
-  const [profile, setProfile] = useState<Consultant | null>(null);
+  // State variables
+  const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [usage, setUsage] = useState<any>(null);
   const [showRegistrationFee, setShowRegistrationFee] = useState(false);
   const [registrationFeeDeducted, setRegistrationFeeDeducted] = useState(false);
   const [upcomingSessions, setUpcomingSessions] = useState<any[]>([]);
+  const [availability, setAvailability] = useState<any>(null);
   const [earnings, setEarnings] = useState<any>(null);
   const [reviews, setReviews] = useState<any>(null);
+  const [performanceMetrics, setPerformanceMetrics] = useState<any>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
-  const [availability, setAvailability] = useState<any>(null);
-  const [performanceMetrics, setPerformanceMetrics] = useState<any>(null);
+  const [liveSession, setLiveSession] = useState<any>(null);
   const [onboardingData, setOnboardingData] = useState({
-
+    // All mandatory fields for backend
+    type: "Individual",
     domain: "",
     hourly_price: "",
     bio: "",
     languages: "",
-
-    // Frontend-only fields
     designation: "",
     years_experience: "",
     education: "",
     availability: "Flexible",
-
     linkedin: "",
     other_social: "",
+    profile_pic: "",
   });
 
-  useEffect(() => {
-    const saved = localStorage.getItem("consultant_extra");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      setOnboardingData(parsed);
-      setRegistrationFeeDeducted(parsed.registrationFeeDeducted || false);
+  const fetchProfile = async () => {
+    try {
+      const data = await consultantsApi.getProfile();
+      setProfile(data);
+    } catch (error: any) {
+      // If 404, it means consultant profile not created yet - that's fine, show registration form
+      if (error.response?.status === 404) {
+        console.log('⏳ No consultant profile yet - showing registration form');
+        setProfile(null);
+      } else {
+        console.error('Failed to fetch consultant profile:', error);
+        setProfile(null);
+      }
+    } finally {
+      setLoading(false);
     }
-    
-    // Also load profile photo from main user object (like ProfilePage)
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      const userObj = JSON.parse(userStr);
-      setProfilePhoto(userObj.avatar || null);
-    }
-  }, []);
+  };
 
   useEffect(() => {
     fetchProfile();
@@ -106,6 +143,31 @@ const ConsultantDashboard: React.FC = () => {
     fetchPerformanceMetrics();
   }, []);
 
+  // Poll for live sessions every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchUpcomingSessions();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+
+  // Listen for subscription updates from payment success
+  useEffect(() => {
+    const handleSubscriptionUpdate = () => {
+      console.log('🔄 Subscription update event received, refreshing dashboard...');
+      refreshProfile();
+      addToast('Subscription updated successfully!', 'success');
+    };
+
+    window.addEventListener('subscriptionUpdated', handleSubscriptionUpdate);
+
+    return () => {
+      window.removeEventListener('subscriptionUpdated', handleSubscriptionUpdate);
+    };
+  }, []);
+
   useEffect(() => {
     if (profile) {
       setOnboardingData(prev => ({
@@ -114,12 +176,13 @@ const ConsultantDashboard: React.FC = () => {
         hourly_price: profile.hourly_price?.toString() || prev.hourly_price,
         bio: profile.bio || prev.bio,
         languages: profile.languages || prev.languages,
-        designation: prev.designation,
-        years_experience: prev.years_experience,
-        education: prev.education,
-        availability: prev.availability,
-        linkedin: prev.linkedin,
-        other_social: prev.other_social,
+        designation: profile.designation || prev.designation,
+        years_experience: profile.years_experience?.toString() || prev.years_experience,
+        education: profile.education || prev.education,
+        availability: profile.availability || prev.availability,
+        linkedin: profile.linkedin_url || prev.linkedin,
+        other_social: profile.website_url || prev.other_social,
+        profile_pic: profile.profile_pic || prev.profile_pic,
       }));
     }
   }, [profile]);
@@ -127,28 +190,50 @@ const ConsultantDashboard: React.FC = () => {
   const fetchUsage = async () => {
     try {
       const data = await subscriptions.getUsageMetrics();
-      setUsage(data);
+      setUsage(data); // Store usage data in state
+      console.log('📊 Consultant usage data:', data);
     } catch (error) {
       console.error('Failed to fetch usage metrics:', error);
     }
+  };
+
+  const refreshProfile = async () => {
+    await fetchProfile();
+    await fetchUsage(); // Also refresh usage metrics
+  };
+
+  // Function to handle successful subscription purchase
+  const handleSubscriptionSuccess = async () => {
+    // Refetch consultant data to get updated subscription info
+    await refreshProfile();
+    addToast('Subscription updated successfully!', 'success');
   };
 
   const fetchUpcomingSessions = async () => {
     try {
       const data = await consultantsApi.getConsultantBookings();
       setUpcomingSessions(data || []);
+      
+      // Check for live sessions
+      const activeLiveSession = (data || []).find((booking: any) => isBookingLive(booking));
+      setLiveSession(activeLiveSession || null);
     } catch (error) {
       console.error('Failed to fetch upcoming sessions:', error);
       setUpcomingSessions([]);
+      setLiveSession(null);
     }
   };
 
   const fetchEarnings = async () => {
     try {
       const data = await consultantsApi.getConsultantEarnings('monthly');
-      setEarnings(data);
-    } catch (error) {
-      console.error('Failed to fetch earnings:', error);
+      setEarnings(data || []);
+    } catch (error: any) {
+      // 404 means no consultant profile yet - show empty state
+      if (error.response?.status !== 404) {
+        console.error('Failed to fetch earnings:', error);
+      }
+      setEarnings([]);
     }
   };
 
@@ -174,8 +259,8 @@ const ConsultantDashboard: React.FC = () => {
       const upcomingBookings = await consultantsApi.getConsultantBookings();
       const notifications = upcomingBookings.map((booking: any) => ({
         type: 'booking',
-        message: `New booking from ${booking.clientName || 'Client'}`,
-        time: booking.createdAt || new Date().toISOString(),
+        message: `New booking from ${booking.user?.name || booking.user?.email || 'Client'}`,
+        time: booking.createdAt || booking.created_at || new Date().toISOString(),
         bookingId: booking.id
       }));
       setNotifications(notifications);
@@ -195,14 +280,27 @@ const ConsultantDashboard: React.FC = () => {
         if (booking.id) {
           try {
             const bookingMessages = await bookings.getMessages(booking.id);
-            allMessages.push(...(bookingMessages || []));
+            // Add booking and client info to each message
+            const messagesWithClient = (bookingMessages || []).map((msg: any) => ({
+              ...msg,
+              bookingId: booking.id,
+              client: booking.user?.name || booking.user?.email || 'Client',
+              clientId: booking.userId,
+              time: msg.created_at
+            }));
+            allMessages.push(...messagesWithClient);
           } catch (error) {
             console.error(`Failed to fetch messages for booking ${booking.id}:`, error);
           }
         }
       }
       
-      setMessages(allMessages);
+      // Sort by most recent and take last 5
+      const sortedMessages = allMessages
+        .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+        .slice(0, 5);
+      
+      setMessages(sortedMessages);
     } catch (error) {
       console.error('Failed to fetch messages:', error);
       setMessages([]);
@@ -212,9 +310,13 @@ const ConsultantDashboard: React.FC = () => {
   const fetchAvailability = async () => {
     try {
       const data = await consultantsApi.getConsultantAvailability();
-      setAvailability(data);
-    } catch (error) {
-      console.error('Failed to fetch availability:', error);
+      setAvailability(data || []);
+    } catch (error: any) {
+      // 404 means no consultant profile yet - show empty state
+      if (error.response?.status !== 404) {
+        console.error('Failed to fetch availability:', error);
+      }
+      setAvailability([]);
     }
   };
 
@@ -249,6 +351,64 @@ const ConsultantDashboard: React.FC = () => {
       fetchEarnings(); // Refresh earnings
     } catch (error) {
       addToast('Failed to submit withdrawal request', 'error');
+    }
+  };
+
+  const handleWalletRecharge = async (amount: number, bonus: number) => {
+    console.log(" Recharging wallet:", amount);
+    try {
+      const res = await loadRazorpayScript();
+      if (!res) throw new Error("Razorpay SDK failed to load. Are you online?");
+
+      // Create order for wallet recharge
+      const orderData = await payments.createOrder(amount);
+
+      // Fetch user profile
+      let userName = "Consultant";
+      let userEmail = "consultant@example.com";
+      try {
+        if (user?.name) userName = user.name;
+        if (user?.email) userEmail = user.email;
+      } catch (e) {
+        // fail silently
+      }
+
+      // Init Razorpay
+      const options = {
+        key: orderData.key_id,
+        amount: orderData.amount * 100,
+        currency: "INR",
+        name: "Wallet Recharge",
+        description: `Recharge wallet with ₹${amount} + ₹${bonus} bonus`,
+        order_id: orderData.order_id,
+        handler: async function (response: any) {
+          try {
+            await payments.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              amount: amount,
+              userType: "CONSULTANT",
+            });
+            addToast(`Wallet recharged successfully!`, 'success');
+          } catch (err: any) {
+            addToast(`Payment verification failed: ${err.message}`, 'error');
+          }
+        },
+        prefill: {
+          name: userName,
+          email: userEmail,
+        },
+        theme: {
+          color: "#2563EB",
+        },
+      };
+
+      const paymentObject = new window.Razorpay(options);
+      paymentObject.open();
+
+    } catch (error: any) {
+      addToast(`Wallet recharge failed: ${error.response?.data?.error || error.message}`, 'error');
     }
   };
 
@@ -306,64 +466,94 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!onboardingData.domain || !onboardingData.hourly_price) {
-      addToast("Domain and Hourly Price required", "error");
+    // Validate all mandatory fields
+    const requiredFields = [
+      { field: 'domain', label: 'Domain' },
+      { field: 'hourly_price', label: 'Hourly Price' },
+      { field: 'bio', label: 'Bio' },
+      { field: 'languages', label: 'Languages' },
+      { field: 'designation', label: 'Designation' },
+      { field: 'years_experience', label: 'Years of Experience' },
+      { field: 'education', label: 'Education' },
+      { field: 'availability', label: 'Availability' }
+    ];
+
+    const missingFields = requiredFields.filter(({ field }) => {
+      const value = onboardingData[field as keyof typeof onboardingData];
+      return !value || (typeof value === 'string' && value.trim() === '');
+    });
+
+    if (missingFields.length > 0) {
+      addToast(`All fields are mandatory. Missing: ${missingFields.map(f => f.label).join(', ')}`, "error");
+      return;
+    }
+
+    // Validate numeric fields
+    const hourlyPrice = parseFloat(onboardingData.hourly_price);
+    const yearsExp = parseInt(onboardingData.years_experience);
+
+    if (isNaN(hourlyPrice) || hourlyPrice <= 0) {
+      addToast("Hourly price must be a positive number", "error");
+      return;
+    }
+
+    if (isNaN(yearsExp) || yearsExp < 0) {
+      addToast("Years of experience must be a non-negative number", "error");
       return;
     }
 
     try {
-      // 🔥 Remove frontend-only fields before sending
-      const {
-        designation,
-        years_experience,
-        education,
-        availability,
-        linkedin,
-        other_social,
+      // Upload profile photo if exists
+      let profilePicUrl = onboardingData.profile_pic;
+      if (profilePhoto && !profilePicUrl) {
+        try {
+          // Convert base64 to File
+          const response = await fetch(profilePhoto);
+          const blob = await response.blob();
+          const file = new File([blob], 'profile-photo.jpg', { type: 'image/jpeg' });
+          
+          const uploadResponse = await consultantsApi.uploadProfilePic(file);
+          profilePicUrl = uploadResponse.profile_pic;
+        } catch (uploadError) {
+          console.error('Profile photo upload failed:', uploadError);
+          addToast('Profile photo upload failed, but registration will continue', 'warning');
+        }
+      }
 
+      // Prepare registration data with all mandatory fields
+      const registrationData = {
+        type: onboardingData.type,
+        domain: onboardingData.domain,
+        bio: onboardingData.bio,
+        languages: onboardingData.languages,
+        hourly_price: hourlyPrice.toString(),
+        designation: onboardingData.designation,
+        years_experience: yearsExp.toString(),
+        education: onboardingData.education,
+        availability: onboardingData.availability,
+        linkedin: onboardingData.linkedin,
+        other_social: onboardingData.other_social,
+        profile_pic: profilePicUrl,
+      };
 
-        ...backendData
-      } = onboardingData;
-
-      await consultantsApi.register(backendData);
+      await consultantsApi.register(registrationData);
 
       // Show registration fee notification
-      const hourlyPrice = parseFloat(onboardingData.hourly_price);
       const registrationFee = 10;
       const finalHourlyPrice = hourlyPrice - registrationFee;
       
       setShowRegistrationFee(true);
       setRegistrationFeeDeducted(true);
 
-      // Save frontend-only fields locally
-      localStorage.setItem(
-        "consultant_extra",
-        JSON.stringify({
-          designation,
-          years_experience,
-          education,
-          availability,
-          linkedin,
-          other_social,
-          profilePhoto,
-          registrationFeeDeducted: true,
-        })
-      );
-
-      addToast("Profile created! Registration fee of ₹10 deducted.", "success");
+      addToast("Consultant profile created successfully!", "success");
+      
+      // Refresh profile data
       fetchProfile();
-    } catch {
-      addToast("Failed to create profile", "error");
-    }
-  };
-
-  const fetchProfile = async () => {
-    try {
-      const data = await consultantsApi.getProfile();
-      setProfile(data);
-    } catch {
+      
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      addToast(error.response?.data?.error || "Failed to create consultant profile", "error");
       setProfile(null);
-    } finally {
       setLoading(false);
     }
   };
@@ -406,9 +596,9 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
             <form onSubmit={handleRegister} className="space-y-4">
               <div className="flex flex-col items-center mb-6">
                 <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-blue-100 shadow-md bg-gray-100 flex items-center justify-center">
-                  {profilePhoto ? (
+                  {profilePhoto || onboardingData.profile_pic ? (
                     <img
-                      src={profilePhoto}
+                      src={profilePhoto || onboardingData.profile_pic}
                       alt="Profile"
                       className="w-full h-full object-cover"
                     />
@@ -482,12 +672,13 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                     </div>
                   </div>
                   <p className="text-xs text-blue-700 mt-3">
-                    💡 One-time registration fee of ₹10 will be deducted from your hourly rate
+                    One-time registration fee of ₹10 will be deducted from your hourly rate
                   </p>
                 </div>
               )}
-              
-              {registrationFeeDeducted && (
+            
+            {registrationFeeDeducted && (
+              <div className="space-y-4">
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4">
                   <div className="flex items-center">
                     <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
@@ -496,122 +687,145 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                     </span>
                   </div>
                 </div>
-              )}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Your Hourly Rate:</span>
+                    <span className="text-lg font-bold text-gray-900">₹{parseFloat(onboardingData.hourly_price).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Registration Fee:</span>
+                    <span className="text-lg font-bold text-red-600">-₹10.00</span>
+                  </div>
+                  <div className="border-t pt-2 mt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-semibold text-gray-700">You'll Receive:</span>
+                      <span className="text-xl font-bold text-green-600">₹{(parseFloat(onboardingData.hourly_price) - 10).toFixed(2)}/hr</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-blue-700">
+                  One-time registration fee of ₹10 will be deducted from your hourly rate
+                </p>
+              </div>
+            )}
+            
+            <textarea
+              placeholder="Bio"
+              className="w-full border rounded-xl px-4 py-3 h-32"
+              value={onboardingData.bio}
+              onChange={(e) =>
+                setOnboardingData({
+                  ...onboardingData,
+                  bio: e.target.value,
+                })
+              }
+              required
+            />
+            
+            <input
+              type="text"
+              placeholder="Languages (comma separated)"
+              className="w-full border rounded-xl px-4 py-3"
+              value={onboardingData.languages}
+              onChange={(e) =>
+                setOnboardingData({
+                  ...onboardingData,
+                  languages: e.target.value,
+                })
+              }
+              required
+            />
+            
+            <input
+              type="text"
+              placeholder="Designation"
+              className="w-full border rounded-xl px-4 py-3"
+              value={onboardingData.designation}
+              onChange={(e) =>
+                setOnboardingData({
+                  ...onboardingData,
+                  designation: e.target.value,
+                })
+              }
+              required
+            />
+            
+            <input
+              type="number"
+              placeholder="Years of Experience"
+              className="w-full border rounded-xl px-4 py-3"
+              value={onboardingData.years_experience}
+              onChange={(e) =>
+                setOnboardingData({
+                  ...onboardingData,
+                  years_experience: e.target.value,
+                })
+              }
+              required
+            />
+            
+            <input
+              type="text"
+              placeholder="Education"
+              className="w-full border rounded-xl px-4 py-3"
+              value={onboardingData.education}
+              onChange={(e) =>
+                setOnboardingData({
+                  ...onboardingData,
+                  education: e.target.value,
+                })
+              }
+              required
+            />
+            
+            <select
+              className="w-full p-3 border border-gray-300 rounded-xl"
+              value={onboardingData.availability}
+              onChange={(e) =>
+                setOnboardingData({
+                  ...onboardingData,
+                  availability: e.target.value,
+                })
+              }
+            >
+              <option>Full-time</option>
+              <option>Part-time</option>
+              <option>Flexible</option>
+              <option>Weekends</option>
+            </select>
+            
+            <input
+              type="url"
+              placeholder="LinkedIn URL (optional)"
+              className="w-full border rounded-xl px-4 py-3"
+              value={onboardingData.linkedin}
+              onChange={(e) =>
+                setOnboardingData({
+                  ...onboardingData,
+                  linkedin: e.target.value,
+                })
+              }
+            />
+            
+            <input
+              type="url"
+              placeholder="Website / Portfolio URL (optional)"
+              className="w-full border rounded-xl px-4 py-3"
+              value={onboardingData.other_social}
+              onChange={(e) =>
+                setOnboardingData({
+                  ...onboardingData,
+                  other_social: e.target.value,
+                })
+              }
+            />
 
-              <textarea
-                placeholder="Bio"
-                className="w-full border rounded-xl px-4 py-3"
-                value={onboardingData.bio}
-                onChange={(e) =>
-                  setOnboardingData({
-                    ...onboardingData,
-                    bio: e.target.value,
-                  })
-                }
-              />
-
-              <input
-                type="text"
-                placeholder="Languages"
-                className="w-full border rounded-xl px-4 py-3"
-                value={onboardingData.languages}
-                onChange={(e) =>
-                  setOnboardingData({
-                    ...onboardingData,
-                    languages: e.target.value,
-                  })
-                }
-              />
-
-              {/* 🔥 FRONTEND ONLY FIELDS */}
-
-              <input
-                type="text"
-                placeholder="Designation (Frontend only)"
-                className="w-full border rounded-xl px-4 py-3"
-                value={onboardingData.designation}
-                onChange={(e) =>
-                  setOnboardingData({
-                    ...onboardingData,
-                    designation: e.target.value,
-                  })
-                }
-              />
-
-              <input
-                type="number"
-                placeholder="Years of Experience (Frontend only)"
-                className="w-full border rounded-xl px-4 py-3"
-                value={onboardingData.years_experience}
-                onChange={(e) =>
-                  setOnboardingData({
-                    ...onboardingData,
-                    years_experience: e.target.value,
-                  })
-                }
-              />
-
-              <input
-                type="text"
-                placeholder="Education (Frontend only)"
-                className="w-full border rounded-xl px-4 py-3"
-                value={onboardingData.education}
-                onChange={(e) =>
-                  setOnboardingData({
-                    ...onboardingData,
-                    education: e.target.value,
-                  })
-                }
-              />
-
-              <input
-                type="url"
-                placeholder="LinkedIn Profile (Frontend only)"
-                className="w-full border rounded-xl px-4 py-3"
-                value={onboardingData.linkedin}
-                onChange={(e) =>
-                  setOnboardingData({
-                    ...onboardingData,
-                    linkedin: e.target.value,
-                  })
-                }
-              />
-
-              <input
-                type="url"
-                placeholder="Other Social Media (Instagram / Twitter / Website)"
-                className="w-full border rounded-xl px-4 py-3"
-                value={onboardingData.other_social}
-                onChange={(e) =>
-                  setOnboardingData({
-                    ...onboardingData,
-                    other_social: e.target.value,
-                  })
-                }
-              />
-
-              <select
-                className="w-full border rounded-xl px-4 py-3"
-                value={onboardingData.availability}
-                onChange={(e) =>
-                  setOnboardingData({
-                    ...onboardingData,
-                    availability: e.target.value,
-                  })
-                }
-              >
-                <option>Full-time</option>
-                <option>Part-time</option>
-                <option>Flexible</option>
-                <option>Weekends</option>
-              </select>
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 text-white py-3 rounded-xl"
-              >
-                {!profile ? 'Create Profile' : 'Update Profile'}
-              </button>
+            <button
+              type="submit"
+              className="w-full bg-blue-600 text-white py-3 rounded-xl"
+            >
+              {!profile ? 'Create Profile' : 'Update Profile'}
+            </button>
             </form>
           </div>
         </div>
@@ -645,53 +859,41 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
         )}
 
-        {/* 4.1 Welcome Section */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 text-white relative">
-          {/* Prominent Badge - Top Right Corner */}
-          <div className="absolute top-4 right-4 z-10">
-            {usage?.plan === "Professional" && (
-              <div className="bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg border-2 border-blue-300">
-                <div className="flex items-center">
-                  <Check className="w-5 h-5 mr-2" />
-                  <span className="font-bold text-sm">Professional</span>
-                </div>
+        {/* Live Session Banner */}
+        {liveSession && (
+          <div 
+            onClick={() => navigate('/consultant/messages', { state: { bookingId: liveSession.id } })}
+            className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 flex items-center justify-between cursor-pointer hover:from-green-600 hover:to-emerald-700 transition-all transform hover:scale-[1.02] shadow-lg"
+          >
+            <div className="flex items-center">
+              <div className="bg-white/20 rounded-full p-2 mr-3 animate-pulse">
+                <Video className="w-6 h-6 text-white" />
               </div>
-            )}
-            {usage?.plan === "Premium" && (
-              <div className="bg-green-500 text-white px-4 py-2 rounded-full shadow-lg border-2 border-green-300">
-                <div className="flex items-center">
-                  <Star className="w-5 h-5 mr-2" />
-                  <span className="font-bold text-sm">Premium</span>
-                </div>
+              <div>
+                <p className="font-bold text-white text-lg flex items-center">
+                  🔴 Live Session Active
+                  <span className="ml-2 text-xs bg-white/30 px-2 py-1 rounded-full">NOW</span>
+                </p>
+                <p className="text-sm text-white/90">
+                  Session with {liveSession.user?.name || 'Client'} • {liveSession.time_slot} • Click to join chat
+                </p>
               </div>
-            )}
-            {usage?.plan === "Elite" && (
-              <div className="bg-purple-500 text-white px-4 py-2 rounded-full shadow-lg border-2 border-purple-300">
-                <div className="flex items-center">
-                  <TrendingUp className="w-5 h-5 mr-2" />
-                  <span className="font-bold text-sm">Elite</span>
-                </div>
-              </div>
-            )}
-            {(!usage?.plan || usage?.plan === "Free") && (
-              <div className="bg-gray-500 text-white px-4 py-2 rounded-full shadow-lg border-2 border-gray-300">
-                <div className="flex items-center">
-                  <Users className="w-5 h-5 mr-2" />
-                  <span className="font-bold text-sm">Free</span>
-                </div>
-              </div>
-            )}
+            </div>
+            <ArrowRight className="w-6 h-6 text-white" />
           </div>
-          
+        )}
+
+        {/* 4.1 Welcome Section */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 text-white">
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-3xl font-bold mb-4">
-                {getGreeting()}, {profile.name || user?.name || "Expert"}!
+                {getGreeting()}, {profile?.name || user?.name || "Expert"}!
               </h2>
               
-              <div className="flex items-center space-x-4 mb-4">
+              <div className="flex items-center space-x-4 mb-4 flex-wrap gap-2">
                 <div className="flex items-center">
-                  {profile.is_verified ? (
+                  {profile?.is_verified ? (
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                       <CheckCircle className="w-3 h-3 mr-1" />
                       Verified
@@ -703,6 +905,19 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                     </span>
                   )}
                 </div>
+                
+                {/* Plan Badge */}
+                {profile?.currentPlan && (
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                    profile.currentPlan === 'Elite' ? 'bg-purple-100 text-purple-800' :
+                    profile.currentPlan === 'Premium' ? 'bg-blue-100 text-blue-800' :
+                    profile.currentPlan === 'Professional' ? 'bg-indigo-100 text-indigo-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    <Crown className="w-3 h-3 mr-1" />
+                    {profile.currentPlan} Plan
+                  </span>
+                )}
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -712,28 +927,30 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                 </div>
                 <div>
                   <p className="text-blue-100 text-sm">Domain</p>
-                  <p className="text-xl font-semibold">{profile.domain}</p>
+                  <p className="text-xl font-semibold">{profile?.domain}</p>
                 </div>
                 <div>
                   <p className="text-blue-100 text-sm">Hourly Rate</p>
-                  <p className="text-xl font-semibold">₹{profile.hourly_price}/hr</p>
+                  <p className="text-xl font-semibold">₹{profile?.hourly_price || "--"}/hr</p>
                 </div>
                 <div>
                   <p className="text-blue-100 text-sm">Experience</p>
-                  <p className="text-xl font-semibold">{onboardingData.years_experience || "0"} years</p>
+                  <p className="text-xl font-semibold">{profile?.years_experience || "0"} years</p>
                 </div>
               </div>
             </div>
             
-            {profilePhoto && (
+            {profile?.profile_pic && (
               <img
-                src={profilePhoto}
+                src={profile.profile_pic}
                 alt="Profile"
-                className="w-24 h-24 rounded-full border-4 border-white/20"
+                className="w-24 h-24 rounded-full border-4 border-white/20 object-cover"
               />
             )}
           </div>
         </div>
+
+ 
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* 4.2 Upcoming Sessions */}
@@ -765,13 +982,13 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                               <Users className="w-5 h-5 text-blue-600" />
                             </div>
                             <div>
-                              <h4 className="font-semibold">{session.clientName}</h4>
-                              <p className="text-sm text-gray-600">{session.sessionType}</p>
+                              <h4 className="font-semibold">{session.user?.name || session.user?.email || 'Client'}</h4>
+                              <p className="text-sm text-gray-600">{session.domain || 'Consultation'}</p>
                             </div>
                           </div>
                           <div className="flex items-center text-sm text-gray-600 ml-13">
                             <Clock className="w-4 h-4 mr-1" />
-                            {session.date ? formatTime(session.date) : 'Date not set'} at {session.time || 'Time not set'}
+                            {session.date ? new Date(session.date).toLocaleDateString('en-IN') : 'Date not set'} at {session.time_slot || 'Time not set'}
                           </div>
                         </div>
                         
@@ -868,6 +1085,88 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                     <p>Loading availability...</p>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Current Subscription Section */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 text-white">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold mb-2">Current Subscription</h2>
+              {profile?.currentPlan && profile.currentPlan !== 'Free' ? (
+                <>
+                  <p className="text-4xl font-bold mb-2">{profile.currentPlan}</p>
+                  <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full inline-block mb-4">
+                    <span className="font-semibold">Status: {profile.subscriptionStatus || 'Active'}</span>
+                  </div>
+                  {profile.subscriptionEndDate && (
+                    <p className="text-sm opacity-90">
+                      Expires: {new Date(profile.subscriptionEndDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="text-4xl font-bold mb-2">Free Plan</p>
+                  <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full inline-block">
+                    <span className="font-semibold">Limited Features</span>
+                  </div>
+                  <p className="text-sm opacity-90 mt-4">
+                    Upgrade to unlock premium features
+                  </p>
+                </>
+              )}
+            </div>
+            <button 
+              onClick={() => navigate('/consultant/plans')}
+              className="bg-white text-blue-600 px-6 py-3 rounded-xl font-semibold hover:bg-blue-50 transition-colors flex items-center gap-2"
+            >
+              {profile?.currentPlan && profile.currentPlan !== 'Free' ? 'Upgrade Plan' : 'View Plans'}
+              <ArrowRight size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Subscription Usage Section */}
+        <div className="bg-white rounded-3xl p-8 shadow-lg mb-8">
+          <h2 className="text-2xl font-bold text-gray-800 mb-6">Subscription Usage</h2>
+          
+          <div className="grid md:grid-cols-3 gap-6">
+            {/* Monthly Chat Messages */}
+            <div className="bg-blue-50 rounded-xl p-6 flex flex-col justify-between">
+              <div>
+                <p className="text-lg font-semibold text-blue-800 mb-2">Monthly Chat Messages</p>
+                <p className="text-3xl font-bold text-blue-600">{usage?.chat_messages_used || 0} <span className="text-base font-medium text-gray-500">Used</span></p>
+                <p className="text-sm text-gray-500 mt-1">{usage?.chat_limit || 5} Total</p>
+              </div>
+              <div className="w-full bg-blue-200 rounded-full h-2 mt-4">
+                <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((usage?.chat_messages_used || 0) / (usage?.chat_limit || 5) * 100, 100)}%` }}></div>
+              </div>
+            </div>
+            
+            {/* Bookings Made */}
+            <div className="bg-purple-50 rounded-xl p-6 flex flex-col justify-between">
+              <div>
+                <p className="text-lg font-semibold text-purple-800 mb-2">Bookings Made</p>
+                <p className="text-3xl font-bold text-purple-600">{usage?.bookings_made || 0} <span className="text-base font-medium text-gray-500">Used</span></p>
+                <p className="text-sm text-gray-500 mt-1">No limit</p>
+              </div>
+              <div className="w-full bg-purple-200 rounded-full h-2 mt-4">
+                <div className="bg-purple-600 h-2 rounded-full" style={{ width: '100%' }}></div>
+              </div>
+            </div>
+            
+            {/* Days Remaining */}
+            <div className="bg-green-50 rounded-xl p-6 flex flex-col justify-between">
+              <div>
+                <p className="text-lg font-semibold text-green-800 mb-2">Days Remaining</p>
+                <p className="text-3xl font-bold text-green-600">{usage?.days_remaining || 0} <span className="text-base font-medium text-gray-500">Days</span></p>
+                <p className="text-sm text-gray-500 mt-1">{usage?.days_remaining > 0 ? 'Until renewal' : 'Expired'}</p>
+              </div>
+              <div className="w-full bg-green-200 rounded-full h-2 mt-4">
+                <div className="bg-green-600 h-2 rounded-full" style={{ width: `${Math.max((usage?.days_remaining || 0) / 30 * 100, 0)}%` }}></div>
               </div>
             </div>
           </div>
@@ -1105,19 +1404,19 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                   <div 
                     key={index} 
                     className="flex items-start p-3 hover:bg-gray-50 rounded-lg cursor-pointer"
-                    onClick={() => navigate(`/messages/${message.clientId || message.id}`)}
+                    onClick={() => navigate('/consultant/messages', { state: { bookingId: message.bookingId } })}
                   >
                     <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
                       <Users className="w-5 h-5 text-indigo-600" />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium">{message.client || 'Unknown Client'}</span>
+                        <span className="font-medium">{message.client}</span>
                         {message.unread && (
                           <span className="w-2 h-2 bg-red-500 rounded-full"></span>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600 truncate">{message.message || 'No message'}</p>
+                      <p className="text-sm text-gray-600 truncate">{message.content || 'No message'}</p>
                       <p className="text-xs text-gray-500">{message.time ? formatTime(message.time) : 'Unknown time'}</p>
                     </div>
                     <ArrowRight className="w-4 h-4 text-gray-400" />
@@ -1128,35 +1427,6 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
         </div>
 
-        {/* ================= USAGE LIMITS ================= */}
-        {usage && (
-          <div className="bg-white p-8 rounded-3xl shadow-sm border">
-            <h2 className="text-2xl font-bold mb-6">Subscription Usage</h2>
-            <div className="flex flex-col gap-6 md:flex-row">
-              <div className="flex-1 bg-blue-50 p-6 rounded-2xl border border-blue-100">
-                <h3 className="font-semibold text-blue-900 mb-2">Monthly Chat Messages</h3>
-                <div className="flex justify-between text-sm mb-2 font-medium">
-                  <span>{usage.chat_messages_used} Used</span>
-                  <span>{usage.chat_limit} Total</span>
-                </div>
-                <div className="w-full bg-blue-200 rounded-full h-3">
-                  <div
-                    className="bg-blue-600 h-3 rounded-full transition-all"
-                    style={{ width: `${Math.min(100, (usage.chat_messages_used / usage.chat_limit) * 100)}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex-1 bg-green-50 p-6 rounded-2xl border border-green-100">
-                <h3 className="font-semibold text-green-900 mb-2">Days Remaining</h3>
-                <div className="text-3xl font-bold text-green-700">
-                  {usage.days_remaining}
-                </div>
-                <p className="text-sm text-green-800 mt-1">days left on {usage.plan} plan</p>
-              </div>
-            </div>
-          </div>
-        )}
 
       </div>
     </Layout>

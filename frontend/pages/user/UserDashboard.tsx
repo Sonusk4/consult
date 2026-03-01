@@ -39,7 +39,7 @@ const UserDashboard: React.FC = () => {
     // fetchConsultants();
     // fetchNotifications();
     // fetchTransactions();
-    // fetchUsage();
+    fetchUsage();
     
     // Set loading to false since we're not fetching data
     setLoading(false);
@@ -47,8 +47,8 @@ const UserDashboard: React.FC = () => {
 
   const fetchUsage = async () => {
     try {
-      // const data = await subscriptions.getUsageMetrics();
-      // setUsage(data);
+      const data = await subscriptions.getUsageMetrics();
+      setUsage(data);
     } catch { }
   };
 

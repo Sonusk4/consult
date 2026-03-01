@@ -6,7 +6,7 @@ import { Consultant } from '../types';
 import {
   Camera, Mail, Phone, User as UserIcon, Save, Loader,
   Upload, FileText, Shield, Award, X, Check, AlertCircle,
-  Eye, Edit2, CheckCircle, Clock, PlusCircle, Star, TrendingUp, Users
+  Eye, Edit2, CheckCircle, Clock, PlusCircle, Star, TrendingUp, Users, MessageSquare, Crown
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { link } from 'node:fs';
@@ -220,7 +220,7 @@ const ProfilePage: React.FC = () => {
       if (setUser) {
         const updatedUser = { ...user, name: formData.name, phone: formData.phone };
         setUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
+        sessionStorage.setItem('user', JSON.stringify(updatedUser));
       }
       addToast('Profile updated successfully ✓', 'success');
       setIsEditing(false);
@@ -241,19 +241,19 @@ const ProfilePage: React.FC = () => {
         // Refresh consultant profile to get updated profile_pic from DB
         const fresh = await consultantsApi.getProfile();
         setProfile(fresh);
-        // Also update localStorage avatar for navbar display
+        // Also update sessionStorage avatar for navbar display
         if (setUser && user) {
           const updated = { ...user, avatar: result.profile_pic };
           setUser(updated);
-          localStorage.setItem('user', JSON.stringify(updated));
+          sessionStorage.setItem('user', JSON.stringify(updated));
         }
         
         // Also save to consultant_extra for dashboard consistency
-        const consultantExtra = localStorage.getItem('consultant_extra');
+        const consultantExtra = sessionStorage.getItem('consultant_extra');
         if (consultantExtra) {
           const parsed = JSON.parse(consultantExtra);
           parsed.profilePhoto = result.profile_pic;
-          localStorage.setItem('consultant_extra', JSON.stringify(parsed));
+          sessionStorage.setItem('consultant_extra', JSON.stringify(parsed));
           setRegistrationPhoto(result.profile_pic); // Update state
         }
       } else {
@@ -261,15 +261,15 @@ const ProfilePage: React.FC = () => {
         if (setUser && user) {
           const updated = { ...user, avatar: result.avatar };
           setUser(updated);
-          localStorage.setItem('user', JSON.stringify(updated));
+          sessionStorage.setItem('user', JSON.stringify(updated));
         }
         
         // Also save to consultant_extra for dashboard consistency
-        const consultantExtra = localStorage.getItem('consultant_extra');
+        const consultantExtra = sessionStorage.getItem('consultant_extra');
         if (consultantExtra) {
           const parsed = JSON.parse(consultantExtra);
           parsed.profilePhoto = result.avatar;
-          localStorage.setItem('consultant_extra', JSON.stringify(parsed));
+          sessionStorage.setItem('consultant_extra', JSON.stringify(parsed));
           setRegistrationPhoto(result.avatar); // Update state
         }
       }
@@ -351,14 +351,14 @@ const ProfilePage: React.FC = () => {
   const [registrationPhoto, setRegistrationPhoto] = useState<string | null>(null);
   
   useEffect(() => {
-    const saved = localStorage.getItem("consultant_extra");
+    const saved = sessionStorage.getItem("consultant_extra");
     if (saved) {
       const parsed = JSON.parse(saved);
       setRegistrationPhoto(parsed.profilePhoto || null);
     }
   }, []);
 
-  const avatarSrc = registrationPhoto || 
+  const avatarSrc = profile?.profile_pic || registrationPhoto || 
     `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.email || 'U')}&background=3b82f6&color=fff&size=128`;
 
   if (loading) {
@@ -377,39 +377,18 @@ const ProfilePage: React.FC = () => {
 
         {/* ─── Hero Card ───────────────────────────────────────────────── */}
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden relative">
-          {/* Prominent Badge - Top Right Corner */}
+          {/* Plan Badge - Top Right Corner */}
           <div className="absolute top-4 right-4 z-10">
-            {usage?.plan === "Professional" && (
-              <div className="bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg border-2 border-blue-300">
-                <div className="flex items-center">
-                  <Check className="w-5 h-5 mr-2" />
-                  <span className="font-bold text-sm">Professional</span>
-                </div>
-              </div>
-            )}
-            {usage?.plan === "Premium" && (
-              <div className="bg-green-500 text-white px-4 py-2 rounded-full shadow-lg border-2 border-green-300">
-                <div className="flex items-center">
-                  <Star className="w-5 h-5 mr-2" />
-                  <span className="font-bold text-sm">Premium</span>
-                </div>
-              </div>
-            )}
-            {usage?.plan === "Elite" && (
-              <div className="bg-purple-500 text-white px-4 py-2 rounded-full shadow-lg border-2 border-purple-300">
-                <div className="flex items-center">
-                  <TrendingUp className="w-5 h-5 mr-2" />
-                  <span className="font-bold text-sm">Elite</span>
-                </div>
-              </div>
-            )}
-            {(!usage?.plan || usage?.plan === "Free") && (
-              <div className="bg-gray-500 text-white px-4 py-2 rounded-full shadow-lg border-2 border-gray-300">
-                <div className="flex items-center">
-                  <Users className="w-5 h-5 mr-2" />
-                  <span className="font-bold text-sm">Free</span>
-                </div>
-              </div>
+            {usage?.plan && (
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                usage.plan === 'Elite' ? 'bg-purple-100 text-purple-800' :
+                usage.plan === 'Premium' ? 'bg-blue-100 text-blue-800' :
+                usage.plan === 'Professional' ? 'bg-indigo-100 text-indigo-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                <Crown className="w-3 h-3 mr-1" />
+                {usage.plan} Plan
+              </span>
             )}
           </div>
           
@@ -455,19 +434,21 @@ const ProfilePage: React.FC = () => {
                     (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=U&background=3b82f6&color=fff&size=128`;
                   }}
                 />
-                <label className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
-                  {uploadingImage
-                    ? <Loader className="text-white animate-spin" size={22} />
-                    : <><Camera className="text-white" size={22} /><span className="text-white text-xs mt-1 font-semibold">Change</span></>
-                  }
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    disabled={uploadingImage}
-                  />
-                </label>
+                {isEditing && (
+                  <label className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
+                    {uploadingImage
+                      ? <Loader className="text-white animate-spin" size={22} />
+                      : <><Camera className="text-white" size={22} /><span className="text-white text-xs mt-1 font-semibold">Change</span></>
+                    }
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      disabled={uploadingImage}
+                    />
+                  </label>
+                )}
               </div>
 
               {/* Edit/Save */}

@@ -1,5 +1,9 @@
 import VideoCallModal from "../components/VideoCallModal";
+import ReviewPopup from "../components/ReviewPopup";
+import UserPopupModal from "../components/UserPopupModal";
+import { useUserPopup } from "../hooks/useUserPopup";
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import Layout from "../components/Layout";
 import api from "../services/api";
 import {
@@ -185,7 +189,9 @@ const SessionBanner: React.FC<{
 
 /* ─── Main Component ─────────────────────────────────────── */
 const MessagesPage: React.FC = () => {
+  const location = useLocation();
   const { user: currentUser, loading: userLoading } = useUser();
+  const { showError, popup, hidePopup } = useUserPopup();
   const [socket, setSocket] = useState<any>(null);
   const [bookings, setBookings] = useState<any[]>([]);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
@@ -197,6 +203,8 @@ const MessagesPage: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [activeCallBooking, setActiveCallBooking] = useState<any>(null);
+  const [showReviewPopup, setShowReviewPopup] = useState(false);
+  const [reviewBookingId, setReviewBookingId] = useState<number | null>(null);
   const [now, setNow] = useState(new Date());
   const [showWarning, setShowWarning] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -237,6 +245,17 @@ const MessagesPage: React.FC = () => {
     };
     fetchBookings();
   }, [currentUser]);
+
+  // Auto-select booking if passed via navigation state
+  useEffect(() => {
+    if (location.state?.bookingId && bookings.length > 0 && !selectedBooking) {
+      const targetBooking = bookings.find(b => b.id === location.state.bookingId);
+      if (targetBooking) {
+        console.log('🎯 Auto-selecting live session booking:', targetBooking.id);
+        setSelectedBooking(targetBooking);
+      }
+    }
+  }, [location.state, bookings, selectedBooking]);
 
   // Socket connection
   useEffect(() => {
@@ -306,8 +325,8 @@ const MessagesPage: React.FC = () => {
       }
     };
 
-    const handleChatBlocked = (data: any) => alert(data.message);
-    const handleChatError = (data: any) => { console.error("Chat error:", data); alert(data.message); };
+    const handleChatBlocked = (data: any) => showError('Chat Limit Reached', data.message);
+    const handleChatError = (data: any) => { console.error("Chat error:", data); showError('Chat Error', data.message); };
 
     socket.on("receive-message", handleReceiveMessage);
     socket.on("video-call-started", handleIncomingCall);
@@ -375,8 +394,12 @@ const MessagesPage: React.FC = () => {
   /* ── Booking sidebar label ── */
   const getBookingLabel = (b: any) => {
     if (!currentUser) return `Booking #${b.id}`;
-    if (isConsultant) return b.user?.name || b.user?.email || `User #${b.userId}`;
-    return b.consultant?.user?.name || b.consultant?.user?.email || `Booking #${b.id}`;
+    if (isConsultant) {
+      // For consultants, show the client's name
+      return b.user?.name || b.user?.email || `User (ID: ${b.userId})`;
+    }
+    // For clients, show the consultant's name
+    return b.consultant?.user?.name || b.consultant?.user?.email || `Consultant #${b.consultantId}`;
   };
 
   const getStatusChip = (b: any) => {
@@ -642,7 +665,17 @@ const MessagesPage: React.FC = () => {
           bookingId={activeCallBooking.id}
           userId={currentUser.id}
           socket={socket}
-          onClose={() => { setIsCalling(false); setActiveCallBooking(null); }}
+          onClose={() => { 
+            setIsCalling(false); 
+            // Store booking ID for review before clearing active call
+            const bookingId = activeCallBooking?.id;
+            // Show review popup only for clients (not consultants)
+            if (!isConsultant && bookingId) {
+              setReviewBookingId(bookingId);
+              setShowReviewPopup(true);
+            }
+            setActiveCallBooking(null); 
+          }}
           startAgora={isCalling}
         />
       )}
@@ -668,6 +701,25 @@ const MessagesPage: React.FC = () => {
           </div>
         </div>
       )}
+      
+      {/* ── Review Popup ── */}
+      {showReviewPopup && reviewBookingId && (
+        <ReviewPopup
+          bookingId={reviewBookingId}
+          onClose={() => {
+            setShowReviewPopup(false);
+            setReviewBookingId(null);
+          }}
+        />
+      )}
+      
+      <UserPopupModal
+        open={popup.open}
+        title={popup.title}
+        message={popup.message}
+        icon={popup.icon}
+        onClose={hidePopup}
+      />
     </>
   );
 };
