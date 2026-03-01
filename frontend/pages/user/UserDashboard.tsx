@@ -35,11 +35,11 @@ const UserDashboard: React.FC = () => {
   useEffect(() => {
     // TEMPORARILY DISABLED - These API calls are causing logout when navigating to search page
     fetchBookings();
-    // fetchWallet();
+    fetchWallet();
     // fetchConsultants();
     // fetchNotifications();
     // fetchTransactions();
-    // fetchUsage();
+    fetchUsage();
     
     // Set loading to false since we're not fetching data
     setLoading(false);
@@ -47,8 +47,8 @@ const UserDashboard: React.FC = () => {
 
   const fetchUsage = async () => {
     try {
-      // const data = await subscriptions.getUsageMetrics();
-      // setUsage(data);
+      const data = await subscriptions.getUsageMetrics();
+      setUsage(data);
     } catch { }
   };
 
@@ -421,6 +421,7 @@ const UserDashboard: React.FC = () => {
                 {transactions?.length > 0
                   ? `₹${transactions[0]?.amount}`
                   : "No payments"}
+                  
               </span>
             </div>
 

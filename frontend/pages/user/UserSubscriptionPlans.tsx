@@ -67,6 +67,7 @@ export default function UserSubscriptionPlans() {
               userType: "USER",
             });
             showPaymentSuccess('Payment Successful!', `You are now on the ${selectedPlan.name} plan! An email receipt has been sent.`);
+            console.log('Payment success popup called');
             setSelectedPlan(null);
           } catch (err: any) {
             showPaymentError('Verification Failed', err.message);
