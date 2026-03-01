@@ -1,4 +1,6 @@
 import VideoCallModal from "../components/VideoCallModal";
+import UserPopupModal from "../components/UserPopupModal";
+import { useUserPopup } from "../hooks/useUserPopup";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Layout from "../components/Layout";
 import api from "../services/api";
@@ -186,6 +188,7 @@ const SessionBanner: React.FC<{
 /* ─── Main Component ─────────────────────────────────────── */
 const MessagesPage: React.FC = () => {
   const { user: currentUser, loading: userLoading } = useUser();
+  const { showError, popup, hidePopup } = useUserPopup();
   const [socket, setSocket] = useState<any>(null);
   const [bookings, setBookings] = useState<any[]>([]);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
@@ -306,8 +309,8 @@ const MessagesPage: React.FC = () => {
       }
     };
 
-    const handleChatBlocked = (data: any) => alert(data.message);
-    const handleChatError = (data: any) => { console.error("Chat error:", data); alert(data.message); };
+    const handleChatBlocked = (data: any) => showError('Chat Limit Reached', data.message);
+    const handleChatError = (data: any) => { console.error("Chat error:", data); showError('Chat Error', data.message); };
 
     socket.on("receive-message", handleReceiveMessage);
     socket.on("video-call-started", handleIncomingCall);
@@ -668,6 +671,14 @@ const MessagesPage: React.FC = () => {
           </div>
         </div>
       )}
+      
+      <UserPopupModal
+        open={popup.open}
+        title={popup.title}
+        message={popup.message}
+        icon={popup.icon}
+        onClose={hidePopup}
+      />
     </>
   );
 };

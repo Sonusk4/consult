@@ -30,20 +30,31 @@ const SearchConsultantPage: React.FC = () => {
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
 
   useEffect(() => {
-    fetchConsultants();
-  }, []);
+  fetchConsultants();
+}, []);
 
-  const fetchConsultants = async () => {
-    setLoading(true);
-    try {
-      const data = await consultantsApi.getAll();
-      setConsultantsData(data || []);
-    } catch (err) {
-      setError('Failed to load consultants.');
-    } finally {
-      setLoading(false);
-    }
-  };
+const fetchConsultants = async () => {
+  setLoading(true);
+  try {
+    const data = await consultantsApi.getAll();
+
+    console.log("API /consultants/getAll item:", JSON.stringify(data, null, 2));
+
+    const normalized = data.map((c: any) => ({
+      ...c,
+      user: c.user || {
+        name: c.name || "Unknown",
+        profile: { bio: c.bio || c.short_bio || c.description || null }
+      }
+    }));
+
+    setConsultantsData(normalized);
+  } catch (err) {
+    setError("Failed to load consultants.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   /* ---------------- Dynamic Filters ---------------- */
 
@@ -272,15 +283,33 @@ const SearchConsultantPage: React.FC = () => {
                     alt={c.name}
                     className="w-24 h-24 rounded-full mx-auto mb-4 object-cover"
                   />
+                  <h3 className="text-lg font-bold">
+                    {
+                      c.user?.name ||
+                     
+                      c.name ||
+                      'Unknown Consultant'
+                    }
+                  </h3>
 
-                  <h3 className="text-lg font-bold">{c.user?.name || c.name}</h3>
+
                   <p className="text-blue-600 text-sm">{c.domain}</p>
 
-                  {c.user?.profile?.bio && (
-                    <p className="text-gray-600 text-sm mt-2 line-clamp-2 px-2">
-                      {c.user.profile.bio}
-                    </p>
-                  )}
+                  {(() => {
+                    const bio =
+                      c.user?.profile?.bio ||
+                      c.profile?.bio ||
+                      c.bio ||
+                      c.short_bio ||
+                      c.description ||
+                      null;
+
+                    return bio ? (
+                      <p className="text-gray-600 text-sm mt-2 line-clamp-2 px-2">{bio}</p>
+                    ) : (
+                      <p className="text-gray-400 text-xs mt-2 italic">No bio available</p>
+                    );
+                  })()}
 
                   <p className="text-sm text-gray-500 mt-2 flex justify-center items-center gap-1">
                     <Star size={14} className="text-yellow-500" />

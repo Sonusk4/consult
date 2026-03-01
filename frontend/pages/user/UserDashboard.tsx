@@ -225,7 +225,7 @@ const UserDashboard: React.FC = () => {
             </button>
 
             <button
-              onClick={() => navigate("/user/message")}
+              onClick={() => navigate("/user/messages")}
               className="bg-white p-6 rounded-3xl border shadow-sm hover:shadow-md"
             >
               <MessageCircle className="mb-3 text-green-600" />
@@ -351,7 +351,7 @@ const UserDashboard: React.FC = () => {
 
           <div className="flex flex-wrap gap-4 mt-6">
             <button onClick={() => navigate("/user/wallet")} className="bg-white text-blue-900 px-6 py-2 rounded-xl font-semibold hover:scale-105 transition">Buy Credits</button>
-            <button onClick={() => navigate("/user/wallet")} className="border border-white px-6 py-2 rounded-xl hover:bg-white hover:text-blue-900 transition">Upgrade Plan</button>
+            <button onClick={() => navigate("/user/subscription-plans")} className="border border-white px-6 py-2 rounded-xl hover:bg-white hover:text-blue-900 transition">Upgrade Plan</button>
             <button onClick={() => navigate("/user/wallet")} className="border border-white px-6 py-2 rounded-xl hover:bg-white hover:text-blue-900 transition">View Transactions</button>
           </div>
         </div>
