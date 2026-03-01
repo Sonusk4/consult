@@ -43,7 +43,8 @@ const WalletPage: React.FC = () => {
       const response = await api.get('/wallet');
       setWallet(response.data);
     } catch (error) {
-      console.error('Error fetching wallet:', error);
+      console.error('Error fetching wallet - user might not be authenticated:', error);
+      // Don't throw error to prevent logout
     }
   };
 
@@ -61,7 +62,8 @@ const WalletPage: React.FC = () => {
       const response = await api.get('/transactions');
       setTransactions(response.data);
     } catch (error) {
-      console.error('Error fetching transactions:', error);
+      console.error('Error fetching transactions - user might not be authenticated:', error);
+      // Don't throw error to prevent logout
     } finally {
       setLoading(false);
     }

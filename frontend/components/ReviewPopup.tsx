@@ -13,14 +13,43 @@ const ReviewPopup: React.FC<ReviewPopupProps> = ({ bookingId, onClose }) => {
 
   const submitReview = async () => {
     try {
-      await api.post("/reviews", {
+      const reviewData = {
         booking_id: bookingId,
         rating,
         review,
-      });
+      };
+      console.log("Submitting review data:", reviewData);
+      console.log("Booking ID type:", typeof bookingId, "value:", bookingId);
+      console.log("Rating:", rating, "Review text:", review);
+      
+      if (!bookingId) {
+        console.error("Booking ID is missing!");
+        return;
+      }
+      
+      if (rating < 1 || rating > 5) {
+        console.error("Invalid rating:", rating);
+        return;
+      }
+      
+      if (!review.trim()) {
+        console.error("Review text is empty");
+        return;
+      }
+      
+      await api.post("/reviews", reviewData);
+      console.log("Review submitted successfully!");
       onClose();
     } catch (err) {
       console.error("Review submission failed:", err);
+      // Check if it's the specific 403 error
+      if (err.response?.status === 403) {
+        console.error("403 Error: User not authorized to review this booking");
+        console.error("This usually means:");
+        console.error("1. Wrong user is logged in");
+        console.error("2. Booking belongs to different user");
+        console.error("3. Booking ID is incorrect");
+      }
       onClose();
     }
   };

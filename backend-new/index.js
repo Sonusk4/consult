@@ -12134,7 +12134,7 @@ app.get("/reviews/member", verifyFirebaseToken, async (req, res) => {
 
       include: {
 
-        reviewer: {
+        user: {
 
           select: { id: true, email: true, name: true },
 
@@ -12162,16 +12162,170 @@ app.get("/reviews/member", verifyFirebaseToken, async (req, res) => {
 
 
 
+
+
 /**
 
- * GET /enterprise/member/available-clients
+ * GET /consultant/reviews
 
- * Get clients available for enterprise members to book
+ * Get reviews for the current consultant (alias for /reviews/member)
 
  */
 
-app.get(
+app.get("/consultant/reviews", verifyFirebaseToken, async (req, res) => {
 
+  try {
+
+    const user = await prisma.user.findUnique({
+
+      where: { firebase_uid: req.user.firebase_uid },
+
+      include: { consultant: true },
+
+    });
+
+
+
+
+
+    if (!user) {
+
+      return res.status(404).json({ error: "User not found" });
+
+    }
+
+
+
+
+
+
+
+    if (!user.consultant) {
+
+      return res.json([]);
+
+    }
+
+
+
+
+
+
+
+    // Fetch reviews for this consultant
+
+    const reviews = await prisma.review.findMany({
+
+      where: { consultantId: user.consultant.id },
+
+      include: {
+
+        user: {
+
+          select: { id: true, email: true, name: true },
+
+        },
+
+      },
+
+      orderBy: { created_at: "desc" },
+
+    });
+
+
+
+
+
+    res.json(reviews || []);
+
+  } catch (error) {
+
+    console.error("Get consultant reviews error:", error);
+
+    res.status(500).json({ error: "Failed to fetch reviews" });
+  }
+});
+
+/**
+ * POST /reviews
+ * Create a new review
+ */
+app.post("/reviews", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { booking_id, rating, review } = req.body;
+
+    if (!booking_id || !rating || !review) {
+      return res.status(400).json({ error: "booking_id, rating, and review are required" });
+    }
+
+    if (rating < 1 || rating > 5) {
+      return res.status(400).json({ error: "Rating must be between 1 and 5" });
+    }
+
+    // Get the user from token
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Get the booking to find the consultant
+    const booking = await prisma.booking.findUnique({
+      where: { id: booking_id },
+      include: { consultant: true },
+    });
+
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    // Check if user is the client who made the booking
+    if (booking.userId !== user.id) {
+      return res.status(403).json({ error: "Not authorized to review this booking" });
+    }
+
+    // Check if review already exists for this booking
+    const existingReview = await prisma.review.findFirst({
+      where: { bookingId: booking_id },
+    });
+
+    if (existingReview) {
+      return res.status(400).json({ error: "Review already exists for this booking" });
+    }
+
+    // Create the review
+    const newReview = await prisma.review.create({
+      data: {
+        bookingId: booking_id,
+        consultantId: booking.consultantId,
+        userId: user.id,
+        rating: rating,
+        comment: review,
+      },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true },
+        },
+      },
+    });
+
+    console.log(`✓ Review created: User ${user.email} → Consultant ${booking.consultantId}`);
+    
+    res.status(201).json(newReview);
+  } catch (error) {
+    console.error("Create review error:", error);
+    res.status(500).json({ error: "Failed to create review: " + error.message });
+  }
+});
+
+/**
+ * GET /enterprise/member/available-clients
+ * Get clients available for enterprise members to book
+ */
+
+app.get(
   "/enterprise/member/available-clients",
 
   verifyFirebaseToken,

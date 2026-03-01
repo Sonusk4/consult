@@ -41,8 +41,8 @@ const UserCredit: React.FC = () => {
       setWalletBalance(res.data.balance || 0);
       setBonusBalance(res.data.bonus_balance || 0);
     } catch (err) {
-      console.error("Wallet fetch failed");
-      showPaymentError('Wallet Error', 'Failed to load wallet balance');
+      console.error("Wallet fetch failed - user might not be authenticated");
+      // Don't throw error to prevent logout
     }
   };
 
@@ -51,7 +51,8 @@ const UserCredit: React.FC = () => {
       const res = await api.get("/transactions");
       setTransactions(res.data || []);
     } catch (err) {
-      console.error("Transaction fetch failed");
+      console.error("Transaction fetch failed - user might not be authenticated");
+      // Don't throw error to prevent logout
     } finally {
       setLoading(false);
     }
