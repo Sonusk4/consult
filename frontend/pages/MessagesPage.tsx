@@ -1,4 +1,5 @@
 import VideoCallModal from "../components/VideoCallModal";
+import ReviewPopup from "../components/ReviewPopup";
 import UserPopupModal from "../components/UserPopupModal";
 import { useUserPopup } from "../hooks/useUserPopup";
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -200,6 +201,8 @@ const MessagesPage: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [activeCallBooking, setActiveCallBooking] = useState<any>(null);
+  const [showReviewPopup, setShowReviewPopup] = useState(false);
+  const [reviewBookingId, setReviewBookingId] = useState<number | null>(null);
   const [now, setNow] = useState(new Date());
   const [showWarning, setShowWarning] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -645,7 +648,17 @@ const MessagesPage: React.FC = () => {
           bookingId={activeCallBooking.id}
           userId={currentUser.id}
           socket={socket}
-          onClose={() => { setIsCalling(false); setActiveCallBooking(null); }}
+          onClose={() => { 
+            setIsCalling(false); 
+            // Store booking ID for review before clearing active call
+            const bookingId = activeCallBooking?.id;
+            // Show review popup only for clients (not consultants)
+            if (!isConsultant && bookingId) {
+              setReviewBookingId(bookingId);
+              setShowReviewPopup(true);
+            }
+            setActiveCallBooking(null); 
+          }}
           startAgora={isCalling}
         />
       )}
@@ -670,6 +683,17 @@ const MessagesPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      
+      {/* ── Review Popup ── */}
+      {showReviewPopup && reviewBookingId && (
+        <ReviewPopup
+          bookingId={reviewBookingId}
+          onClose={() => {
+            setShowReviewPopup(false);
+            setReviewBookingId(null);
+          }}
+        />
       )}
       
       <UserPopupModal
