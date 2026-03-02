@@ -20,10 +20,6 @@ const ReviewsPage: React.FC = () => {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [replyingTo, setReplyingTo] = useState<number | null>(null);
-  const [replyText, setReplyText] = useState("");
-  const [replySubmitting, setReplySubmitting] = useState(false);
-
   useEffect(() => {
     fetchReviews();
   }, []);
@@ -40,40 +36,6 @@ const ReviewsPage: React.FC = () => {
     }
   };
 
-  const handleReplySubmit = async (reviewId: number) => {
-    if (!replyText.trim()) {
-      addToast("Please write a reply", "error");
-      return;
-    }
-
-    setReplySubmitting(true);
-
-    try {
-      const response = await api.post(`/reviews/${reviewId}/reply`, {
-        reply: replyText,
-      });
-
-      setReviews((prev) =>
-        prev.map((review) =>
-          review.id === reviewId
-            ? {
-                ...review,
-                consultantReply: response.data.consultantReply,
-                replied_at: response.data.replied_at,
-              }
-            : review
-        )
-      );
-
-      setReplyText("");
-      setReplyingTo(null);
-      addToast("Reply submitted successfully!", "success");
-    } catch (error: any) {
-      addToast(error?.message || "Failed to submit reply", "error");
-    } finally {
-      setReplySubmitting(false);
-    }
-  };
 
   const renderStars = (rating: number) => {
     return (
@@ -135,51 +97,6 @@ const ReviewsPage: React.FC = () => {
               {new Date(review.created_at).toLocaleDateString()}
             </p>
 
-            {/* If already replied */}
-            {review.consultantReply ? (
-              <div className="mt-4 bg-blue-50 p-4 rounded-2xl border-l-4 border-blue-500">
-                <p className="text-sm font-semibold text-blue-700">
-                  Your Reply:
-                </p>
-                <p className="text-sm text-gray-700 mt-1">
-                  {review.consultantReply}
-                </p>
-                {review.replied_at && (
-                  <p className="text-xs text-gray-400 mt-2">
-                    {new Date(review.replied_at).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="mt-4">
-                {replyingTo === review.id ? (
-                  <>
-                    <textarea
-                      rows={3}
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      placeholder="Write your reply..."
-                      className="w-full bg-gray-50 rounded-xl p-3 border focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                    />
-
-                    <button
-                      onClick={() => handleReplySubmit(review.id)}
-                      disabled={replySubmitting}
-                      className="mt-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-blue-700 disabled:bg-blue-400"
-                    >
-                      {replySubmitting ? "Replying..." : "Submit Reply"}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setReplyingTo(review.id)}
-                    className="text-blue-600 text-sm font-semibold hover:underline"
-                  >
-                    Reply
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         ))}
       </div>

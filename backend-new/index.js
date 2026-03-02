@@ -6382,6 +6382,130 @@ app.get("/reviews/member", verifyFirebaseToken, async (req, res) => {
 });
 
 /**
+ * POST /reviews
+ * Create a new review for a booking
+ */
+app.post("/reviews", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { booking_id, rating, review } = req.body;
+
+    // Validate input
+    if (!booking_id || !rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: "Invalid booking ID or rating" });
+    }
+
+    // Get the current user
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: "User not found" });
+    }
+
+    // Get the booking and verify it belongs to the current user
+    const booking = await prisma.booking.findUnique({
+      where: { id: booking_id },
+      include: { consultant: true },
+    });
+
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    if (booking.userId !== user.id) {
+      return res.status(403).json({ error: "Not authorized to review this booking" });
+    }
+
+    // Check if review already exists for this booking
+    const existingReview = await prisma.review.findUnique({
+      where: { bookingId: booking_id },
+    });
+
+    if (existingReview) {
+      return res.status(400).json({ error: "Review already exists for this booking" });
+    }
+
+    // Create the review
+    const newReview = await prisma.review.create({
+      data: {
+        bookingId: booking_id,
+        consultantId: booking.consultantId,
+        userId: user.id,
+        rating: rating,
+        comment: review || null,
+      },
+    });
+
+    // Update consultant's rating
+    const allReviews = await prisma.review.findMany({
+      where: { consultantId: booking.consultantId },
+    });
+
+    const averageRating = allReviews.reduce((sum, rev) => sum + rev.rating, 0) / allReviews.length;
+
+    await prisma.consultant.update({
+      where: { id: booking.consultantId },
+      data: {
+        rating: Math.round(averageRating * 10) / 10, // Round to 1 decimal place
+        total_reviews: allReviews.length,
+      },
+    });
+
+    res.status(201).json(newReview);
+  } catch (error) {
+    console.error("Create review error:", error);
+    res.status(500).json({ error: "Failed to create review" });
+  }
+});
+
+/**
+ * GET /consultant/reviews
+ * Get reviews for the current logged-in consultant
+ */
+app.get("/consultant/reviews", verifyFirebaseToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+      include: { consultant: true },
+    });
+
+    if (!user || !user.consultant) {
+      return res.status(403).json({ error: "Not a consultant" });
+    }
+
+    // Fetch reviews for this consultant
+    const reviews = await prisma.review.findMany({
+      where: { consultantId: user.consultant.id },
+      include: {
+        user: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: { created_at: "desc" },
+    });
+
+    // Transform the data to match the frontend interface
+    const transformedReviews = reviews.map(review => ({
+      id: review.id,
+      userName: review.user.name || "Anonymous",
+      rating: review.rating,
+      comment: review.comment,
+      created_at: review.created_at,
+      consultantReply: review.consultantReply,
+      replied_at: review.replied_at,
+    }));
+
+    res.json(transformedReviews);
+  } catch (error) {
+    console.error("Get consultant reviews error:", error);
+    res.status(500).json({ error: "Failed to fetch reviews" });
+  }
+});
+
+/**
  * GET /enterprise/member/available-clients
  * Get clients available for enterprise members to book
  */
