@@ -512,7 +512,7 @@ const consultantName =
               <div className="space-y-2">
                 <div className="flex items-center text-gray-600">
                   <IndianRupee size={16} className="mr-2" />
-                  <span className="font-semibold">₹{consultant.hourly_price} / session</span>
+                  <span className="font-semibold">{consultant.hourly_price} / session</span>
                 </div>
 
                 {consultant?.languages && (
@@ -568,7 +568,7 @@ const consultantName =
           {consultant.hourly_price && (
             <div className="mb-6 bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center justify-between">
               <div className="flex items-center gap-2 text-blue-700">
-                <IndianRupee size={18} />
+                
                 <span className="font-medium">Session Fee</span>
               </div>
               <span className="text-xl font-bold text-blue-700">₹{consultant.hourly_price}</span>
@@ -640,12 +640,7 @@ const consultantName =
               {selectedSlot ? 'Book Selected Slot' : 'Select a Time Slot'}
             </button>
 
-            <button
-              className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition flex items-center justify-center"
-            >
-              <Video size={20} className="mr-2" />
-              Start Video Call
-            </button>
+            
           </div>
         </div>
       </div>

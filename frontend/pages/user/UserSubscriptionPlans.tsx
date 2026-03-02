@@ -167,7 +167,7 @@ export default function UserSubscriptionPlans() {
         { text: 'Total Chat Messages / Month', value: '5', available: true },
         { text: 'Bookings / Month', value: 'Unlimited', available: true },
         { text: 'Booking Duration Access', value: 'Up to 30 mins', available: true },
-        { text: 'Platform Fee Discount', value: '0%', available: true },
+        { text: 'Video Call Discount', value: '0%', available: true },
         { text: 'Wallet Bonus on Recharge', value: 'Nil', available: true },
         { text: 'Loyalty Points', value: 'No', available: true },
         { text: 'Free Reschedule', value: 'No', available: true },
@@ -186,7 +186,7 @@ export default function UserSubscriptionPlans() {
         { text: 'Total Chat Messages / Month', value: '20', available: true },
         { text: 'Bookings / Month', value: 'Unlimited', available: true },
         { text: 'Booking Duration Access', value: 'Up to 60 mins', available: true },
-        { text: 'Platform Fee Discount', value: '10%', available: true },
+        { text: 'Video Call Discount', value: '10%', available: true },
         { text: 'Wallet Bonus on Recharge', value: '2% (cap ₹200)', available: true },
         { text: 'Loyalty Points', value: '1%', available: true },
         { text: 'Free Reschedule', value: '1 per month', available: true },
@@ -205,7 +205,7 @@ export default function UserSubscriptionPlans() {
         { text: 'Total Chat Messages / Month', value: '50', available: true },
         { text: 'Bookings / Month', value: 'Unlimited', available: true },
         { text: 'Booking Duration Access', value: 'Up to 60 mins', available: true },
-        { text: 'Platform Fee Discount', value: '15%', available: true },
+        { text: 'Video Call Discount', value: '15%', available: true },
         { text: 'Wallet Bonus on Recharge', value: '5% (cap ₹500)', available: true },
         { text: 'Loyalty Points', value: '3%', available: true },
         { text: 'Free Reschedule', value: '2 per month', available: true },
@@ -224,7 +224,7 @@ export default function UserSubscriptionPlans() {
         { text: 'Total Chat Messages / Month', value: '100', available: true },
         { text: 'Bookings / Month', value: 'Unlimited', available: true },
         { text: 'Booking Duration Access', value: 'Up to 120 mins', available: true },
-        { text: 'Platform Fee Discount', value: '50%', available: true },
+        { text: 'Video Call Discount', value: '50%', available: true },
         { text: 'Wallet Bonus on Recharge', value: '10% (cap ₹1500)', available: true },
         { text: 'Loyalty Points', value: '7%', available: true },
         { text: 'Free Reschedule', value: '5 per month', available: true },
@@ -636,34 +636,39 @@ export default function UserSubscriptionPlans() {
       </div>
 
       {/* Footer */}
-      <div className="px-6 py-4 flex justify-center gap-3 
-                      border-t border-gray-100 bg-white/70">
+     <div className="px-6 py-4 flex justify-center gap-3 
+                border-t border-gray-100 bg-white/70">
 
-        <button
-          onClick={() => setSelectedPlan(null)}
-          className="px-5 py-2 rounded-lg bg-gray-100 text-gray-700 
-                     hover:bg-gray-200 transition text-sm font-medium"
-        >
-          Close
-        </button>
+  <button
+    onClick={() => setSelectedPlan(null)}
+    className="px-5 py-2 rounded-lg bg-gray-100 text-gray-700 
+               hover:bg-gray-200 transition text-sm font-medium"
+  >
+    Close
+  </button>
 
-        <button
-          disabled={loading}
-          onClick={handleSubscribe}
-          className="px-6 py-2 rounded-lg bg-blue-600 text-white 
-                     hover:bg-blue-700 transition text-sm font-semibold 
-                     shadow-md disabled:opacity-50"
-        >
-          {loading
-            ? "Processing..."
-            : selectedPlan.name === "Enterprise"
-            ? "Contact Sales"
-            : `Choose ${selectedPlan.name}`}
-        </button>
+  {/* Hide Choose button for Free plan */}
+  {selectedPlan.name !== "Free" && (
+    <button
+      disabled={loading}
+      onClick={handleSubscribe}
+      className="px-6 py-2 rounded-lg bg-blue-600 text-white 
+                 hover:bg-blue-700 transition text-sm font-semibold 
+                 shadow-md disabled:opacity-50"
+    >
+      {loading
+        ? "Processing..."
+        : selectedPlan.name === "Enterprise"
+        ? "Contact Sales"
+        : `Choose ${selectedPlan.name}`}
+    </button>
+  )}
+
+</div>
 
       </div>
     </div>
-  </div>
+  
 )}
 
       {/* PaymentPopupModal */}
