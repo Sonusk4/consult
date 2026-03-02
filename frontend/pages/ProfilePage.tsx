@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import ConsultantKycGate from '../components/ConsultantKycGate';
+import useConsultantKycCheck from '../hooks/useConsultantKycCheck';
 import { useAuth } from '../App';
 import { consultants as consultantsApi, users, subscriptions } from '../services/api';
 import { Consultant } from '../types';
@@ -10,6 +13,15 @@ import {
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { link } from 'node:fs';
+
+// Platform fee constants
+const BASE_PLATFORM_FEE_PERCENT = 20;
+const PLAN_PLATFORM_FEE_REDUCTION: Record<string, number> = {
+  Free: 0,
+  Professional: 2,
+  Premium: 5,
+  Elite: 10,
+};
 
 // Badge Components (matching plans page)
 const VerifiedBadge = () => (
@@ -41,23 +53,45 @@ const FreeBadge = () => (
 );
 
 const ProfilePage: React.FC = () => {
+  const navigate = useNavigate();
   const { user, setUser } = useAuth();
+  const { kycStatus, loading: kycLoading, isApprovalSuccess } = useConsultantKycCheck();
   const { addToast } = useToast();
   const [profile, setProfile] = useState<Consultant | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Check profile completion
+  useEffect(() => {
+    const checkProfile = async () => {
+      try {
+        const profileData = await consultantsApi.getProfile();
+        const isIncomplete = !profileData || !profileData.name || !profileData.domain || 
+                            !profileData.hourly_price || !profileData.bio || !profileData.languages;
+        if (isIncomplete) {
+          navigate('/consultant/dashboard', { replace: true });
+        }
+      } catch (error) {
+        navigate('/consultant/dashboard', { replace: true });
+      }
+    };
+    checkProfile();
+  }, [navigate]);
   const [usage, setUsage] = useState<any>(null);
 
   // KYC and Certificate states
-  const [kycStatus, setKycStatus] = useState<any>(null);
+  const [kycStatusData, setKycStatusData] = useState<any>(null);
   const [certificates, setCertificates] = useState<any[]>([]);
-  const [uploadingKyc, setUploadingKyc] = useState(false);
-  const [uploadingCert, setUploadingCert] = useState(false);
   const [showKycModal, setShowKycModal] = useState(false);
   const [showCertificateModal, setShowCertificateModal] = useState(false);
   const [tempExpertise, setTempExpertise] = useState("");
+
+  // Temporary file storage for uploads (only when editing)
+  const [tempProfilePhoto, setTempProfilePhoto] = useState<File | null>(null);
+  const [tempProfilePhotoPreview, setTempProfilePhotoPreview] = useState<string | null>(null);
+  const [tempKycFiles, setTempKycFiles] = useState<File[]>([]);
+  const [tempCertFiles, setTempCertFiles] = useState<File[]>([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -134,7 +168,7 @@ const ProfilePage: React.FC = () => {
         consultantsApi.getKycStatus(),
         consultantsApi.getCertificates(),
       ]);
-      setKycStatus(kycData);
+      setKycStatusData(kycData);
       setCertificates(certData.certificates || []);
     } catch (err) {
       console.error('Failed to load KYC/Certificates', err);
@@ -185,6 +219,66 @@ const ProfilePage: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Step 1: Upload pending files if any
+      if (tempProfilePhoto) {
+        try {
+          if (isConsultant) {
+            const result = await consultantsApi.uploadProfilePic(tempProfilePhoto);
+            // Update sessionStorage for navbar consistency
+            if (setUser && user) {
+              const updated = { ...user, avatar: result.profile_pic };
+              setUser(updated);
+              sessionStorage.setItem('user', JSON.stringify(updated));
+            }
+            const consultantExtra = sessionStorage.getItem('consultant_extra');
+            if (consultantExtra) {
+              const parsed = JSON.parse(consultantExtra);
+              parsed.profilePhoto = result.profile_pic;
+              sessionStorage.setItem('consultant_extra', JSON.stringify(parsed));
+              setRegistrationPhoto(result.profile_pic);
+            }
+          } else {
+            const result = await users.uploadProfilePic(tempProfilePhoto);
+            if (setUser && user) {
+              const updated = { ...user, avatar: result.avatar };
+              setUser(updated);
+              sessionStorage.setItem('user', JSON.stringify(updated));
+            }
+          }
+          setTempProfilePhoto(null);
+          setTempProfilePhotoPreview(null);
+        } catch (err: any) {
+          addToast('Failed to upload profile photo', 'error');
+          setSaving(false);
+          return;
+        }
+      }
+
+      // Upload KYC documents if any
+      if (tempKycFiles.length > 0) {
+        try {
+          await consultantsApi.uploadKycDoc(tempKycFiles);
+          setTempKycFiles([]);
+        } catch (err: any) {
+          addToast('Failed to upload KYC documents', 'error');
+          setSaving(false);
+          return;
+        }
+      }
+
+      // Upload certificates if any
+      if (tempCertFiles.length > 0) {
+        try {
+          await consultantsApi.uploadCertificate(tempCertFiles);
+          setTempCertFiles([]);
+        } catch (err: any) {
+          addToast('Failed to upload certificates', 'error');
+          setSaving(false);
+          return;
+        }
+      }
+
+      // Step 2: Update profile data
       if (isConsultant) {
         await consultantsApi.updateProfile({
           domain: formData.domain,
@@ -204,6 +298,8 @@ const ProfilePage: React.FC = () => {
         // Refresh profile data to show latest
         const fresh = await consultantsApi.getProfile();
         setProfile(fresh);
+        // Refresh KYC and certificates after save
+        await fetchKycAndCertificates();
       } else {
         await users.updateProfile({
           full_name: formData.name,
@@ -231,82 +327,31 @@ const ProfilePage: React.FC = () => {
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
     const file = e.target.files[0];
-    setUploadingImage(true);
-    try {
-      if (isConsultant) {
-        const result = await consultantsApi.uploadProfilePic(file);
-        // Refresh consultant profile to get updated profile_pic from DB
-        const fresh = await consultantsApi.getProfile();
-        setProfile(fresh);
-        // Also update sessionStorage avatar for navbar display
-        if (setUser && user) {
-          const updated = { ...user, avatar: result.profile_pic };
-          setUser(updated);
-          sessionStorage.setItem('user', JSON.stringify(updated));
-        }
-        
-        // Also save to consultant_extra for dashboard consistency
-        const consultantExtra = sessionStorage.getItem('consultant_extra');
-        if (consultantExtra) {
-          const parsed = JSON.parse(consultantExtra);
-          parsed.profilePhoto = result.profile_pic;
-          sessionStorage.setItem('consultant_extra', JSON.stringify(parsed));
-          setRegistrationPhoto(result.profile_pic); // Update state
-        }
-      } else {
-        const result = await users.uploadProfilePic(file);
-        if (setUser && user) {
-          const updated = { ...user, avatar: result.avatar };
-          setUser(updated);
-          sessionStorage.setItem('user', JSON.stringify(updated));
-        }
-        
-        // Also save to consultant_extra for dashboard consistency
-        const consultantExtra = sessionStorage.getItem('consultant_extra');
-        if (consultantExtra) {
-          const parsed = JSON.parse(consultantExtra);
-          parsed.profilePhoto = result.avatar;
-          sessionStorage.setItem('consultant_extra', JSON.stringify(parsed));
-          setRegistrationPhoto(result.avatar); // Update state
-        }
-      }
-      addToast('Profile photo updated!', 'success');
-    } catch (err: any) {
-      addToast('Failed to upload photo', 'error');
-    } finally {
-      setUploadingImage(false);
-    }
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setTempProfilePhotoPreview(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+    
+    // Store file for later upload on Save
+    setTempProfilePhoto(file);
   };
 
-  const handleKycUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.[0]) return;
-    setUploadingKyc(true);
-    try {
-      await consultantsApi.uploadKycDoc([e.target.files[0]]);
-      await fetchKycAndCertificates();
-      addToast('KYC document uploaded successfully!', 'success');
-    } catch (err) {
-      addToast('Failed to upload KYC document', 'error');
-    } finally {
-      setUploadingKyc(false);
-    }
+  const handleKycUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    // Store files for later upload on Save
+    setTempKycFiles(Array.from(e.target.files));
   };
 
-  const handleCertUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.[0]) return;
-    setUploadingCert(true);
-    try {
-      await consultantsApi.uploadCertificate([e.target.files[0]]);
-      await fetchKycAndCertificates();
-      addToast('Certificate uploaded successfully!', 'success');
-    } catch (err) {
-      addToast('Failed to upload certificate', 'error');
-    } finally {
-      setUploadingCert(false);
-    }
+  const handleCertUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    // Store files for later upload on Save
+    setTempCertFiles(Array.from(e.target.files));
   };
 
   const handleDeleteKyc = async (docId: number) => {
@@ -372,11 +417,12 @@ const ProfilePage: React.FC = () => {
   }
 
   return (
-    <Layout title="My Profile">
-      <div className="max-w-4xl mx-auto space-y-6 pb-12">
+    <ConsultantKycGate kycStatus={kycStatus} showSuccessModal={isApprovalSuccess}>
+      <Layout title="My Profile">
+        <div className="max-w-4xl mx-auto space-y-6 pb-12">
 
-        {/* ─── Hero Card ───────────────────────────────────────────────── */}
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden relative">
+          {/* ─── Hero Card ───────────────────────────────────────────────── */}
+          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden relative">
           {/* Plan Badge - Top Right Corner */}
           <div className="absolute top-4 right-4 z-10">
             {usage?.plan && (
@@ -426,8 +472,13 @@ const ProfilePage: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between -mt-16 mb-6 gap-4">
               {/* Avatar */}
               <div className="relative group w-28 h-28 shrink-0">
+                {tempProfilePhotoPreview && (
+                  <div className="absolute -top-2 -right-2 bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1 shadow-md">
+                    <Clock size={12} /> Photo pending
+                  </div>
+                )}
                 <img
-                  src={avatarSrc}
+                  src={tempProfilePhotoPreview || avatarSrc}
                   alt="Profile photo"
                   className="w-28 h-28 rounded-2xl border-4 border-white object-cover shadow-xl"
                   onError={(e) => {
@@ -436,16 +487,12 @@ const ProfilePage: React.FC = () => {
                 />
                 {isEditing && (
                   <label className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
-                    {uploadingImage
-                      ? <Loader className="text-white animate-spin" size={22} />
-                      : <><Camera className="text-white" size={22} /><span className="text-white text-xs mt-1 font-semibold">Change</span></>
-                    }
+                    <><Camera className="text-white" size={22} /><span className="text-white text-xs mt-1 font-semibold">Change</span></>
                     <input
                       type="file"
                       className="hidden"
                       accept="image/*"
                       onChange={handleImageUpload}
-                      disabled={uploadingImage}
                     />
                   </label>
                 )}
@@ -456,7 +503,15 @@ const ProfilePage: React.FC = () => {
                 {isEditing ? (
                   <>
                     <button
-                      onClick={() => { setIsEditing(false); fetchProfile(); }}
+                      onClick={() => {
+                        setIsEditing(false);
+                        // Clear pending files on cancel
+                        setTempProfilePhoto(null);
+                        setTempProfilePhotoPreview(null);
+                        setTempKycFiles([]);
+                        setTempCertFiles([]);
+                        fetchProfile();
+                      }}
                       className="px-4 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 font-bold hover:bg-gray-50 transition-all"
                     >
                       Cancel
@@ -544,9 +599,36 @@ const ProfilePage: React.FC = () => {
                       placeholder="e.g. 1500"
                       className={inputClass(isEditing)}
                     />
-                    {isConsultant && formData.hourly_price && (
-                      <div className="mt-2 text-xs text-green-600 bg-green-50 p-2 rounded-lg text-center">
-                        <span className="font-semibold">You'll receive: ₹{(parseFloat(formData.hourly_price) - 10).toFixed(2)}/hr</span>
+                    {isConsultant && formData.hourly_price && profile && (
+                      <div className="mt-2 text-xs text-green-600 bg-green-50 p-3 rounded-lg">
+                        <div className="flex justify-between mb-1.5">
+                          <span>Hourly Rate:</span>
+                          <span className="font-semibold">₹{parseFloat(formData.hourly_price).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-red-600 mb-1.5">
+                          <span>Platform Fee ({(() => {
+                            const currentPlan = (profile as any)?.currentPlan || (profile as any)?.subscription_plan || 'Free';
+                            const reduction = PLAN_PLATFORM_FEE_REDUCTION[currentPlan] || 0;
+                            return Math.max(0, BASE_PLATFORM_FEE_PERCENT - reduction);
+                          })()}%):</span>
+                          <span className="font-semibold">-₹{(() => {
+                            const currentPlan = (profile as any)?.currentPlan || (profile as any)?.subscription_plan || 'Free';
+                            const reduction = PLAN_PLATFORM_FEE_REDUCTION[currentPlan] || 0;
+                            const effectiveFee = Math.max(0, BASE_PLATFORM_FEE_PERCENT - reduction);
+                            const feeAmount = (parseFloat(formData.hourly_price) * effectiveFee) / 100;
+                            return feeAmount.toFixed(2);
+                          })()}</span>
+                        </div>
+                        <div className="border-t border-green-200 pt-1.5 flex justify-between font-semibold">
+                          <span>You'll Receive:</span>
+                          <span>₹{(() => {
+                            const currentPlan = (profile as any)?.currentPlan || (profile as any)?.subscription_plan || 'Free';
+                            const reduction = PLAN_PLATFORM_FEE_REDUCTION[currentPlan] || 0;
+                            const effectiveFee = Math.max(0, BASE_PLATFORM_FEE_PERCENT - reduction);
+                            const takeHome = parseFloat(formData.hourly_price) * (1 - effectiveFee / 100);
+                            return Math.max(0, takeHome).toFixed(2);
+                          })()}/hr</span>
+                        </div>
                       </div>
                     )}
                   </Field>
@@ -674,13 +756,20 @@ const ProfilePage: React.FC = () => {
                     <p className="text-xs text-gray-500">Identity proof documents</p>
                   </div>
                 </div>
-                {kycStatus && kycBadge(kycStatus.kyc_status)}
+                <div className="flex items-center gap-2">
+                  {isEditing && tempKycFiles.length > 0 && (
+                    <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1">
+                      <Clock size={12} /> {tempKycFiles.length} pending
+                    </span>
+                  )}
+                  {kycStatusData && kycBadge(kycStatusData.kyc_status)}
+                </div>
               </div>
 
               {/* Existing KYC docs */}
-              {kycStatus?.documents?.length > 0 ? (
+              {kycStatusData?.documents?.length > 0 ? (
                 <div className="space-y-2">
-                  {kycStatus.documents.map((doc: any, i: number) => (
+                  {kycStatusData.documents.map((doc: any, i: number) => (
                     <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl group">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="bg-blue-50 p-1.5 rounded-lg shrink-0">
@@ -718,24 +807,36 @@ const ProfilePage: React.FC = () => {
                 </div>
               )}
 
-              {/* Upload button — always enabled */}
-              <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm transition-all cursor-pointer ${uploadingKyc
-                ? 'bg-blue-100 text-blue-400 cursor-wait'
-                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-100'
+              {/* Pending files preview */}
+              {isEditing && tempKycFiles.length > 0 && (
+                <div className="space-y-2 border-t pt-3">
+                  <p className="text-xs font-semibold text-amber-600">Pending upload on Save:</p>
+                  {Array.from(tempKycFiles).map((file, i) => (
+                    <div key={i} className="flex items-center gap-2 p-2 bg-amber-50 rounded-lg">
+                      <Clock className="text-amber-500" size={14} />
+                      <span className="text-xs text-amber-700 truncate">{file.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Upload button */}
+              <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm transition-all ${
+                isEditing
+                  ? 'cursor-pointer bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-100'
+                  : 'cursor-not-allowed bg-gray-200 text-gray-400'
                 }`}>
-                {uploadingKyc
-                  ? <><Loader className="animate-spin" size={16} /> Uploading...</>
-                  : <><PlusCircle size={16} /> Upload KYC Document</>
-                }
+                <PlusCircle size={16} /> {isEditing ? 'Add KYC Document' : 'Edit to Add KYC'}
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
                   onChange={handleKycUpload}
-                  disabled={uploadingKyc}
                   className="hidden"
+                  multiple
+                  disabled={!isEditing}
                 />
               </label>
-              <p className="text-xs text-gray-400 text-center">Accepted: PDF, JPG, PNG</p>
+              <p className="text-xs text-gray-400 text-center">{isEditing ? 'Accepted: PDF, JPG, PNG (uploads on Save)' : 'Click Edit to add documents'}</p>
             </div>
 
             {/* Certificates Card */}
@@ -750,11 +851,18 @@ const ProfilePage: React.FC = () => {
                     <p className="text-xs text-gray-500">{certificates.length} uploaded</p>
                   </div>
                 </div>
-                {certificates.length > 0 && (
-                  <span className="bg-purple-100 text-purple-700 text-xs font-bold px-2.5 py-1 rounded-full">
-                    {certificates.length}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {isEditing && tempCertFiles.length > 0 && (
+                    <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1">
+                      <Clock size={12} /> {tempCertFiles.length} pending
+                    </span>
+                  )}
+                  {certificates.length > 0 && (
+                    <span className="bg-purple-100 text-purple-700 text-xs font-bold px-2.5 py-1 rounded-full">
+                      {certificates.length}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Existing certs */}
@@ -801,29 +909,42 @@ const ProfilePage: React.FC = () => {
                 </div>
               )}
 
-              {/* Upload button — always enabled */}
-              <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm transition-all cursor-pointer ${uploadingCert
-                ? 'bg-purple-100 text-purple-400 cursor-wait'
-                : 'bg-purple-600 text-white hover:bg-purple-700 shadow-sm shadow-purple-100'
+              {/* Pending files preview */}
+              {isEditing && tempCertFiles.length > 0 && (
+                <div className="space-y-2 border-t pt-3">
+                  <p className="text-xs font-semibold text-amber-600">Pending upload on Save:</p>
+                  {Array.from(tempCertFiles).map((file, i) => (
+                    <div key={i} className="flex items-center gap-2 p-2 bg-amber-50 rounded-lg">
+                      <Clock className="text-amber-500" size={14} />
+                      <span className="text-xs text-amber-700 truncate">{file.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Upload button */}
+              <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm transition-all ${
+                isEditing
+                  ? 'cursor-pointer bg-purple-600 text-white hover:bg-purple-700 shadow-sm shadow-purple-100'
+                  : 'cursor-not-allowed bg-gray-200 text-gray-400'
                 }`}>
-                {uploadingCert
-                  ? <><Loader className="animate-spin" size={16} /> Uploading...</>
-                  : <><PlusCircle size={16} /> Upload Certificate</>
-                }
+                <PlusCircle size={16} /> {isEditing ? 'Add Certificate' : 'Edit to Add Certificate'}
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
                   onChange={handleCertUpload}
-                  disabled={uploadingCert}
                   className="hidden"
+                  multiple
+                  disabled={!isEditing}
                 />
               </label>
-              <p className="text-xs text-gray-400 text-center">Accepted: PDF, JPG, PNG</p>
+              <p className="text-xs text-gray-400 text-center">{isEditing ? 'Accepted: PDF, JPG, PNG (uploads on Save)' : 'Click Edit to add certificates'}</p>
             </div>
           </div>
         )}
       </div>
     </Layout>
+    </ConsultantKycGate>
   );
 };
 

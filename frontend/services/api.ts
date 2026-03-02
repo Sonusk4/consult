@@ -260,6 +260,26 @@ export const auth = {
       throw error;
     }
   },
+
+  saveConsultantKyc: async (kycData: {
+    domain: string;
+    expertise: string;
+    hourlyPrice: string;
+    yearsExperience: string;
+    education?: string;
+    aadharNumber?: string;
+    panNumber?: string;
+  }) => {
+    try {
+      console.log(`📤 Saving consultant KYC data`);
+      const response = await api.post("/auth/consultant-kyc", kycData);
+      console.log("📥 KYC save response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("❌ saveConsultantKyc error:", error);
+      throw error;
+    }
+  },
 };
 /* ========================================================= */
 /* ===================== CONSULTANTS ======================== */
@@ -467,6 +487,10 @@ export const subscriptions = {
   },
   getUsageMetrics: async () => {
     const response = await api.get("/metrics/subscription-usage");
+    return response.data;
+  },
+  getSubscriptionStatus: async () => {
+    const response = await api.get("/subscription/status");
     return response.data;
   },
   purchaseSubscription: async (planName: string, price: number, features: any, duration: number, paymentId: string) => {

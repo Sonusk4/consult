@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, Bell, LogOut } from "lucide-react";
+import { Menu, X, Bell, LogOut, Lock } from "lucide-react";
 import { useAuth } from "../App";
 import { SIDEBAR_LINKS } from "../constants";
 import { UserRole } from "../types";
+import useConsultantKycCheck from "../hooks/useConsultantKycCheck";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -15,6 +16,7 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const location = useLocation();
   const navigate = useNavigate();
+  const { kycStatus } = useConsultantKycCheck();
 
   const handleLogout = () => {
     logout();
@@ -22,6 +24,12 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
   };
 
   const links = user ? SIDEBAR_LINKS[user.role as UserRole] || [] : [];
+  
+  // Determine which links should be disabled based on KYC status for consultants
+  const isKycApproved = user?.role === UserRole.CONSULTANT && kycStatus === "APPROVED";
+  const disabledPaths = user?.role === UserRole.CONSULTANT && !isKycApproved 
+    ? ["/consultant/bookings", "/consultant/messages", "/consultant/slots", "/consultant/earnings", "/consultant/plans", "/consultant/reviews", "/consultant/profile", "/consultant/support"] 
+    : [];
 
   // ✅ Role-based profile routing
   const profileRoute = (() => {
@@ -61,20 +69,35 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
 
           {/* Sidebar Links */}
           <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
-            {links.map((link) => (
-              <Link
-                key={link.path}
-                to={link.path}
-                className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
-                  location.pathname === link.path
-                    ? "bg-blue-50 text-blue-600 font-semibold shadow-sm"
-                    : "text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                {link.icon}
-                <span>{link.label}</span>
-              </Link>
-            ))}
+            {links.map((link) => {
+              const isDisabled = disabledPaths.includes(link.path);
+              return (
+                <div
+                  key={link.path}
+                  title={isDisabled ? "Available after KYC approval" : ""}
+                  className={isDisabled ? "relative group" : ""}
+                >
+                  {isDisabled ? (
+                    <div className="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-300 cursor-not-allowed opacity-60">
+                      <Lock size={20} />
+                      <span>{link.label}</span>
+                    </div>
+                  ) : (
+                    <Link
+                      to={link.path}
+                      className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
+                        location.pathname === link.path
+                          ? "bg-blue-50 text-blue-600 font-semibold shadow-sm"
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      {link.icon}
+                      <span>{link.label}</span>
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
           </nav>
 
           {/* Logout */}
@@ -106,10 +129,16 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
 
           <div className="flex items-center space-x-4">
             {/* Notification Icon */}
-            <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-full relative">
-              <Bell size={20} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
+            {user?.role === 'CONSULTANT' && (
+              <button 
+                onClick={() => navigate('/consultant/dashboard')}
+                className="p-2 text-gray-500 hover:bg-gray-100 rounded-full relative transition-colors"
+                title="View Notifications"
+              >
+                <Bell size={20} />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+              </button>
+            )}
 
             {/* ✅ Profile Navigation (Dynamic) */}
             {user && (

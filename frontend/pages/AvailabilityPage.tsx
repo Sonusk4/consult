@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import ConsultantKycGate from '../components/ConsultantKycGate';
+import useConsultantKycCheck from '../hooks/useConsultantKycCheck';
 import { Calendar, ChevronLeft, ChevronRight, Plus, Trash2, CheckCircle, Clock, Loader, Check } from 'lucide-react';
-import api from '../services/api';
+import api, { consultants as consultantsApi } from '../services/api';
 import { useToast } from '../context/ToastContext';
 
 interface Slot {
@@ -19,6 +22,8 @@ const to12Hour = (t: string) => {
 };
 
 const AvailabilityPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { kycStatus, loading: kycLoading, isApprovalSuccess } = useConsultantKycCheck();
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(today);
@@ -31,6 +36,23 @@ const AvailabilityPage: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const { addToast } = useToast();
+
+  // Check profile completion
+  useEffect(() => {
+    const checkProfile = async () => {
+      try {
+        const profileData = await consultantsApi.getProfile();
+        const isIncomplete = !profileData || !profileData.name || !profileData.domain || 
+                            !profileData.hourly_price || !profileData.bio || !profileData.languages;
+        if (isIncomplete) {
+          navigate('/consultant/dashboard', { replace: true });
+        }
+      } catch (error) {
+        navigate('/consultant/dashboard', { replace: true });
+      }
+    };
+    checkProfile();
+  }, [navigate]);
 
   useEffect(() => { fetchSlots(); }, []);
 
@@ -137,8 +159,9 @@ const AvailabilityPage: React.FC = () => {
   };
 
   return (
-    <Layout title="Availability Manager">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <ConsultantKycGate kycStatus={kycStatus} showSuccessModal={isApprovalSuccess}>
+      <Layout title="Availability Manager">
+        <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-6 text-white">
           <div className="flex items-center justify-between">
@@ -287,8 +310,9 @@ const AvailabilityPage: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
-    </Layout>
+        </div>
+      </Layout>
+    </ConsultantKycGate>
   );
 };
 

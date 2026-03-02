@@ -98,11 +98,11 @@ const UserBooking: React.FC = () => {
 
                   <div>
                     <h3 className="text-lg font-bold text-gray-900">
-                      {session.consultant?.user?.email || "Consultant"}
+                      {session.consultant?.user?.name || session.consultant?.name || "Consultant"}
                     </h3>
 
                     <p className="text-sm text-gray-500">
-                      {session.consultant?.domain || "Domain"}
+                      {session.consultant?.domain || "General Consultation"}
                     </p>
 
                     <p className="text-sm text-gray-400 mt-1">

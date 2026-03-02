@@ -3,9 +3,9 @@ import ReviewPopup from "../components/ReviewPopup";
 import UserPopupModal from "../components/UserPopupModal";
 import { useUserPopup } from "../hooks/useUserPopup";
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
-import api from "../services/api";
+import api, { consultants as consultantsApi } from "../services/api";
 import {
   Search, Send, Paperclip, MoreHorizontal, Phone, Video,
   Clock, AlertCircle, CheckCircle, Lock, X, Timer,
@@ -190,6 +190,7 @@ const SessionBanner: React.FC<{
 /* ─── Main Component ─────────────────────────────────────── */
 const MessagesPage: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user: currentUser, loading: userLoading } = useUser();
   const { showError, popup, hidePopup } = useUserPopup();
   const [socket, setSocket] = useState<any>(null);
@@ -211,6 +212,24 @@ const MessagesPage: React.FC = () => {
 
   // Is current user a consultant?
   const isConsultant = currentUser?.role === "CONSULTANT" || currentUser?.role === "ENTERPRISE_ADMIN";
+
+  // Check profile completion for consultants
+  useEffect(() => {
+    if (!isConsultant) return;
+    const checkProfile = async () => {
+      try {
+        const profileData = await consultantsApi.getProfile();
+        const isIncomplete = !profileData || !profileData.name || !profileData.domain || 
+                            !profileData.hourly_price || !profileData.bio || !profileData.languages;
+        if (isIncomplete) {
+          navigate('/consultant/dashboard', { replace: true });
+        }
+      } catch (error) {
+        navigate('/consultant/dashboard', { replace: true });
+      }
+    };
+    checkProfile();
+  }, [isConsultant, navigate]);
 
   // Tick clock every second
   useEffect(() => {

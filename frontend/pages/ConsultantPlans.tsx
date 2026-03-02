@@ -177,23 +177,23 @@ const plans = [
 const chatCreditsPacks = [
   {
     name: "Mini Pack",
-    messages: "50 Messages",
-    price: "TBD",
-    validity: "Valid for 30 days",
+    messages: "10 messages",
+    price: "₹49",
+    validity: "30 days",
     popular: false,
   },
   {
     name: "Starter Pack",
-    messages: "150 Messages",
-    price: "TBD",
-    validity: "Valid for 45 days",
+    messages: "25 messages",
+    price: "₹99",
+    validity: "45 days",
     popular: true,
   },
   {
     name: "Pro Pack",
-    messages: "300 Messages",
-    price: "TBD",
-    validity: "Valid for 60 days",
+    messages: "60 messages",
+    price: "₹199",
+    validity: "60 days",
     popular: false,
   },
 ];
@@ -333,6 +333,7 @@ const ConsultantPlans: React.FC = () => {
 
       // Create order for chat credits
       const orderData = await chatCredits.createOrder(packName);
+      console.log('📦 Order created:', orderData);
 
       // Fetch user profile
       let userName = "Consultant";
@@ -348,22 +349,23 @@ const ConsultantPlans: React.FC = () => {
       // Init Razorpay
       const options = {
         key: orderData.key_id,
-        amount: orderData.amount * 100,
+        amount: orderData.order.amount, // Use amount from order object
         currency: "INR",
         name: "Chat Credits",
         description: `${packName} - ${chatCreditsPacks.find(p => p.name === packName)?.messages}`,
-        order_id: orderData.order_id,
+        order_id: orderData.order.id, // Correct path to order ID
         handler: async function (response: any) {
           try {
             setLoading(true);
-            await payments.verifyPayment({
+            await chatCredits.verifyPayment({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
               packName: packName,
-              userType: "CONSULTANT",
             });
             addToast(`Chat credits purchased successfully!`, 'success');
+            // Refresh the page to update dashboard metrics
+            window.location.reload();
           } catch (err: any) {
             addToast(`Payment verification failed: ${err.message}`, 'error');
           } finally {
@@ -538,8 +540,8 @@ const ConsultantPlans: React.FC = () => {
                   <span className="font-medium">{plan.chat}/month</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Platform Fee</span>
-                  <span className="font-medium">-{plan.reduction}%</span>
+                  <span className="text-gray-500">Effective Platform Fee</span>
+                  <span className="font-medium text-red-600">{BASE_PLATFORM_FEE - plan.reduction}%</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Badge</span>
@@ -639,59 +641,7 @@ const ConsultantPlans: React.FC = () => {
           </div>
         </div>
 
-        {/* Wallet Recharge Bonus Structure */}
-        <div className="mb-12">
-          <h2 className="text-2xl font-bold text-center mb-8">Wallet Recharge Bonus Structure</h2>
-          <div className="grid md:grid-cols-3 gap-6">
-            {walletRechargePlans.map((plan) => (
-              <div
-                key={plan.amount}
-                className={`relative p-6 rounded-2xl border-2 transition-all duration-300 hover:shadow-lg hover:scale-105 ${
-                  plan.color === "blue"
-                    ? "border-blue-200 bg-blue-50"
-                    : plan.color === "green"
-                    ? "border-green-200 bg-green-50"
-                    : "border-purple-200 bg-purple-50"
-                }`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                    <span className="bg-green-500 text-white text-xs px-3 py-1 rounded-full font-semibold">
-                      POPULAR
-                    </span>
-                  </div>
-                )}
-                <div className="text-center mb-4">
-                  <p className="text-4xl font-bold mb-1">₹{plan.amount}</p>
-                  <p className="text-2xl font-semibold">₹{plan.bonus}</p>
-                  <span
-                    className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold ${
-                      plan.color === "blue"
-                        ? "bg-blue-500 text-white"
-                        : plan.color === "green"
-                        ? "bg-green-500 text-white"
-                        : "bg-purple-500 text-white"
-                    }`}
-                  >
-                    {plan.percentage} Bonus
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleWalletRecharge(plan.amount, plan.bonus)}
-                  className={`w-full py-3 rounded-xl font-semibold transition ${
-                    plan.color === "blue"
-                      ? "bg-blue-500 text-white hover:bg-blue-600"
-                      : plan.color === "green"
-                      ? "bg-green-500 text-white hover:bg-green-600"
-                      : "bg-purple-500 text-white hover:bg-purple-600"
-                  }`}
-                >
-                  Recharge Now
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+    
 
         {/* Important Terms */}
         <div className="bg-gray-50 rounded-2xl p-8">
@@ -826,19 +776,20 @@ const ConsultantPlans: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Platform Fee Reduction */}
+                {/* Platform Fee */}
                 <div className="bg-gray-50 rounded-xl p-6">
                   <div className="flex items-center mb-3">
                     <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center mr-3">
                       <Wallet className="w-5 h-5 text-red-600" />
                     </div>
-                    <h3 className="font-semibold text-gray-900">Platform Fee Reduction</h3>
+                    <h3 className="font-semibold text-gray-900">Platform Fee (% of Hourly Rate)</h3>
                   </div>
-                  <p className="text-2xl font-bold text-gray-900 mb-1">-{selectedPlan.reduction}%</p>
+                  <p className="text-2xl font-bold text-red-600 mb-1">{BASE_PLATFORM_FEE - selectedPlan.reduction}%</p>
                   <p className="text-sm text-gray-600">
-                    Final platform fee: {BASE_PLATFORM_FEE - selectedPlan.reduction}%
-                    {selectedPlan.reduction === 0 && " (Standard rate)"}
-                    {selectedPlan.reduction > 0 && " (Reduced rate)"}
+                    {selectedPlan.reduction === 0 && "Standard rate - no plan benefits"}
+                    {selectedPlan.reduction === 2 && "Reduced from base 20%"}
+                    {selectedPlan.reduction === 5 && "Reduced from base 20%"}
+                    {selectedPlan.reduction === 10 && "Reduced from base 20%"}
                   </p>
                 </div>
 

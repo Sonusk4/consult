@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import { consultants as consultantsApi, subscriptions, bookings, payments } from "../services/api";
 import { Consultant } from "../types";
-import { Loader, Users, Calendar, DollarSign, Star, MessageSquare, TrendingUp, Bell, Clock, CheckCircle, XCircle, AlertCircle, Video, Edit, Trash2, Plus, ArrowRight, Eye, Check, Crown } from "lucide-react";
+import { Loader, Users, Calendar, DollarSign, Star, MessageSquare, TrendingUp, Bell, Clock, CheckCircle, XCircle, AlertCircle, Video, Edit, Trash2, Plus, ArrowRight, Eye, Check, Crown, Upload, FileText, X } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../App";
 
@@ -77,14 +77,46 @@ const isBookingLive = (booking: any): boolean => {
   }
 };
 
+const DOMAIN_OPTIONS = [
+  "Legal",
+  "Engineering",
+  "Doctor",
+  "Finance",
+  "Technology",
+  "Education",
+  "Marketing",
+];
+
+const DOMAIN_LANGUAGE_MAP: Record<string, string[]> = {
+  Legal: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Engineering: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Doctor: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Finance: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Technology: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Education: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Marketing: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+};
+
+const BASE_PLATFORM_FEE_PERCENT = 20;
+
+const PLAN_PLATFORM_FEE_REDUCTION: Record<string, number> = {
+  Free: 0,
+  Professional: 2,
+  Premium: 5,
+  Elite: 10,
+};
+
 const ConsultantDashboard = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { addToast } = useToast();
 
   // State variables
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [kycStatus, setKycStatus] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [usage, setUsage] = useState<any>(null);
   const [showRegistrationFee, setShowRegistrationFee] = useState(false);
@@ -99,6 +131,7 @@ const ConsultantDashboard = () => {
   const [liveSession, setLiveSession] = useState<any>(null);
   const [onboardingData, setOnboardingData] = useState({
     // All mandatory fields for backend
+    name: user?.name || "",
     type: "Individual",
     domain: "",
     hourly_price: "",
@@ -112,11 +145,37 @@ const ConsultantDashboard = () => {
     other_social: "",
     profile_pic: "",
   });
+  const [subscriptionStatus, setSubscriptionStatus] = useState<any>(null);
+  const [expiryWarning, setExpiryWarning] = useState<any>(null);
+  const [kycDocuments, setKycDocuments] = useState<File[]>([]);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+
+  const currentPlanName = profile?.currentPlan || profile?.subscription_plan || "Free";
+  const platformFeeReduction = PLAN_PLATFORM_FEE_REDUCTION[currentPlanName] || 0;
+  const effectivePlatformFeePercent = Math.max(0, BASE_PLATFORM_FEE_PERCENT - platformFeeReduction);
+  const hourlyRateValue = parseFloat(onboardingData.hourly_price || "0") || 0;
+  const platformFeeAmount = (hourlyRateValue * effectivePlatformFeePercent) / 100;
+  const consultantTakeHome = Math.max(0, hourlyRateValue - platformFeeAmount);
 
   const fetchProfile = async () => {
     try {
       const data = await consultantsApi.getProfile();
       setProfile(data);
+      
+      // Check KYC status and detect approval
+      if (data?.kyc_status) {
+        const previousStatus = sessionStorage.getItem("consultantKycStatus");
+        
+        // If status changed from non-APPROVED to APPROVED, show success modal
+        if (previousStatus && previousStatus !== "APPROVED" && data.kyc_status === "APPROVED") {
+          setShowApprovalModal(true);
+          addToast("🎉 Your account has been approved!", "success");
+        }
+        
+        // Store current status
+        sessionStorage.setItem("consultantKycStatus", data.kyc_status);
+        setKycStatus(data.kyc_status);
+      }
     } catch (error: any) {
       // If 404, it means consultant profile not created yet - that's fine, show registration form
       if (error.response?.status === 404) {
@@ -141,6 +200,15 @@ const ConsultantDashboard = () => {
     fetchMessages();
     fetchAvailability();
     fetchPerformanceMetrics();
+    fetchSubscriptionStatus();
+  }, []);
+
+  // Poll for profile updates (including KYC status changes) every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchProfile();
+    }, 30000); // 30 seconds
+    return () => clearInterval(interval);
   }, []);
 
   // Poll for live sessions every 30 seconds
@@ -172,6 +240,7 @@ const ConsultantDashboard = () => {
     if (profile) {
       setOnboardingData(prev => ({
         ...prev,
+        name: profile.name || user?.name || prev.name,
         domain: profile.domain || prev.domain,
         hourly_price: profile.hourly_price?.toString() || prev.hourly_price,
         bio: profile.bio || prev.bio,
@@ -185,7 +254,7 @@ const ConsultantDashboard = () => {
         profile_pic: profile.profile_pic || prev.profile_pic,
       }));
     }
-  }, [profile]);
+  }, [profile, user?.name]);
 
   const fetchUsage = async () => {
     try {
@@ -329,6 +398,19 @@ const ConsultantDashboard = () => {
     }
   };
 
+  const fetchSubscriptionStatus = async () => {
+    try {
+      const data = await subscriptions.getSubscriptionStatus();
+      setSubscriptionStatus(data.subscriptionData);
+      setExpiryWarning(data.expiryWarning);
+      if (data.expiryWarning) {
+        console.log('⚠️ Subscription expiring soon:', data.expiryWarning);
+      }
+    } catch (error) {
+      console.error('Failed to fetch subscription status:', error);
+    }
+  };
+
   const handleSessionAction = async (sessionId: number, action: 'accept' | 'reject' | 'join') => {
     try {
       if (action === 'join') {
@@ -420,7 +502,7 @@ const ConsultantDashboard = () => {
 const calculateProfileCompletion = () => {
   if (!profile) return 0;
   
-  // Required fields (weight: 60%)
+  // Required fields (weight: 60%) - directly from profile
   const requiredFields = [
     profile.name,
     profile.domain,
@@ -429,15 +511,15 @@ const calculateProfileCompletion = () => {
     profile.languages
   ];
   
-  // Optional fields (weight: 40%)
+  // Optional fields (weight: 40%) - directly from profile for accurate dynamic calculation
   const optionalFields = [
-    onboardingData.designation,
-    onboardingData.years_experience,
-    onboardingData.education,
-    onboardingData.linkedin,
-    onboardingData.other_social,
-    onboardingData.availability !== 'Flexible',
-    profilePhoto
+    profile.designation,
+    profile.years_experience,
+    profile.education,
+    profile.linkedin_url,
+    profile.website_url,
+    profile.availability && profile.availability !== 'Flexible',
+    profile.profile_pic
   ];
   
   const completedRequired = requiredFields.filter(field => field && field?.toString()?.trim() !== '').length;
@@ -468,6 +550,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
 
     // Validate all mandatory fields
     const requiredFields = [
+      { field: 'name', label: 'Name' },
       { field: 'domain', label: 'Domain' },
       { field: 'hourly_price', label: 'Hourly Price' },
       { field: 'bio', label: 'Bio' },
@@ -502,6 +585,17 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       return;
     }
 
+    // KYC documents are recommended but not mandatory for initial registration
+    // (can be uploaded later from profile page)
+    if (!profile && kycDocuments.length === 0) {
+      const confirmWithoutKyc = window.confirm(
+        "KYC documents are required for verification. You can add them now or later from your profile page.\n\nContinue without KYC documents?"
+      );
+      if (!confirmWithoutKyc) {
+        return;
+      }
+    }
+
     try {
       // Upload profile photo if exists
       let profilePicUrl = onboardingData.profile_pic;
@@ -522,6 +616,8 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
 
       // Prepare registration data with all mandatory fields
       const registrationData = {
+        name: onboardingData.name,
+        full_name: onboardingData.name,
         type: onboardingData.type,
         domain: onboardingData.domain,
         bio: onboardingData.bio,
@@ -537,10 +633,24 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       };
 
       await consultantsApi.register(registrationData);
+      
+      addToast("Consultant profile created successfully!", "success");
 
-      // Show registration fee notification
-      const registrationFee = 10;
-      const finalHourlyPrice = hourlyPrice - registrationFee;
+      // Upload KYC documents if provided (wait a bit for profile to be fully created)
+      if (kycDocuments.length > 0) {
+        // Wait a moment for the database transaction to complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        try {
+          await consultantsApi.uploadKycDoc(kycDocuments);
+          addToast("KYC documents uploaded successfully!", "success");
+        } catch (kycError) {
+          console.error('KYC document upload failed:', kycError);
+          addToast('Profile created! Please upload KYC documents from your profile page.', 'warning');
+        }
+      }
+
+      // Show platform fee notification
       
       setShowRegistrationFee(true);
       setRegistrationFeeDeducted(true);
@@ -555,6 +665,59 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       addToast(error.response?.data?.error || "Failed to create consultant profile", "error");
       setProfile(null);
       setLoading(false);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+
+    try {
+      // Upload profile photo if changed
+      let profilePicUrl = onboardingData.profile_pic;
+      if (profilePhoto && profilePhoto !== profile?.profile_pic) {
+        try {
+          const response = await fetch(profilePhoto);
+          const blob = await response.blob();
+          const file = new File([blob], 'profile-photo.jpg', { type: 'image/jpeg' });
+          const uploadResponse = await consultantsApi.uploadProfilePic(file);
+          profilePicUrl = uploadResponse.profile_pic;
+        } catch (uploadError) {
+          console.error('Profile photo upload failed:', uploadError);
+          addToast('Profile photo upload failed, but profile will update', 'warning');
+        }
+      }
+
+      // Prepare update data
+      const updateData = {
+        name: onboardingData.name,
+        full_name: onboardingData.name,
+        domain: onboardingData.domain,
+        bio: onboardingData.bio,
+        languages: onboardingData.languages,
+        hourly_price: onboardingData.hourly_price,
+        designation: onboardingData.designation,
+        years_experience: onboardingData.years_experience,
+        education: onboardingData.education,
+        availability: onboardingData.availability,
+        linkedin: onboardingData.linkedin,
+        other_social: onboardingData.other_social,
+        profile_pic: profilePicUrl,
+      };
+
+      await consultantsApi.updateProfile(updateData);
+      addToast("Profile updated successfully!", "success");
+      
+      // Refresh profile and exit edit mode
+      fetchProfile();
+      setIsEditing(false);
+      setProfilePhoto(null);
+      
+    } catch (error: any) {
+      console.error("Update error:", error);
+      addToast(error.response?.data?.error || "Failed to update profile", "error");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -621,17 +784,38 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
               </div>
               <input
                 type="text"
-                placeholder="Domain (e.g. Tech)"
+                placeholder="Full Name"
+                className="w-full border rounded-xl px-4 py-3"
+                value={onboardingData.name}
+                onChange={(e) =>
+                  setOnboardingData({
+                    ...onboardingData,
+                    name: e.target.value,
+                  })
+                }
+                required
+              />
+              <select
                 className="w-full border rounded-xl px-4 py-3"
                 value={onboardingData.domain}
                 onChange={(e) =>
                   setOnboardingData({
                     ...onboardingData,
                     domain: e.target.value,
+                    languages: "",
                   })
                 }
                 required
-              />
+              >
+                <option value="" disabled>
+                  Select Domain
+                </option>
+                {DOMAIN_OPTIONS.map((domain) => (
+                  <option key={domain} value={domain}>
+                    {domain}
+                  </option>
+                ))}
+              </select>
 
               <input
                 type="number"
@@ -652,27 +836,27 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center">
                       <AlertCircle className="w-5 h-5 text-blue-600 mr-2" />
-                      <span className="text-sm font-semibold text-blue-900">Registration Fee Calculation</span>
+                      <span className="text-sm font-semibold text-blue-900">Platform Fee Calculation</span>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-600">Your Hourly Rate:</span>
-                      <span className="text-lg font-bold text-gray-900">₹{parseFloat(onboardingData.hourly_price).toFixed(2)}</span>
+                      <span className="text-lg font-bold text-gray-900">₹{hourlyRateValue.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">Registration Fee:</span>
-                      <span className="text-lg font-bold text-red-600">-₹10.00</span>
+                      <span className="text-sm text-gray-600">Platform Fee ({effectivePlatformFeePercent}%):</span>
+                      <span className="text-lg font-bold text-red-600">-₹{platformFeeAmount.toFixed(2)}</span>
                     </div>
                     <div className="border-t pt-2 mt-2">
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-semibold text-gray-700">You'll Receive:</span>
-                        <span className="text-xl font-bold text-green-600">₹{(parseFloat(onboardingData.hourly_price) - 10).toFixed(2)}/hr</span>
+                        <span className="text-xl font-bold text-green-600">₹{consultantTakeHome.toFixed(2)}/hr</span>
                       </div>
                     </div>
                   </div>
                   <p className="text-xs text-blue-700 mt-3">
-                    One-time registration fee of ₹10 will be deducted from your hourly rate
+                    Base platform fee is 20%. Plan discounts: Professional 2%, Premium 5%, Elite 10%.
                   </p>
                 </div>
               )}
@@ -683,28 +867,28 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                   <div className="flex items-center">
                     <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
                     <span className="text-sm font-medium text-green-900">
-                      Registration fee of ₹10 has been deducted
+                      Platform fee structure has been applied
                     </span>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Your Hourly Rate:</span>
-                    <span className="text-lg font-bold text-gray-900">₹{parseFloat(onboardingData.hourly_price).toFixed(2)}</span>
+                    <span className="text-lg font-bold text-gray-900">₹{hourlyRateValue.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Registration Fee:</span>
-                    <span className="text-lg font-bold text-red-600">-₹10.00</span>
+                    <span className="text-sm text-gray-600">Platform Fee ({effectivePlatformFeePercent}%):</span>
+                    <span className="text-lg font-bold text-red-600">-₹{platformFeeAmount.toFixed(2)}</span>
                   </div>
                   <div className="border-t pt-2 mt-2">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-semibold text-gray-700">You'll Receive:</span>
-                      <span className="text-xl font-bold text-green-600">₹{(parseFloat(onboardingData.hourly_price) - 10).toFixed(2)}/hr</span>
+                      <span className="text-xl font-bold text-green-600">₹{consultantTakeHome.toFixed(2)}/hr</span>
                     </div>
                   </div>
                 </div>
                 <p className="text-xs text-blue-700">
-                  One-time registration fee of ₹10 will be deducted from your hourly rate
+                  Base platform fee is 20%. Plan discounts: Professional 2%, Premium 5%, Elite 10%.
                 </p>
               </div>
             )}
@@ -722,9 +906,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
               required
             />
             
-            <input
-              type="text"
-              placeholder="Languages (comma separated)"
+            <select
               className="w-full border rounded-xl px-4 py-3"
               value={onboardingData.languages}
               onChange={(e) =>
@@ -734,7 +916,17 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                 })
               }
               required
-            />
+              disabled={!onboardingData.domain}
+            >
+              <option value="" disabled>
+                {onboardingData.domain ? "Select Language" : "Select Domain First"}
+              </option>
+              {(DOMAIN_LANGUAGE_MAP[onboardingData.domain] || []).map((language) => (
+                <option key={language} value={language}>
+                  {language}
+                </option>
+              ))}
+            </select>
             
             <input
               type="text"
@@ -819,6 +1011,60 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                 })
               }
             />
+            
+            {/* KYC Document Upload */}
+            <div className="border-t pt-4 mt-4">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                KYC Documents
+                <span className="text-xs text-orange-600 font-normal ml-2">(Recommended - Required for approval)</span>
+              </h3>
+              <p className="text-sm text-gray-600 mb-3">
+                Upload identity documents (Aadhar, PAN, Driving License, etc.). You can also add these later from your profile page.
+              </p>
+              
+              <label className="w-full border-2 border-dashed border-gray-300 rounded-xl px-4 py-6 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all flex flex-col items-center justify-center">
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) {
+                      const files = Array.from(e.target.files);
+                      setKycDocuments(prev => [...prev, ...files]);
+                    }
+                  }}
+                />
+                <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                <span className="text-sm font-medium text-gray-600">Click to upload KYC documents</span>
+                <span className="text-xs text-gray-500 mt-1">PDF, JPG, PNG (Max 5MB per file)</span>
+              </label>
+              
+              {kycDocuments.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {kycDocuments.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 truncate">{file.name}</span>
+                        <span className="text-xs text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setKycDocuments(prev => prev.filter((_, i) => i !== index))}
+                        className="text-red-500 hover:text-red-700 ml-2"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              <p className="text-xs text-gray-500 mt-2">
+                These documents are required for verification and payout processing. Your information is securely stored.
+              </p>
+            </div>
 
             <button
               type="submit"
@@ -836,17 +1082,188 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
   // 🟢 DASHBOARD VIEW
   return (
     <Layout title="Expert Portal">
-      <div className="max-w-7xl mx-auto space-y-8">
+      {/* Approval Success Modal */}
+      {showApprovalModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center transform transition-all">
+            {/* Success Icon */}
+            <div className="mb-6 flex justify-center">
+              <div className="bg-green-100 rounded-full p-4 animate-bounce">
+                <CheckCircle className="w-16 h-16 text-green-600" />
+              </div>
+            </div>
 
-        {/* Registration Fee Notification */}
+            {/* Title */}
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              🎉 Account Approved!
+            </h2>
+
+            {/* Message */}
+            <p className="text-gray-600 mb-6 text-lg">
+              Congratulations! Your consultant account has been approved. You now have full access to all features and can start accepting bookings.
+            </p>
+
+            {/* Features List */}
+            <div className="bg-green-50 rounded-xl p-4 mb-6 text-left">
+              <h3 className="font-semibold text-green-900 mb-3">You can now:</h3>
+              <ul className="text-sm text-green-800 space-y-2">
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 flex-shrink-0" />
+                  Set your availability and accept bookings
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 flex-shrink-0" />
+                  Connect with clients via messaging
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 flex-shrink-0" />
+                  Manage your earnings and payouts
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 flex-shrink-0" />
+                  Access all premium features
+                </li>
+              </ul>
+            </div>
+
+            {/* Action Button */}
+            <button
+              onClick={() => {
+                setShowApprovalModal(false);
+                // Refresh the page to show full dashboard
+                window.location.reload();
+              }}
+              className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:from-green-700 hover:to-blue-700 transition-all shadow-lg"
+            >
+              Get Started
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* KYC Pending Approval Screen */}
+      {profile && kycStatus && kycStatus !== "APPROVED" && (
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+          <div className="max-w-md w-full">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+              {/* Status Icon */}
+              <div className="mb-6 flex justify-center">
+                <div className="bg-blue-100 rounded-full p-4">
+                  <Clock className="w-12 h-12 text-blue-600" />
+                </div>
+              </div>
+
+              {/* Title */}
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">
+                Account Under Review
+              </h1>
+
+              {/* Message */}
+              <p className="text-gray-600 mb-6">
+                Thank you for signing up! Your account will be reviewed and approved within <span className="font-semibold text-blue-600">24 to 48 hours</span>.
+              </p>
+
+              {/* Timeline */}
+              <div className="bg-gray-50 rounded-lg p-6 mb-8 text-left">
+                <h3 className="font-semibold text-gray-900 mb-4">Approval Timeline:</h3>
+                <div className="space-y-4">
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100">
+                        <Check className="w-5 h-5 text-blue-600" />
+                      </div>
+                    </div>
+                    <div className="ml-3">
+                      <p className="font-medium text-gray-900">KYC Information Submitted</p>
+                      <p className="text-sm text-gray-600 mt-1">Your profile has been submitted</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <div className="flex items-center justify-center h-8 w-8 rounded-full bg-yellow-100">
+                        <Clock className="w-5 h-5 text-yellow-600" />
+                      </div>
+                    </div>
+                    <div className="ml-3">
+                      <p className="font-medium text-gray-900">Verification in Progress</p>
+                      <p className="text-sm text-gray-600 mt-1">We're verifying your details</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gray-100">
+                        <Check className="w-5 h-5 text-gray-400" />
+                      </div>
+                    </div>
+                    <div className="ml-3">
+                      <p className="font-medium text-gray-900">Account Approved</p>
+                      <p className="text-sm text-gray-600 mt-1">Get full access to your dashboard</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Next Steps */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8 text-left">
+                <h3 className="font-semibold text-blue-900 mb-2">What's Next?</h3>
+                <ul className="text-sm text-blue-800 space-y-2">
+                  <li>• We'll review your KYC information</li>
+                  <li>• You'll receive an email with your approval status</li>
+                  <li>• Once approved, you can access your full dashboard</li>
+                </ul>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-3">
+                <button
+                  onClick={() => navigate('/login')}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+                >
+                  Go to Login
+                </button>
+                <button
+                  onClick={logout}
+                  className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 font-medium py-3 px-4 rounded-lg transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+
+              {/* Status Badge */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <p className="text-sm text-gray-600">
+                  Status: <span className="font-semibold text-gray-900">
+                    {kycStatus === "PENDING" ? "Pending Submission" : 
+                     kycStatus === "SUBMITTED" ? "Under Review" : 
+                     "Processing"}
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center min-h-screen">
+          <Loader className="w-12 h-12 animate-spin text-blue-600" />
+        </div>
+      )}
+
+      {/* Main Dashboard - Only show if approved or no KYC status */}
+      {!loading && (!kycStatus || kycStatus === "APPROVED") && (
+        <div className="max-w-7xl mx-auto space-y-8">
+
+        {/* Platform Fee Notification */}
         {showRegistrationFee && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center justify-between">
             <div className="flex items-center">
               <AlertCircle className="w-5 h-5 text-yellow-600 mr-3" />
               <div>
-                <p className="font-medium text-yellow-900">Registration Fee Deducted</p>
+                <p className="font-medium text-yellow-900">Platform Fee Applied</p>
                 <p className="text-sm text-yellow-800">
-                  ₹10 has been deducted from your hourly rate as registration fee
+                  Current plan: {currentPlanName} • Platform fee: {effectivePlatformFeePercent}%
                 </p>
               </div>
             </div>
@@ -876,6 +1293,36 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                 </p>
                 <p className="text-sm text-white/90">
                   Session with {liveSession.user?.name || 'Client'} • {liveSession.time_slot} • Click to join chat
+                </p>
+              </div>
+            </div>
+            <ArrowRight className="w-6 h-6 text-white" />
+          </div>
+        )}
+
+        {/* Subscription Expiry Warning Banner */}
+        {expiryWarning && (
+          <div 
+            onClick={() => navigate('/consultant/plans')}
+            className={`rounded-xl p-4 flex items-center justify-between cursor-pointer transition-all transform hover:scale-[1.02] shadow-lg ${
+              expiryWarning.severity === 'critical' 
+                ? 'bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700' 
+                : 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600'
+            }`}
+          >
+            <div className="flex items-center">
+              <div className="bg-white/20 rounded-full p-2 mr-3">
+                <AlertCircle className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="font-bold text-white text-lg flex items-center">
+                  ⚠️ Subscription Expiring Soon
+                  <span className="ml-2 text-xs bg-white/30 px-2 py-1 rounded-full">
+                    {expiryWarning.daysLeft} DAY{expiryWarning.daysLeft > 1 ? 'S' : ''} LEFT
+                  </span>
+                </p>
+                <p className="text-sm text-white/90">
+                  {expiryWarning.message} • Click to renew and keep your premium benefits
                 </p>
               </div>
             </div>
@@ -1089,6 +1536,8 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
             </div>
           </div>
         </div>
+
+    
 
         {/* Current Subscription Section */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 text-white">
@@ -1426,9 +1875,8 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
             </div>
           </div>
         </div>
-
-
       </div>
+      )}
     </Layout>
   );
 };

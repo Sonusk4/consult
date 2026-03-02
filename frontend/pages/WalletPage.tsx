@@ -150,6 +150,49 @@ const WalletPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Recent Purchases/Credit Packs */}
+        {transactions.filter(t => t.type === 'CREDIT' || t.type === 'CHAT_CREDIT').length > 0 && (
+          <div className="bg-white rounded-lg p-6 mb-8 border border-gray-200">
+            <h3 className="text-xl font-bold mb-4 flex items-center">
+              <History className="w-5 h-5 mr-2 text-green-600" />
+              Recent Credit Pack Purchases
+            </h3>
+            <div className="space-y-3">
+              {transactions
+                .filter(t => t.type === 'CREDIT' || t.type === 'CHAT_CREDIT')
+                .slice(0, 3)
+                .map((transaction) => (
+                  <div
+                    key={transaction.id}
+                    className="bg-green-50 border border-green-200 rounded-lg p-4 flex justify-between items-center"
+                  >
+                    <div className="flex items-center">
+                      <div className="bg-green-100 rounded-full p-2 mr-3">
+                        <Plus className="w-5 h-5 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-800">
+                          {transaction.description}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {formatDate(transaction.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-lg text-green-600">
+                        +₹{transaction.amount}
+                      </p>
+                      <p className="text-xs text-green-600 font-medium">
+                        ✓ Added to wallet
+                      </p>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <button

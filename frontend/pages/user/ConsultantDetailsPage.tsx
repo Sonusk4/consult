@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
-import { consultants as consultantsApi, bookings } from '../../services/api';
+import { consultants as consultantsApi, bookings, subscriptions } from '../../services/api';
 import api from '../../services/api';
 import { Consultant } from '../../types';
-import { Star, Calendar, Clock,  ArrowLeft, Video, MessageCircle, Loader, AlertTriangle, CreditCard, CheckCircle, X, Wallet, Linkedin, Globe, IndianRupee } from 'lucide-react';
+import { Star, Calendar, Clock,  ArrowLeft, Video, MessageCircle, Loader, AlertTriangle, CreditCard, CheckCircle, X, Wallet, Linkedin, Globe, IndianRupee, Zap } from 'lucide-react';
 import UserPopupModal from '../../components/UserPopupModal';
 import { useUserPopup } from '../../hooks/useUserPopup';
+
+// Plan discount mapping
+const PLAN_DISCOUNTS: Record<string, number> = {
+  'Free': 0,
+  'Starter': 10,
+  'Growth': 15,
+  'Enterprise': 50,
+};
 
 interface TimeSlot {
   id: number;
@@ -84,11 +92,16 @@ const BookingConfirmationModal: React.FC<{
   date: string;
   timeSlot: string;
   fee: number;
+  discountPercent: number;
   walletBalance: number;
   onConfirm: () => void;
   onCancel: () => void;
   loading: boolean;
-}> = ({ consultantName, domain, bio, date, timeSlot, fee, walletBalance, onConfirm, onCancel, loading }) => (
+}> = ({ consultantName, domain, bio, date, timeSlot, fee, discountPercent, walletBalance, onConfirm, onCancel, loading }) => {
+  const discountAmount = (fee * discountPercent) / 100;
+  const finalFee = fee - discountAmount;
+
+  return (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
     <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
       {/* Header */}
@@ -142,8 +155,23 @@ const BookingConfirmationModal: React.FC<{
           </div>
           <div className="flex justify-between items-center">
             <span className="text-gray-600 text-sm">Consultation Fee</span>
-            <span className="font-bold text-gray-800 text-lg">₹{fee.toFixed(2)}</span>
+            <span className={`font-bold text-gray-800 text-lg ${discountPercent > 0 ? 'line-through' : ''}`}>₹{fee.toFixed(2)}</span>
           </div>
+          {discountPercent > 0 && (
+            <>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 text-sm flex items-center gap-1">
+                  <Zap size={14} className="text-red-500" />
+                  {discountPercent}% Discount
+                </span>
+                <span className="font-bold text-red-600">-₹{discountAmount.toFixed(2)}</span>
+              </div>
+              <div className="border-t border-purple-200 pt-3 flex justify-between items-center">
+                <span className="text-gray-700 font-semibold text-base">Final Amount</span>
+                <span className="font-bold text-lg text-purple-700">₹{finalFee.toFixed(2)}</span>
+              </div>
+            </>
+          )}
           <div className="flex justify-between items-center">
             <span className="text-gray-600 text-sm flex items-center gap-1">
               <Wallet size={14} />
@@ -153,14 +181,14 @@ const BookingConfirmationModal: React.FC<{
           </div>
           <div className="border-t border-amber-200 pt-3 flex justify-between items-center">
             <span className="text-gray-700 font-medium text-sm">Balance After Booking</span>
-            <span className={`font-bold text-base ${walletBalance - fee < 0 ? 'text-red-600' : 'text-green-600'}`}>
-              ₹{(walletBalance - fee).toFixed(2)}
+            <span className={`font-bold text-base ${walletBalance - finalFee < 0 ? 'text-red-600' : 'text-green-600'}`}>
+              ₹{(walletBalance - finalFee).toFixed(2)}
             </span>
           </div>
         </div>
 
         <p className="text-gray-400 text-xs text-center">
-          ₹{fee.toFixed(2)} will be deducted from your wallet upon confirmation.
+          ₹{finalFee.toFixed(2)} will be deducted from your wallet upon confirmation.
         </p>
       </div>
 
@@ -187,7 +215,8 @@ const BookingConfirmationModal: React.FC<{
       </div>
     </div>
   </div>
-);
+  );
+};
 
 /* ==================== SUCCESS MODAL ==================== */
 const BookingSuccessModal: React.FC<{
@@ -195,9 +224,14 @@ const BookingSuccessModal: React.FC<{
   date: string;
   timeSlot: string;
   fee: number;
+  discountPercent: number;
   remainingBalance: number;
   onClose: () => void;
-}> = ({ consultantName, date, timeSlot, fee, remainingBalance, onClose }) => (
+}> = ({ consultantName, date, timeSlot, fee, discountPercent, remainingBalance, onClose }) => {
+  const discountAmount = (fee * discountPercent) / 100;
+  const finalFee = fee - discountAmount;
+
+  return (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
     <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
       <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-6 text-white text-center">
@@ -225,9 +259,27 @@ const BookingSuccessModal: React.FC<{
             <span className="font-semibold">{timeSlot}</span>
           </div>
           <div className="flex justify-between border-t border-green-100 pt-2 mt-2">
-            <span className="text-gray-500">Amount Deducted</span>
-            <span className="font-bold text-red-600">-₹{fee.toFixed(2)}</span>
+            <span className="text-gray-500">Base Fee</span>
+            <span className={`font-bold ${discountPercent > 0 ? 'line-through text-gray-400' : ''}`}>₹{fee.toFixed(2)}</span>
           </div>
+          {discountPercent > 0 && (
+            <>
+              <div className="flex justify-between">
+                <span className="text-gray-500">{discountPercent}% Discount</span>
+                <span className="font-bold text-red-600">-₹{discountAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-t border-green-100 pt-2 mt-2">
+                <span className="text-gray-700 font-semibold">Amount Deducted</span>
+                <span className="font-bold text-purple-700">₹{finalFee.toFixed(2)}</span>
+              </div>
+            </>
+          )}
+          {discountPercent === 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Amount Deducted</span>
+              <span className="font-bold text-red-600">-₹{fee.toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-gray-500">New Balance</span>
             <span className="font-bold text-green-600">₹{remainingBalance.toFixed(2)}</span>
@@ -245,7 +297,8 @@ const BookingSuccessModal: React.FC<{
       </div>
     </div>
   </div>
-);
+  );
+};
 
 /* ==================== MAIN COMPONENT ==================== */
 const ConsultantDetailsPage: React.FC = () => {
@@ -258,6 +311,8 @@ const ConsultantDetailsPage: React.FC = () => {
   const [selectedSlot, setSelectedSlot] = useState<string>('');
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [userSubscription, setUserSubscription] = useState<{ plan: string } | null>(null);
+  const [discountPercent, setDiscountPercent] = useState<number>(0);
   const { showError, showSuccess, popup, hidePopup } = useUserPopup();
 
   // Modal states
@@ -266,11 +321,12 @@ const ConsultantDetailsPage: React.FC = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [insufficientData, setInsufficientData] = useState({ required: 0, current: 0 });
   const [bookingLoading, setBookingLoading] = useState(false);
-  const [lastBookingResult, setLastBookingResult] = useState<{ fee: number; remainingBalance: number } | null>(null);
+  const [lastBookingResult, setLastBookingResult] = useState<{ fee: number; discountPercent: number; remainingBalance: number } | null>(null);
 
   useEffect(() => {
     if (id) fetchConsultantDetails();
     fetchWalletBalance();
+    fetchUserSubscription();
   }, [id]);
 
   useEffect(() => {
@@ -283,6 +339,21 @@ const ConsultantDetailsPage: React.FC = () => {
       setWalletBalance(res.data.balance || 0);
     } catch {
       // fail silently
+    }
+  };
+
+  const fetchUserSubscription = async () => {
+    try {
+      const status = await subscriptions.getSubscriptionStatus();
+      const planName = status?.subscriptionData?.currentPlan || status?.subscriptionData?.plan || 'Free';
+      setUserSubscription({ plan: planName });
+      // Set discount based on plan
+      const discount = PLAN_DISCOUNTS[planName] || 0;
+      setDiscountPercent(discount);
+      console.log('User subscription plan:', planName, 'Discount:', discount + '%');
+    } catch (error) {
+      console.error('Failed to fetch subscription:', error);
+      setDiscountPercent(0);
     }
   };
 
@@ -324,6 +395,10 @@ const ConsultantDetailsPage: React.FC = () => {
     setBookingLoading(true);
 
     try {
+      const baseRate = consultant.hourly_price || 0;
+      const discount = (baseRate * discountPercent) / 100;
+      const finalFee = baseRate - discount;
+
       const result = await bookings.create({
         consultant_id: parseInt(id!),
         date: bookingDate,
@@ -342,8 +417,9 @@ const ConsultantDetailsPage: React.FC = () => {
       }
 
       setLastBookingResult({
-        fee: consultant.hourly_price || 0,
-        remainingBalance: result.remaining_balance ?? (walletBalance - (consultant.hourly_price || 0)),
+        fee: baseRate,
+        discountPercent: discountPercent,
+        remainingBalance: result.remaining_balance ?? (walletBalance - finalFee),
       });
 
       setShowConfirmModal(false);
@@ -356,9 +432,13 @@ const ConsultantDetailsPage: React.FC = () => {
     } catch (error: any) {
       setShowConfirmModal(false);
       const errData = error?.response?.data;
+      const baseRate = consultant?.hourly_price || 0;
+      const discount = (baseRate * discountPercent) / 100;
+      const finalFee = baseRate - discount;
+
       if (error?.response?.status === 400 && errData?.error === 'Insufficient balance') {
         setInsufficientData({
-          required: errData.required || consultant?.hourly_price || 0,
+          required: errData.required || finalFee,
           current: errData.current || walletBalance,
         });
         setShowInsufficientModal(true);
@@ -434,6 +514,7 @@ const consultantName =
           timeSlot={selectedSlot}
           fee={consultant.hourly_price || 0}
           walletBalance={walletBalance}
+          discountPercent={discountPercent}
           onConfirm={handleConfirmBooking}
           onCancel={() => setShowConfirmModal(false)}
           loading={bookingLoading}
@@ -447,7 +528,7 @@ const consultantName =
           onClose={() => setShowInsufficientModal(false)}
           onAddCredits={() => {
             setShowInsufficientModal(false);
-            navigate('/user/credits');
+            navigate('/user/subscription-plans');
           }}
         />
       )}
@@ -459,6 +540,7 @@ const consultantName =
           timeSlot={selectedSlot}
           fee={lastBookingResult.fee}
           remainingBalance={lastBookingResult.remainingBalance}
+          discountPercent={lastBookingResult.discountPercent || 0}
           onClose={() => setShowSuccessModal(false)}
         />
       )}
@@ -564,6 +646,22 @@ const consultantName =
         <div className="bg-white rounded-3xl p-8 border shadow-lg">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Book a Consultation</h2>
 
+          {/* Subscription Discount Banner */}
+          {discountPercent > 0 && (
+            <div className="mb-4 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap size={18} className="text-purple-600" />
+                  <span className="font-semibold text-purple-900">{userSubscription?.plan || 'Premium'} Member Benefit</span>
+                </div>
+                <div className="flex items-center gap-2 bg-purple-600 text-white px-3 py-1 rounded-full">
+                  <span className="text-sm font-bold">{discountPercent}% OFF</span>
+                </div>
+              </div>
+              <p className="text-purple-700 text-sm mt-2">You'll save {discountPercent}% on all bookings with your current subscription plan!</p>
+            </div>
+          )}
+
           {/* Fee banner */}
           {consultant.hourly_price && (
             <div className="mb-6 bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center justify-between">
@@ -571,7 +669,14 @@ const consultantName =
                 <IndianRupee size={18} />
                 <span className="font-medium">Session Fee</span>
               </div>
-              <span className="text-xl font-bold text-blue-700">₹{consultant.hourly_price}</span>
+              <div className="flex items-center gap-3">
+                {discountPercent > 0 && (
+                  <span className="text-lg font-semibold text-gray-400 line-through">₹{consultant.hourly_price}</span>
+                )}
+                <span className="text-xl font-bold text-blue-700">
+                  ₹{(consultant.hourly_price - (consultant.hourly_price * discountPercent / 100)).toFixed(0)}
+                </span>
+              </div>
             </div>
           )}
 

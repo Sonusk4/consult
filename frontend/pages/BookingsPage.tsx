@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { consultants as consultantsApi } from '../services/api';
 import {
   Calendar,
   Video,
@@ -28,6 +29,23 @@ const BookingsPage: React.FC = () => {
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Check profile completion
+  useEffect(() => {
+    const checkProfile = async () => {
+      try {
+        const profileData = await consultantsApi.getProfile();
+        const isIncomplete = !profileData || !profileData.name || !profileData.domain || 
+                            !profileData.hourly_price || !profileData.bio || !profileData.languages;
+        if (isIncomplete) {
+          navigate('/consultant/dashboard', { replace: true });
+        }
+      } catch (error) {
+        navigate('/consultant/dashboard', { replace: true });
+      }
+    };
+    checkProfile();
+  }, [navigate]);
 
   /* ---------------- FORMAT DATE ---------------- */
 
@@ -57,7 +75,17 @@ const BookingsPage: React.FC = () => {
           bookings = res.data.bookings;
         }
 
-        setSessions(bookings);
+        // Map backend data to Session format
+        const formattedSessions: Session[] = bookings.map((booking) => ({
+          id: booking.id,
+          partnerName: booking.user?.name || 'Unknown User',
+          domain: 'Consultation', // Generic domain for consultant view
+          type: 'Video', // Default to video for now
+          startTime: new Date(booking.date).toISOString(),
+          status: booking.status || 'UPCOMING'
+        }));
+
+        setSessions(formattedSessions);
 
       } catch (error) {
         console.error('Failed to fetch bookings');

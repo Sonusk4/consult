@@ -7,6 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ConsultantDomain {
+  Legal
+  Engineering
+  Doctor
+  Finance
+  Technology
+  Education
+  Marketing
+}
+
 model User {
   id                        Int             @id @default(autoincrement())
   firebase_uid              String          @unique
@@ -89,7 +99,7 @@ model Consultant {
   id             Int             @id @default(autoincrement())
   userId         Int             @unique
   type           String?
-  domain         String?
+  domain         ConsultantDomain?
   profile_pic    String?
   hourly_price   Float?
   rating         Float           @default(0)
@@ -130,6 +140,11 @@ model Consultant {
   subscriptionEndDate       DateTime?       // When subscription ends
   planFeatures             Json?           // Store plan features as JSON
   paymentId               String?          // Payment ID for the subscription
+
+  // Chat Message Tracking (for subscription limits)
+  chat_messages_used       Int       @default(0)
+  purchased_chat_credits   Int       @default(0)
+  last_limit_reset         DateTime  @default(now())
 
   availabilitySlots Availability[]
   bookings       Booking[]

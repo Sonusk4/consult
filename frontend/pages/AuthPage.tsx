@@ -5,7 +5,7 @@ import { UserRole } from "../types";
 import { ArrowRight, Mail, Shield, ChevronLeft, Info, Eye, EyeOff } from "lucide-react";
 import { auth } from "../services/api";
 
-type AuthStep = "ROLE" | "EMAIL" | "OTP" | "PASSWORD" | "SIGNUP_PASSWORD" | "FORGOT_PASSWORD" | "RESET_PASSWORD";
+type AuthStep = "ROLE" | "EMAIL" | "OTP" | "PASSWORD" | "SIGNUP_PASSWORD" | "FORGOT_PASSWORD" | "RESET_PASSWORD" | "CONSULTANT_KYC" | "PENDING_APPROVAL";
 
 interface AuthPageProps {
   type: "LOGIN" | "SIGNUP";
@@ -37,6 +37,15 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
   const [changedConfirmPassword, setChangedConfirmPassword] = useState("");
   const [showChangedPassword, setShowChangedPassword] = useState(false);
   const [showChangedConfirmPassword, setShowChangedConfirmPassword] = useState(false);
+  
+  // Consultant KYC fields
+  const [domain, setDomain] = useState("");
+  const [expertise, setExpertise] = useState("");
+  const [hourlyPrice, setHourlyPrice] = useState("");
+  const [yearsExperience, setYearsExperience] = useState("");
+  const [education, setEducation] = useState("");
+  const [aadharNumber, setAadharNumber] = useState("");
+  const [panNumber, setPanNumber] = useState("");
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -129,10 +138,15 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       const user = await login(signupRes.user?.email || email, selectedRole, fullName);
       console.log("User synced successfully:", user);
 
+      // For consultants, show KYC form instead of dashboard
+      if (user.role === "CONSULTANT") {
+        setStep("CONSULTANT_KYC");
+        setIsLoading(false);
+        return;
+      }
+
       if (user.role === "USER") {
         navigate("/user/dashboard");
-      } else if (user.role === "CONSULTANT") {
-        navigate("/consultant/dashboard");
       } else if (user.role === "ENTERPRISE_ADMIN") {
         navigate("/enterprise/dashboard");
       } else {
@@ -1032,6 +1046,202 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                 </button>
               </div>
             </form>
+          ) : step === "CONSULTANT_KYC" ? (
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!domain || !expertise || !hourlyPrice || !yearsExperience) {
+                setError("Please fill in all required fields");
+                return;
+              }
+              setIsLoading(true);
+              try {
+                // Save KYC data to backend
+                const response = await auth.saveConsultantKyc({
+                  domain,
+                  expertise,
+                  hourlyPrice,
+                  yearsExperience,
+                  education,
+                  aadharNumber,
+                  panNumber,
+                });
+                console.log("✅ KYC saved successfully:", response);
+                // Show pending approval screen after successful save
+                setStep("PENDING_APPROVAL");
+              } catch (error: any) {
+                console.error("❌ KYC save failed:", error);
+                setError(error.response?.data?.error || "Failed to submit KYC. Please try again.");
+              } finally {
+                setIsLoading(false);
+              }
+            }} className="space-y-6">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-800 mb-2">Complete Your Profile</h3>
+                <p className="text-gray-500 text-sm">Add KYC details to get approved</p>
+              </div>
+
+              <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                    Domain / Specialization *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g., Business Consulting, Marketing"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={domain}
+                    onChange={(e) => setDomain(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                    Key Expertise *
+                  </label>
+                  <textarea
+                    required
+                    placeholder="Describe your key skills and expertise"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all resize-none"
+                    rows={3}
+                    value={expertise}
+                    onChange={(e) => setExpertise(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                    Hourly Rate (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    placeholder="e.g., 500"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={hourlyPrice}
+                    onChange={(e) => setHourlyPrice(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                    Years of Experience *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    placeholder="e.g., 5"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={yearsExperience}
+                    onChange={(e) => setYearsExperience(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                    Education
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., MBA from XYZ University"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={education}
+                    onChange={(e) => setEducation(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                    Aadhar Number (KYC)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Last 4 digits of your Aadhar"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={aadharNumber}
+                    onChange={(e) => setAadharNumber(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                    PAN Number (KYC)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Your PAN number"
+                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl pl-4 pr-4 py-4 text-gray-900 font-medium focus:border-blue-500 focus:bg-white focus:outline-none transition-all"
+                    value={panNumber}
+                    onChange={(e) => setPanNumber(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center group disabled:opacity-50"
+              >
+                {isLoading ? (
+                  "Submitting KYC..."
+                ) : (
+                  <>
+                    Submit for Approval <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" size={20} />
+                  </>
+                )}
+              </button>
+            </form>
+          ) : step === "PENDING_APPROVAL" ? (
+            <div className="space-y-6 text-center">
+              <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto">
+                <Info className="w-10 h-10 text-yellow-600" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-gray-800 mb-2">
+                  Account Pending Approval
+                </h3>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  Your KYC details have been submitted successfully!
+                </p>
+              </div>
+
+              <div className="bg-blue-50 border-l-4 border-blue-600 p-4 rounded text-left">
+                <p className="text-blue-900 font-semibold text-sm mb-2">
+                  ⏱️ Approval Timeline
+                </p>
+                <p className="text-blue-800 text-sm leading-relaxed">
+                  Your account will be reviewed and approved within <span className="font-bold">24 to 48 hours</span>. After approval, you'll receive a confirmation email and can access your consultant dashboard.
+                </p>
+              </div>
+
+              <div className="bg-green-50 border-l-4 border-green-600 p-4 rounded text-left">
+                <p className="text-green-900 font-semibold text-sm mb-1">
+                  ✓ What Happens Next
+                </p>
+                <ul className="text-green-800 text-sm space-y-1">
+                  <li>• Our team will verify your KYC documents</li>
+                  <li>• We'll validate your professional details</li>
+                  <li>• You'll receive an approval email</li>
+                  <li>• Full dashboard access will be enabled</li>
+                </ul>
+              </div>
+
+              <button
+                onClick={() => navigate("/login")}
+                className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+              >
+                Go to Login
+              </button>
+            </div>
           ) : null}
 
           <div className="mt-8 pt-8 border-t border-gray-100 flex items-center justify-center space-x-2 text-gray-400">
