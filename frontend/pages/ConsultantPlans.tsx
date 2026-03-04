@@ -616,7 +616,7 @@ const ConsultantPlans: React.FC = () => {
           <p className="text-center text-gray-600 mb-8">
             You've reached your monthly limit. Continue instantly using Chat Credits.
           </p>
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
             <div className="bg-white rounded-xl p-6 text-center hover:shadow-md transition-shadow">
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <ArrowUp className="w-6 h-6 text-blue-600" />
@@ -630,13 +630,6 @@ const ConsultantPlans: React.FC = () => {
               </div>
               <h3 className="font-semibold mb-2">Buy Chat Credits</h3>
               <p className="text-sm text-gray-600">Quick fix to continue chatting</p>
-            </div>
-            <div className="bg-white rounded-xl p-6 text-center hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Wallet className="w-6 h-6 text-purple-600" />
-              </div>
-              <h3 className="font-semibold mb-2">Recharge Wallet</h3>
-              <p className="text-sm text-gray-600">Get bonus credits</p>
             </div>
           </div>
         </div>

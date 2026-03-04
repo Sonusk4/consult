@@ -24,6 +24,7 @@ const SearchConsultantPage: React.FC = () => {
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [maxPrice, setMaxPrice] = useState<number>(5000);
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const [availabilityMap, setAvailabilityMap] = useState<Record<number, string[]>>({});
 
   useEffect(() => {
     fetchConsultants();
@@ -52,6 +53,21 @@ const SearchConsultantPage: React.FC = () => {
         },
       }));
 
+      // Fetch availability days for each consultant
+      const availMap: Record<number, string[]> = {};
+      await Promise.all(
+        normalized.map(async (c: Consultant) => {
+          try {
+            const availResponse = await consultantsApi.getAvailabilityDays(c.id);
+            availMap[c.id] = availResponse?.availableDays || [];
+          } catch (err) {
+            console.log(`Could not fetch availability for consultant ${c.id}`);
+            availMap[c.id] = [];
+          }
+        })
+      );
+
+      setAvailabilityMap(availMap);
       setConsultantsData(normalized);
     } catch (err) {
       setError('Failed to load consultants.');
@@ -104,21 +120,16 @@ const SearchConsultantPage: React.FC = () => {
 
   const availableDays = useMemo(() => {
     const days = new Set<string>();
-    consultantsData.forEach(c => {
-      const availability = c.user?.profile?.availability || c.availability;
-      if (availability) {
-        weekdays.forEach(day => {
-          if (availability.includes(day)) {
-            days.add(day);
-          }
-        });
-      }
+    Object.values(availabilityMap).forEach(dayArray => {
+      dayArray.forEach(day => {
+        days.add(day);
+      });
     });
     // If no availability data, show all weekdays
     const result = days.size > 0 ? Array.from(days) : weekdays;
     console.log('Dynamic available days:', result);
     return result;
-  }, [consultantsData]);
+  }, [availabilityMap]);
 
   /* ---------------- Filtering Logic ---------------- */
 
@@ -151,8 +162,8 @@ const SearchConsultantPage: React.FC = () => {
     const matchesAvailability =
       selectedDays.length === 0 ||
       selectedDays.some(day => {
-        const availability = c.user?.profile?.availability || c.availability;
-        return availability?.includes(day);
+        const consultantAvailableDays = availabilityMap[c.id] || [];
+        return consultantAvailableDays.includes(day);
       });
 
     const matches = matchesQuery && matchesDomain && matchesPrice && matchesLanguage && matchesAvailability;

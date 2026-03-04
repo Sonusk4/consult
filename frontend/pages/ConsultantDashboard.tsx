@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import { consultants as consultantsApi, subscriptions, bookings, payments } from "../services/api";
 import { Consultant } from "../types";
-import { Loader, Users, Calendar, DollarSign, Star, MessageSquare, TrendingUp, Bell, Clock, CheckCircle, XCircle, AlertCircle, Video, Edit, Trash2, Plus, ArrowRight, Eye, Check, Crown, Upload, FileText, X } from "lucide-react";
+import { Loader, Users, Calendar, DollarSign, Star, MessageSquare, TrendingUp, Clock, CheckCircle, XCircle, AlertCircle, Video, Edit, Trash2, Plus, ArrowRight, Eye, Check, Crown, Upload, FileText, X } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../App";
 
@@ -126,7 +126,6 @@ const ConsultantDashboard = () => {
   const [earnings, setEarnings] = useState<any>(null);
   const [reviews, setReviews] = useState<any>(null);
   const [performanceMetrics, setPerformanceMetrics] = useState<any>(null);
-  const [notifications, setNotifications] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [liveSession, setLiveSession] = useState<any>(null);
   const [onboardingData, setOnboardingData] = useState({
@@ -196,7 +195,6 @@ const ConsultantDashboard = () => {
     fetchUpcomingSessions();
     fetchEarnings();
     fetchReviews();
-    fetchNotifications();
     fetchMessages();
     fetchAvailability();
     fetchPerformanceMetrics();
@@ -319,23 +317,6 @@ const ConsultantDashboard = () => {
       }
     } catch (error) {
       console.error('Failed to fetch reviews:', error);
-    }
-  };
-
-  const fetchNotifications = async () => {
-    try {
-      // For now, we'll use booking-related notifications
-      const upcomingBookings = await consultantsApi.getConsultantBookings();
-      const notifications = upcomingBookings.map((booking: any) => ({
-        type: 'booking',
-        message: `New booking from ${booking.user?.name || booking.user?.email || 'Client'}`,
-        time: booking.createdAt || booking.created_at || new Date().toISOString(),
-        bookingId: booking.id
-      }));
-      setNotifications(notifications);
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error);
-      setNotifications([]);
     }
   };
 
@@ -1793,43 +1774,6 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* 4.7 Notifications Summary */}
-          <div className="bg-white rounded-3xl shadow-sm border p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold flex items-center">
-                <Bell className="w-5 h-5 mr-2 text-red-600" />
-                Notifications
-              </h3>
-              <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                View All
-              </button>
-            </div>
-            
-            <div className="space-y-3">
-              {notifications.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Bell className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                  <p>No notifications</p>
-                </div>
-              ) : (
-                notifications.map((notification, index) => (
-                  <div key={index} className="flex items-start p-3 hover:bg-gray-50 rounded-lg cursor-pointer">
-                    <div className={`w-2 h-2 rounded-full mt-2 mr-3 ${
-                      notification.type === 'booking' ? 'bg-blue-600' :
-                      notification.type === 'verification' ? 'bg-green-600' :
-                      notification.type === 'payment' ? 'bg-purple-600' :
-                      'bg-gray-400'
-                    }`} />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{notification.message || 'Notification'}</p>
-                      <p className="text-xs text-gray-500">{notification.time ? formatTime(notification.time) : 'Just now'}</p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
           {/* 4.8 Messages Preview */}
           <div className="bg-white rounded-3xl shadow-sm border p-6">
             <div className="flex items-center justify-between mb-6">

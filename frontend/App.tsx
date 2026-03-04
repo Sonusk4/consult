@@ -162,7 +162,7 @@ const App: React.FC = () => {
   return (
     <ToastProvider>
       <AuthContext.Provider value={{ user, setUser, login, logout, loading }}>
-        <Router>
+        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             {/* ================= PUBLIC ================= */}
             <Route path="/" element={<LandingPage />} />

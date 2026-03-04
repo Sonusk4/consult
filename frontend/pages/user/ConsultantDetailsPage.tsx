@@ -374,10 +374,11 @@ const ConsultantDetailsPage: React.FC = () => {
     try {
       const response = await fetch(`http://localhost:5000/consultants/${id}/availability?date=${bookingDate}`);
       const slots = await response.json();
-      setAvailableSlots(slots);
+      setAvailableSlots(Array.isArray(slots) ? slots : []);
       setSelectedSlot('');
     } catch (error) {
       console.error('Failed to fetch available slots:', error);
+      setAvailableSlots([]);
     } finally {
       setLoadingSlots(false);
     }
@@ -404,17 +405,6 @@ const ConsultantDetailsPage: React.FC = () => {
         date: bookingDate,
         time_slot: selectedSlot,
       });
-
-      // Also mark the slot as booked via slot-book endpoint
-      try {
-        await api.post('/bookings/slot-book', {
-          consultant_id: parseInt(id!),
-          date: bookingDate,
-          time_slot: selectedSlot,
-        });
-      } catch {
-        // slot marking is a best-effort side effect, ignore error
-      }
 
       setLastBookingResult({
         fee: baseRate,

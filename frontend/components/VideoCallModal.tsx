@@ -1,29 +1,17 @@
-// src/components/VideoCallModal.tsx - FIXED VERSION
-
 import React, { useEffect, useRef, useState } from "react";
-
 import api from "../services/api";
-
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Users } from "lucide-react";
-
-
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Users, Star, X } from "lucide-react";
 
 interface VideoCallModalProps {
-
   bookingId: number;
-
   userId: number;
-
   socket: any;
-
   onClose: () => void;
-
   startAgora: boolean;
-
   userRole?: string;
-
   userName?: string;
-
+  consultantId?: number;
+  consultantName?: string;
 }
 
 
@@ -40,9 +28,13 @@ const VideoCallModal: React.FC<VideoCallModalProps> = ({
 
   startAgora,
 
-  userRole = "USER",
+  userRole,
 
   userName = "User",
+
+  consultantId,
+
+  consultantName,
 
 }) => {
 
@@ -61,6 +53,26 @@ const VideoCallModal: React.FC<VideoCallModalProps> = ({
   const [connectionState, setConnectionState] = useState("connecting");
 
   const [error, setError] = useState<string | null>(null);
+
+  const [showReviewForm, setShowReviewForm] = useState(false);
+
+  const [rating, setRating] = useState(0);
+
+  const [comment, setComment] = useState("");
+
+  const [submittingReview, setSubmittingReview] = useState(false);
+
+  const [reviewNotice, setReviewNotice] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    closeCall?: boolean;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    closeCall: false,
+  });
 
   const hasJoinedRef = useRef<boolean>(false);
 
@@ -258,8 +270,99 @@ const VideoCallModal: React.FC<VideoCallModalProps> = ({
 
     socket.emit("end-video-call", { bookingId });
 
-    onClose();
+    // Show review form only for end-users
 
+    if (userRole === "USER") {
+
+      setShowReviewForm(true);
+
+    } else {
+
+      onClose();
+
+    }
+
+  };
+
+
+
+  const submitReview = async () => {
+
+    if (rating === 0) {
+
+      setReviewNotice({
+        open: true,
+        title: "Rating Required",
+        message: "Please select a rating before submitting your review.",
+        closeCall: false,
+      });
+
+      return;
+
+    }
+
+
+
+    try {
+
+      setSubmittingReview(true);
+
+      const response = await api.post(`/bookings/${bookingId}/review`, {
+
+        rating,
+
+        comment: comment.trim(),
+
+      }, {
+        validateStatus: (status) => status === 200 || status === 201 || status === 400,
+      });
+
+      const alreadySubmitted =
+        response.status === 400 &&
+        String(response.data?.error || "").toLowerCase().includes("already submitted");
+
+      if (alreadySubmitted) {
+        setSubmittingReview(false);
+        setReviewNotice({
+          open: true,
+          title: "Review Already Submitted",
+          message: "You have already submitted a review for this booking.",
+          closeCall: true,
+        });
+        return;
+      }
+
+      setSubmittingReview(false);
+      setReviewNotice({
+        open: true,
+        title: "Review Submitted",
+        message: "Thank you for sharing your feedback.",
+        closeCall: true,
+      });
+      return;
+
+    } catch (err: any) {
+
+      setReviewNotice({
+        open: true,
+        title: "Review Submission Failed",
+        message: err.response?.data?.error || err.response?.data?.message || err.message || "Please try again.",
+        closeCall: false,
+      });
+
+      setSubmittingReview(false);
+
+    }
+
+  };
+
+  const closeReviewNotice = () => {
+    const shouldCloseCall = reviewNotice.closeCall;
+    setReviewNotice({ open: false, title: "", message: "", closeCall: false });
+    if (shouldCloseCall) {
+      setShowReviewForm(false);
+      onClose();
+    }
   };
 
 
@@ -289,6 +392,171 @@ const VideoCallModal: React.FC<VideoCallModalProps> = ({
     }
 
   };
+
+
+
+  if (showReviewForm) {
+
+    return (
+
+      <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center">
+
+        {reviewNotice.open && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+              <h3 className="text-lg font-bold text-gray-900 mb-2">{reviewNotice.title}</h3>
+              <p className="text-sm text-gray-600 mb-5">{reviewNotice.message}</p>
+              <button
+                onClick={closeReviewNotice}
+                className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+
+          <div className="flex items-center justify-between mb-6">
+
+            <h2 className="text-2xl font-bold">Rate Your Consultation</h2>
+
+            <button
+
+              onClick={onClose}
+
+              className="text-gray-400 hover:text-gray-600"
+
+            >
+
+              <X size={24} />
+
+            </button>
+
+          </div>
+
+
+
+          {/* Rating Stars */}
+
+          <div className="mb-6">
+
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+
+              How was your experience?
+
+            </label>
+
+            <div className="flex gap-2 justify-center">
+
+              {[1, 2, 3, 4, 5].map((star) => (
+
+                <button
+
+                  key={star}
+
+                  onClick={() => setRating(star)}
+
+                  className={`transition p-1 ${
+
+                    star <= rating
+
+                      ? "text-yellow-400"
+
+                      : "text-gray-300 hover:text-yellow-300"
+
+                  }`}
+
+                >
+
+                  <Star size={32} fill={star <= rating ? "currentColor" : "none"} />
+
+                </button>
+
+              ))}
+
+            </div>
+
+            <p className="text-center text-gray-600 mt-2">
+
+              {rating > 0 ? `${rating} out of 5 stars` : "Select a rating"}
+
+            </p>
+
+          </div>
+
+
+
+          {/* Comment */}
+
+          <div className="mb-6">
+
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+
+              Additional Comments (Optional)
+
+            </label>
+
+            <textarea
+
+              value={comment}
+
+              onChange={(e) => setComment(e.target.value)}
+
+              placeholder="Share your feedback..."
+
+              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+
+              rows={4}
+
+            />
+
+          </div>
+
+
+
+          {/* Buttons */}
+
+          <div className="flex gap-3">
+
+            <button
+
+              onClick={onClose}
+
+              className="flex-1 px-4 py-3 bg-gray-200 rounded-lg hover:bg-gray-300 transition font-medium"
+
+              disabled={submittingReview}
+
+            >
+
+              Skip
+
+            </button>
+
+            <button
+
+              onClick={submitReview}
+
+              disabled={submittingReview || rating === 0}
+
+              className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+
+            >
+
+              {submittingReview ? "Submitting..." : "Submit Review"}
+
+            </button>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    );
+
+  }
 
 
 

@@ -2980,69 +2980,8 @@ app.get("/consultant/availability", verifyFirebaseToken, async (req, res) => {
 });
 
 /**
- * POST /consultant/availability
- * Add new availability slot
- */
-app.post("/consultant/availability", verifyFirebaseToken, async (req, res) => {
-  try {
-    const { date, start_time, end_time } = req.body;
-
-    if (!date || !start_time || !end_time) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    const consultant = await prisma.consultant.findFirst({
-      where: { userId: req.user.id },
-    });
-
-    if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
-    }
-
-    // Generate 1-hour slots between start_time and end_time
-    const startTimeParts = start_time.split(":");
-    const endTimeParts = end_time.split(":");
-
-    let currentHour = parseInt(startTimeParts[0]);
-    const endHour = parseInt(endTimeParts[0]);
-    const slotsToCreate = [];
-
-    while (currentHour < endHour) {
-      const timeStr = `${currentHour.toString().padStart(2, "0")}:00`;
-      slotsToCreate.push({
-        consultantId: consultant.id,
-        available_date: new Date(date),
-        available_time: timeStr,
-      });
-      currentHour++;
-    }
-
-    if (slotsToCreate.length === 0) {
-      return res.status(400).json({ error: "Invalid time range. No slots can be generated." });
-    }
-
-    if (slotsToCreate.length > 24) {
-      return res.status(400).json({ error: "You can only add a maximum of 24 slots at a time." });
-    }
-
-    // Insert all generated slots
-    if (slotsToCreate.length > 0) {
-      await prisma.availability.createMany({
-        data: slotsToCreate,
-        skipDuplicates: true, // Avoid dupes if they click twice
-      });
-    }
-
-    res.status(201).json({ message: `Successfully added ${slotsToCreate.length} slots` });
-  } catch (error) {
-    console.error("Add Availability Error:", error.message);
-    res.status(500).json({ error: "Failed to add availability" });
-  }
-});
-
-/**
  * DELETE /consultant/availability/:id
- * Delete availability slot
+ * Delete availability slot (first version)
  */
 app.delete(
   "/consultant/availability/:id",
@@ -3906,48 +3845,6 @@ app.get("/consultants/:id", async (req, res) => {
   } catch (error) {
     console.error("Get Consultant Error:", error.message);
     res.status(500).json({ error: "Failed to fetch consultant" });
-  }
-});
-
-/**
- * GET /consultants/:id/availability
- * Get available time slots for a consultant on specific date
- */
-app.get("/consultants/:id/availability", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { date } = req.query;
-
-    if (!date) {
-      return res.status(400).json({ error: "Date parameter is required" });
-    }
-
-    const consultant = await prisma.consultant.findFirst({
-      where: {
-        id: parseInt(id),
-        is_verified: true,
-      },
-    });
-
-    if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
-    }
-
-    const availability = await prisma.availability.findMany({
-      where: {
-        consultantId: consultant.id,
-        available_date: new Date(date),
-        is_booked: false,
-      },
-      orderBy: {
-        available_time: "asc",
-      },
-    });
-
-    res.status(200).json(availability);
-  } catch (error) {
-    console.error("Get Availability Error:", error.message);
-    res.status(500).json({ error: "Failed to fetch availability" });
   }
 });
 
@@ -5245,72 +5142,53 @@ app.post("/bookings/:id/complete", verifyFirebaseToken, async (req, res) => {
  */
 app.get("/bookings", verifyFirebaseToken, async (req, res) => {
   try {
-    const consultantProfile = await prisma.consultant.findFirst({
-      where: {
-        userId: req.user.id,
+    let bookings = [];
+
+    const includeRelations = {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+        },
       },
-    });
-
-    let bookings;
-
-    // 👇 IF CONSULTANT
-    if (consultantProfile) {
-      bookings = await prisma.booking.findMany({
-        where: {
-          consultantId: consultantProfile.id,
-        },
+      consultant: {
         include: {
           user: {
-            select: { 
+            select: {
               id: true,
-              email: true, 
+              email: true,
               name: true,
               role: true,
             },
           },
-          consultant: {
-            include: {
-              user: {
-                select: { 
-                  id: true,
-                  email: true, 
-                  name: true,
-                  role: true,
-                },
-              },
-            },
-          },
         },
+      },
+    };
+
+    if (req.user.role === "CONSULTANT" || req.user.role === "ENTERPRISE_ADMIN") {
+      const consultantProfile = await prisma.consultant.findFirst({
+        where: { userId: req.user.id },
       });
-    }
-    // 👇 IF CLIENT
-    else {
+
+      if (!consultantProfile) {
+        return res.json([]);
+      }
+
       bookings = await prisma.booking.findMany({
-        where: {
-          userId: req.user.id,
-        },
-        include: {
-          user: {
-            select: { 
-              id: true,
-              email: true, 
-              name: true,
-              role: true,
-            },
-          },
-          consultant: {
-            include: {
-              user: {
-                select: { 
-                  id: true,
-                  email: true, 
-                  name: true,
-                  role: true,
-                },
-              },
-            },
-          },
-        },
+        where: { consultantId: consultantProfile.id },
+        include: includeRelations,
+      });
+    } else if (req.user.role === "ENTERPRISE_MEMBER") {
+      bookings = await prisma.booking.findMany({
+        where: { enterpriseMemberId: req.user.id },
+        include: includeRelations,
+      });
+    } else {
+      bookings = await prisma.booking.findMany({
+        where: { userId: req.user.id },
+        include: includeRelations,
       });
     }
 
@@ -6742,6 +6620,123 @@ app.get("/availability", verifyFirebaseToken, async (req, res) => {
 });
 
 /**
+ * POST /bookings/:id/review
+ * Submit a review for a completed booking
+ */
+app.post("/bookings/:id/review", verifyFirebaseToken, async (req, res) => {
+  try {
+    const bookingId = parseInt(req.params.id);
+    const { rating, comment } = req.body;
+
+    // Validate input
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: "Rating must be between 1 and 5" });
+    }
+
+    // Get the user
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Get the booking
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+    });
+
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    // Verify that the current user is the one who booked
+    if (booking.userId !== user.id && booking.enterpriseMemberId !== user.id) {
+      return res.status(403).json({ error: "Not authorized to review this booking" });
+    }
+
+    // Check if review already exists for this booking
+    const existingReview = await prisma.review.findUnique({
+      where: { bookingId: bookingId },
+    });
+
+    if (existingReview) {
+      return res.status(400).json({ error: "Review already submitted for this booking" });
+    }
+
+    // Create the review
+    const review = await prisma.review.create({
+      data: {
+        bookingId: bookingId,
+        consultantId: booking.consultantId,
+        userId: user.id,
+        rating: parseInt(rating),
+        comment: comment?.trim() || null,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Review submitted successfully",
+      review,
+    });
+  } catch (error) {
+    console.error("Create review error:", error);
+    res.status(500).json({ error: "Failed to submit review" });
+  }
+});
+
+/**
+ * GET /reviews/member
+ * Get reviews for the current member
+ */
+/**
+ * GET /consultant/reviews
+ * Get all reviews for the logged-in consultant
+ */
+app.get("/consultant/reviews", verifyFirebaseToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+      include: { consultant: true },
+    });
+
+    if (!user || !user.consultant) {
+      return res.status(403).json({ error: "Not a consultant" });
+    }
+
+    // Fetch all reviews for this consultant
+    const reviews = await prisma.review.findMany({
+      where: { consultantId: user.consultant.id },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true },
+        },
+        booking: true,
+      },
+      orderBy: { created_at: "desc" },
+    });
+
+    // Transform response to match frontend expectations
+    const transformedReviews = reviews.map((review) => ({
+      id: review.id,
+      userName: review.user.name || review.user.email,
+      rating: review.rating,
+      comment: review.comment,
+      created_at: review.created_at,
+      consultantReply: review.consultantReply,
+      replied_at: review.replied_at,
+    }));
+
+    res.json(transformedReviews);
+  } catch (error) {
+    console.error("Get consultant reviews error:", error);
+    res.status(500).json({ error: "Failed to fetch reviews" });
+  }
+});
+
+/**
  * GET /reviews/member
  * Get reviews for the current member
  */
@@ -6764,7 +6759,7 @@ app.get("/reviews/member", verifyFirebaseToken, async (req, res) => {
     const reviews = await prisma.review.findMany({
       where: { consultantId: user.consultant.id },
       include: {
-        reviewer: {
+        user: {
           select: { id: true, email: true, name: true },
         },
       },
@@ -7336,6 +7331,35 @@ app.put("/admin/consultants/:id/verify", verifyAdminToken, async (req, res) => {
       data: { is_verified: true, kyc_status: "APPROVED", kyc_documents: updatedDocs },
       include: { user: { select: { name: true, email: true } } },
     });
+
+    // Send consultant approval email (non-blocking for main flow)
+    try {
+      if (transporter && updated?.user?.email) {
+        await transporter.sendMail({
+          to: updated.user.email,
+          subject: "ConsultaPro - Your Consultant Account is Approved",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #111827;">
+              <h2 style="margin-bottom: 12px;">Congratulations! Your account is approved ✅</h2>
+              <p>Hi ${updated.user.name || "Consultant"},</p>
+              <p>Your KYC review is complete and your consultant account is now approved.</p>
+              <p>You can now log in and access your full consultant dashboard, including bookings, messaging, slots, earnings, and profile tools.</p>
+              <div style="margin: 24px 0;">
+                <a href="${process.env.FRONTEND_URL || "http://localhost:3000"}/#/consultant/dashboard"
+                   style="background: #7c3aed; color: white; text-decoration: none; padding: 12px 20px; border-radius: 8px; display: inline-block; font-weight: 600;">
+                  Open Dashboard
+                </a>
+              </div>
+              <p style="color:#6b7280; font-size: 12px;">If this was unexpected, please contact support.</p>
+              <p style="margin-top: 20px;">— ConsultaPro Team</p>
+            </div>
+          `,
+        });
+        console.log(`📧 Consultant approval email sent to ${updated.user.email}`);
+      }
+    } catch (mailErr) {
+      console.error("⚠️ Failed to send consultant approval email:", mailErr.message);
+    }
 
     console.log(`✅ Consultant ${consultantId} verified by admin ${req.admin.email}`);
     res.json({ message: "Consultant verified successfully", consultant: updated });

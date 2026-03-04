@@ -348,6 +348,18 @@ export const consultants = {
     return response.data;
   },
 
+  getAvailabilityDays: async (consultantId: number) => {
+    const response = await api.get(`/consultants/${consultantId}/availability`);
+    return response.data;
+  },
+
+  getAvailabilityByDate: async (consultantId: number, date: string) => {
+    const response = await api.get(`/consultants/${consultantId}/availability-by-date`, {
+      params: { date },
+    });
+    return response.data;
+  },
+
   getKycStatus: async () => {
     const response = await api.get("/consultant/kyc-status");
     return response.data;

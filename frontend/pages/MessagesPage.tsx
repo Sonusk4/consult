@@ -1,5 +1,4 @@
 import VideoCallModal from "../components/VideoCallModal";
-import ReviewPopup from "../components/ReviewPopup";
 import UserPopupModal from "../components/UserPopupModal";
 import { useUserPopup } from "../hooks/useUserPopup";
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -15,12 +14,74 @@ import { useUser } from "../src/services/hooks/useUser";
 
 /* ─── Session time helpers ───────────────────────────────── */
 
+function getBookingDateValue(booking: any): string | null {
+  if (!booking) return null;
+  return booking.date || booking.booking_date || booking.available_date || null;
+}
+
+function normalizeSlotTo24h(slot: string): string | null {
+  if (!slot || typeof slot !== "string") return null;
+  const trimmed = slot.trim();
+
+  const ampmMatch = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    let hour = parseInt(ampmMatch[1], 10);
+    const minute = parseInt(ampmMatch[2], 10);
+    const period = ampmMatch[3].toUpperCase();
+    if (period === "PM" && hour < 12) hour += 12;
+    if (period === "AM" && hour === 12) hour = 0;
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  }
+
+  const hhmmMatch = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (hhmmMatch) {
+    const hour = parseInt(hhmmMatch[1], 10);
+    const minute = parseInt(hhmmMatch[2], 10);
+    if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  }
+
+  return null;
+}
+
+function getBookingTimeValue(booking: any): string | null {
+  if (!booking) return null;
+  const raw = booking.time_slot || booking.available_time || null;
+  if (!raw) return null;
+  return normalizeSlotTo24h(raw) || raw;
+}
+
+function formatBookingDate(booking: any, options?: Intl.DateTimeFormatOptions): string {
+  const dateValue = getBookingDateValue(booking);
+  if (!dateValue) return "Date unavailable";
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) return "Date unavailable";
+  return parsed.toLocaleDateString("en-IN", options || { day: "2-digit", month: "short" });
+}
+
+function formatBookingTimeRange(booking: any): string {
+  const timeValue = getBookingTimeValue(booking);
+  if (!timeValue) return "Time unavailable";
+  const normalized = normalizeSlotTo24h(timeValue);
+  if (!normalized) return String(timeValue);
+
+  const [hourStr, minuteStr] = normalized.split(":");
+  const hour = parseInt(hourStr, 10);
+  const endHour = String((hour + 1) % 24).padStart(2, "0");
+  return `${normalized} – ${endHour}:${minuteStr}`;
+}
+
 /** Returns {start, end} Date objects from a booking */
 function getSlotWindow(booking: any): { start: Date; end: Date } | null {
-  if (!booking?.date || !booking?.time_slot) return null;
+  const bookingDateValue = getBookingDateValue(booking);
+  const bookingTimeValue = getBookingTimeValue(booking);
+  if (!bookingDateValue || !bookingTimeValue) return null;
   try {
-    const bookingDate = new Date(booking.date);
-    const [slotHour, slotMin] = booking.time_slot.split(":").map(Number);
+    const bookingDate = new Date(bookingDateValue);
+    const normalized = normalizeSlotTo24h(bookingTimeValue);
+    if (!normalized) return null;
+    const [slotHour, slotMin] = normalized.split(":").map(Number);
+    if (Number.isNaN(slotHour) || Number.isNaN(slotMin)) return null;
     const start = new Date(bookingDate);
     start.setHours(slotHour, slotMin, 0, 0);
     const end = new Date(start);
@@ -204,8 +265,6 @@ const MessagesPage: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [activeCallBooking, setActiveCallBooking] = useState<any>(null);
-  const [showReviewPopup, setShowReviewPopup] = useState(false);
-  const [reviewBookingId, setReviewBookingId] = useState<number | null>(null);
   const [now, setNow] = useState(new Date());
   const [showWarning, setShowWarning] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -492,7 +551,7 @@ const MessagesPage: React.FC = () => {
                         {getStatusChip(b)}
                       </div>
                       <p className="text-xs text-gray-400">
-                        {new Date(b.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} · {b.time_slot} – {String(parseInt(b.time_slot) + 1).padStart(2, "0")}:00
+                        {formatBookingDate(b)} · {formatBookingTimeRange(b)}
                       </p>
                     </div>
                   </button>
@@ -512,8 +571,8 @@ const MessagesPage: React.FC = () => {
                 </p>
                 {selectedBooking && (
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {new Date(selectedBooking.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}
-                    &nbsp;·&nbsp;{selectedBooking.time_slot} – {String(parseInt(selectedBooking.time_slot) + 1).padStart(2, "0")}:00
+                    {formatBookingDate(selectedBooking, { weekday: "short", day: "numeric", month: "short" })}
+                    &nbsp;·&nbsp;{formatBookingTimeRange(selectedBooking)}
                   </p>
                 )}
               </div>
@@ -686,16 +745,10 @@ const MessagesPage: React.FC = () => {
           socket={socket}
           onClose={() => { 
             setIsCalling(false); 
-            // Store booking ID for review before clearing active call
-            const bookingId = activeCallBooking?.id;
-            // Show review popup only for clients (not consultants)
-            if (!isConsultant && bookingId) {
-              setReviewBookingId(bookingId);
-              setShowReviewPopup(true);
-            }
             setActiveCallBooking(null); 
           }}
           startAgora={isCalling}
+          userRole={currentUser.role}
         />
       )}
 
@@ -719,17 +772,6 @@ const MessagesPage: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
-      
-      {/* ── Review Popup ── */}
-      {showReviewPopup && reviewBookingId && (
-        <ReviewPopup
-          bookingId={reviewBookingId}
-          onClose={() => {
-            setShowReviewPopup(false);
-            setReviewBookingId(null);
-          }}
-        />
       )}
       
       <UserPopupModal
