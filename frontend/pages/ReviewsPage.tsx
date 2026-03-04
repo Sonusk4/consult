@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
+import ConsultantKycGate from "../components/ConsultantKycGate";
+import useConsultantKycCheck from "../hooks/useConsultantKycCheck";
 import { Star, Loader } from "lucide-react";
 import { useToast } from "../context/ToastContext";
-import api from "../services/api";
+import api, { consultants as consultantsApi } from "../services/api";
 
 interface Review {
   id: number;
@@ -15,6 +18,8 @@ interface Review {
 }
 
 const ReviewsPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { kycStatus, loading: kycLoading, isApprovalSuccess } = useConsultantKycCheck();
   const { addToast } = useToast();
 
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -66,10 +71,11 @@ const ReviewsPage: React.FC = () => {
   }
 
   return (
-    <Layout title="Reviews">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <ConsultantKycGate kycStatus={kycStatus} showSuccessModal={isApprovalSuccess}>
+      <Layout title="Reviews">
+        <div className="max-w-4xl mx-auto space-y-6">
 
-        <h2 className="text-2xl font-bold">Client Reviews</h2>
+          <h2 className="text-2xl font-bold">Client Reviews</h2>
 
         {reviews.length === 0 && (
           <p className="text-gray-500 text-center">
@@ -101,6 +107,7 @@ const ReviewsPage: React.FC = () => {
         ))}
       </div>
     </Layout>
+    </ConsultantKycGate>
   );
 };
 

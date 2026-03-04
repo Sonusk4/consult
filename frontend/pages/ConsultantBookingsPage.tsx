@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { bookings } from '../services/api';
+import { bookings, consultants as consultantsApi } from '../services/api';
 import { 
   Calendar, 
   MessageCircle, 
@@ -37,6 +37,23 @@ const ConsultantBookingsPage: React.FC = () => {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<any[]>([]);
   const [showMessages, setShowMessages] = useState(false);
+
+  // Check profile completion
+  useEffect(() => {
+    const checkProfile = async () => {
+      try {
+        const profileData = await consultantsApi.getProfile();
+        const isIncomplete = !profileData || !profileData.name || !profileData.domain || 
+                            !profileData.hourly_price || !profileData.bio || !profileData.languages;
+        if (isIncomplete) {
+          navigate('/consultant/dashboard', { replace: true });
+        }
+      } catch (error) {
+        navigate('/consultant/dashboard', { replace: true });
+      }
+    };
+    checkProfile();
+  }, [navigate]);
 
   useEffect(() => {
     fetchBookings();

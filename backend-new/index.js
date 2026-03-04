@@ -514,6 +514,23 @@ function generateInviteToken() {
   return require("crypto").randomBytes(32).toString("hex");
 }
 
+const BASE_CONSULTANT_PLATFORM_FEE_PCT = 20;
+
+function getConsultantPlanFeeReduction(planName) {
+  if (planName === "Starter") return 2;
+  if (planName === "Growth") return 5;
+  if (planName === "Professional") return 2;
+  if (planName === "Premium") return 5;
+  if (planName === "Elite") return 10;
+  if (planName === "Enterprise") return 10;
+  return 0;
+}
+
+function getEffectiveConsultantPlatformFeePct(planName) {
+  const reduction = getConsultantPlanFeeReduction(planName || "Free");
+  return Math.max(0, BASE_CONSULTANT_PLATFORM_FEE_PCT - reduction);
+}
+
 //inviting enterprise members
 
 app.post("/enterprise/invite", verifyFirebaseToken, async (req, res) => {
@@ -1427,6 +1444,173 @@ app.post("/auth/signup", async (req, res) => {
 });
 
 /**
+ * POST /auth/consultant-kyc
+ * Save consultant KYC data after signup during KYC form submission
+ * Creates consultant profile if it doesn't exist, sets kyc_status to SUBMITTED
+ * Now accepts document uploads instead of just numbers
+ */
+app.post("/auth/consultant-kyc", verifyFirebaseToken, upload.array('kyc_documents', 5), async (req, res) => {
+  const { domain, expertise, hourlyPrice, yearsExperience, education } = req.body;
+  const userId = req.user.uid; // Get user ID from verified token
+
+  if (!domain || !expertise || !hourlyPrice || !yearsExperience) {
+    return res.status(400).json({
+      error: "Domain, expertise, hourly price, and years of experience are required",
+    });
+  }
+
+  try {
+    console.log(`📝 Saving consultant KYC for user ID: ${userId}`);
+
+    // Get user from database using firebase_uid or ID
+    let user = await prisma.user.findUnique({
+      where: { firebase_uid: userId },
+    });
+
+    if (!user) {
+      // Try with numeric ID if firebase_uid doesn't work
+      user = await prisma.user.findUnique({
+        where: { id: parseInt(userId) },
+      });
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (user.role !== "CONSULTANT") {
+      return res.status(400).json({ error: "User is not registered as a consultant" });
+    }
+
+    // Check if consultant profile already exists
+    let consultant = await prisma.consultant.findUnique({
+      where: { userId: user.id },
+    });
+
+    const kycData = {
+      domain: domain,
+      expertise: expertise,
+      hourly_price: parseFloat(hourlyPrice),
+      years_experience: parseInt(yearsExperience),
+      education: education || null,
+      kyc_status: "SUBMITTED",
+    };
+
+    // Process uploaded KYC documents
+    const kycDocuments = [];
+    
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        // Upload each document to Cloudinary
+        try {
+          const uploadResponse = await new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+              {
+                folder: "consultancy-platform/kyc-documents",
+                resource_type: "auto",
+                public_id: `${userId}_kyc_${Date.now()}_${file.originalname}`,
+                overwrite: false,
+              },
+              (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+              }
+            );
+            
+            uploadStream.end(file.buffer);
+          });
+
+          kycDocuments.push({
+            type: file.fieldname || 'DOCUMENT',
+            url: uploadResponse.secure_url,
+            public_id: uploadResponse.public_id,
+            file_name: file.originalname,
+            size: file.size,
+            submitted_at: new Date(),
+          });
+        } catch (uploadError) {
+          console.error(`Failed to upload ${file.originalname}:`, uploadError);
+          // Continue with other files
+        }
+      }
+    }
+
+    if (kycDocuments.length > 0) {
+      kycData.kyc_documents = JSON.stringify(kycDocuments);
+    }
+
+    if (consultant) {
+      // Update existing consultant profile with KYC data
+      consultant = await prisma.consultant.update({
+        where: { userId: user.id },
+        data: kycData,
+      });
+      console.log(`✅ Consultant KYC updated for user ${user.email}`);
+    } else {
+      // Create new consultant profile with KYC data
+      consultant = await prisma.consultant.create({
+        data: {
+          userId: user.id,
+          type: "Individual",
+          ...kycData,
+          platform_fee_pct: 20, // Default platform fee
+          is_verified: false, // Admin approval needed
+        },
+      });
+      console.log(`✅ Consultant profile created with KYC for user ${user.email}`);
+    }
+
+    // Send approval notification email
+    try {
+      if (transporter) {
+        await transporter.sendMail({
+          to: user.email,
+          subject: "ConsultaPro - KYC Submitted Successfully",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>KYC Submission Received</h2>
+              <p>Hi ${user.name},</p>
+              <p>Thank you for submitting your KYC information. Your profile is now under review.</p>
+              <div style="background-color: #f0f0f0; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <p><strong>Timeline:</strong> Your account will be approved within 24 to 48 hours.</p>
+                <p style="margin-bottom: 10px;"><strong>What's Next?</strong></p>
+                <ul>
+                  <li>We'll verify your KYC information</li>
+                  <li>You'll receive an email with your approval status</li>
+                  <li>Once approved, you can access your full consultant dashboard</li>
+                </ul>
+              </div>
+              <p>If you have any questions, feel free to contact our support team.</p>
+              <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+              <p style="color: #666; font-size: 12px;">ConsultaPro Team</p>
+            </div>
+          `
+        });
+        console.log(`📧 KYC submission confirmation email sent to: ${user.email}`);
+      }
+    } catch (emailErr) {
+      console.error("⚠️ Failed to send KYC confirmation email:", emailErr.message);
+      // Continue anyway - KYC data is saved
+    }
+
+    res.status(201).json({
+      message: "KYC data submitted successfully. Your account will be reviewed within 24-48 hours.",
+      consultant: {
+        id: consultant.id,
+        userId: consultant.userId,
+        kyc_status: consultant.kyc_status,
+        domain: consultant.domain,
+        expertise: consultant.expertise,
+        hourly_price: consultant.hourly_price,
+      },
+    });
+  } catch (error) {
+    console.error("Consultant KYC Error:", error.message);
+    res.status(500).json({ error: "Failed to save KYC data: " + error.message });
+  }
+});
+
+/**
  * POST /auth/login-password
  * Login with email and password
  */
@@ -1839,6 +2023,8 @@ app.post("/auth/reset-password", async (req, res) => {
  */
 app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
   const { 
+    name,
+    full_name,
     type, 
     domain, 
     bio, 
@@ -1854,10 +2040,34 @@ app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
   } = req.body;
 
   try {
+    const ALLOWED_CONSULTANT_DOMAINS = [
+      "Legal",
+      "Engineering",
+      "Doctor",
+      "Finance",
+      "Technology",
+      "Education",
+      "Marketing",
+    ];
+
+    const normalizeDomain = (value) => {
+      if (!value) return "";
+      const input = String(value).trim().toLowerCase();
+      return (
+        ALLOWED_CONSULTANT_DOMAINS.find(
+          (domainItem) => domainItem.toLowerCase() === input
+        ) || ""
+      );
+    };
+
+    const consultantName = (full_name || name || "").trim();
+    const normalizedDomain = normalizeDomain(domain);
+
     // Validate all mandatory fields
     const requiredFields = {
+      name: consultantName,
       type: type || "Individual",
-      domain,
+      domain: normalizedDomain,
       bio,
       languages,
       hourly_price,
@@ -1874,6 +2084,12 @@ app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
     if (missingFields.length > 0) {
       return res.status(400).json({ 
         error: `All fields are mandatory. Missing: ${missingFields.join(', ')}` 
+      });
+    }
+
+    if (!normalizedDomain) {
+      return res.status(400).json({
+        error: `Invalid domain. Allowed values: ${ALLOWED_CONSULTANT_DOMAINS.join(", ")}`,
       });
     }
 
@@ -1906,7 +2122,10 @@ app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
           // Update existing user with firebase_uid
           user = await prisma.user.update({
             where: { email },
-            data: { firebase_uid: req.user.firebase_uid },
+            data: {
+              firebase_uid: req.user.firebase_uid,
+              name: consultantName || user.name,
+            },
           });
         } else if (!user) {
           // Create new user
@@ -1914,6 +2133,7 @@ app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
             data: {
               firebase_uid: req.user.firebase_uid,
               email: req.user.email,
+              name: consultantName || null,
               role: "CONSULTANT",
             },
           });
@@ -1928,6 +2148,13 @@ app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ error: "Could not create or find user" });
+    }
+
+    if (consultantName && consultantName !== user.name) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { name: consultantName },
+      });
     }
 
     // Delete existing consultant profile if any (clean slate)
@@ -1954,7 +2181,8 @@ app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
       data: {
         userId: user.id,
         type: type || "Individual",
-        domain,
+        domain: normalizedDomain,
+        platform_fee_pct: BASE_CONSULTANT_PLATFORM_FEE_PCT,
         hourly_price: hourlyPriceNum,
         linkedin_url: linkedin || null,
         website_url: other_social || null,
@@ -2540,6 +2768,34 @@ app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
   const { type, domain, bio, languages, hourly_price, full_name, phone, expertise, availability, designation, years_experience, education, linkedin, other_social, profile_pic } = req.body;
 
   try {
+    const ALLOWED_CONSULTANT_DOMAINS = [
+      "Legal",
+      "Engineering",
+      "Doctor",
+      "Finance",
+      "Technology",
+      "Education",
+      "Marketing",
+    ];
+
+    const normalizeDomain = (value) => {
+      if (!value) return "";
+      const input = String(value).trim().toLowerCase();
+      return (
+        ALLOWED_CONSULTANT_DOMAINS.find(
+          (domainItem) => domainItem.toLowerCase() === input
+        ) || ""
+      );
+    };
+
+    const normalizedDomain = domain !== undefined ? normalizeDomain(domain) : undefined;
+
+    if (domain !== undefined && !normalizedDomain) {
+      return res.status(400).json({
+        error: `Invalid domain. Allowed values: ${ALLOWED_CONSULTANT_DOMAINS.join(", ")}`,
+      });
+    }
+
     // Use consistent user lookup (same as GET endpoint)
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
@@ -2566,7 +2822,7 @@ app.put("/consultant/profile", verifyFirebaseToken, async (req, res) => {
       where: { id: user.consultant.id },
       data: {
         type: type || user.consultant.type,
-        domain: domain || user.consultant.domain,
+        domain: normalizedDomain || user.consultant.domain,
         hourly_price: hourly_price
           ? parseFloat(hourly_price)
           : user.consultant.hourly_price,
@@ -3178,9 +3434,13 @@ app.post(
   upload.array("files", 5), // Allow up to 5 files
   async (req, res) => {
     try {
+      console.log("📤 KYC Upload request from user:", req.user?.id, req.user?.email);
+      
       if (!req.files || req.files.length === 0) {
         return res.status(400).json({ error: "No files provided" });
       }
+
+      console.log("📁 Files received:", req.files.length);
 
       // Find consultant for logged-in user
       const consultant = await prisma.consultant.findFirst({
@@ -3188,18 +3448,29 @@ app.post(
       });
 
       if (!consultant) {
-        return res.status(404).json({ error: "Consultant not found" });
+        console.error("❌ Consultant not found for user:", req.user.id);
+        return res.status(404).json({ error: "Consultant profile not found. Please complete your registration first." });
+      }
+
+      console.log("✅ Consultant found:", consultant.id);
+
+      // Verify Cloudinary configuration
+      if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+        console.error("❌ Cloudinary credentials not configured");
+        return res.status(500).json({ error: "File upload service not configured" });
       }
 
       // We must explicitly configure cloudinary here as the global config sometimes fails to persist
       cloudinary.config({
-        cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "dhtfjzu6l",
-        api_key: process.env.CLOUDINARY_API_KEY || "336399692592491",
-        api_secret: process.env.CLOUDINARY_API_SECRET || "28_kUZNQg2G5iTuT9JxVzx66qYU"
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET
       });
 
+      console.log("☁️ Starting Cloudinary uploads...");
+
       // Upload all files to Cloudinary
-      const uploadPromises = req.files.map((file) => {
+      const uploadPromises = req.files.map((file, index) => {
         return new Promise((resolve, reject) => {
           const uploadStream = cloudinary.uploader.upload_stream(
             {
@@ -3207,8 +3478,13 @@ app.post(
               resource_type: "auto"
             },
             (error, result) => {
-              if (error) reject(error);
-              else resolve(result);
+              if (error) {
+                console.error(`❌ Upload failed for file ${index + 1}:`, error);
+                reject(error);
+              } else {
+                console.log(`✅ Upload successful for file ${index + 1}`);
+                resolve(result);
+              }
             }
           );
           uploadStream.end(file.buffer);
@@ -3216,10 +3492,11 @@ app.post(
       });
 
       const uploadResults = await Promise.all(uploadPromises);
+      console.log("✅ All files uploaded to Cloudinary");
 
       // Format documents for storage
       const documents = uploadResults.map((result, index) => ({
-        id: index + 1,
+        id: Date.now() + index,
         name: req.files[index].originalname,
         url: result.secure_url,
         public_id: result.public_id,
@@ -3239,14 +3516,19 @@ app.post(
         },
       });
 
+      console.log("✅ KYC documents saved to database");
+
       res.status(200).json({
         message: "KYC documents uploaded successfully",
         documents: documents,
         kyc_status: "SUBMITTED"
       });
     } catch (error) {
-      console.error("KYC Upload Error:", error);
-      res.status(500).json({ error: "Failed to upload KYC documents" });
+      console.error("❌ KYC Upload Error:", error);
+      res.status(500).json({ 
+        error: "Failed to upload KYC documents", 
+        details: error.message 
+      });
     }
   }
 );
@@ -3495,28 +3777,52 @@ app.delete("/consultant/kyc-document/:id", verifyFirebaseToken, async (req, res)
   app.get("/consultants", async (req, res) => {
   try {
     const { domain } = req.query;
+    const ALLOWED_CONSULTANT_DOMAINS = [
+      "Legal",
+      "Engineering",
+      "Doctor",
+      "Finance",
+      "Technology",
+      "Education",
+      "Marketing",
+    ];
+
+    const normalizeDomain = (value) => {
+      if (!value) return "";
+      const input = String(value).trim().toLowerCase();
+      return (
+        ALLOWED_CONSULTANT_DOMAINS.find(
+          (domainItem) => domainItem.toLowerCase() === input
+        ) || ""
+      );
+    };
 
     let consultants;
     if (domain) {
+      const normalizedDomain = normalizeDomain(domain);
+      if (!normalizedDomain) {
+        return res.status(400).json({
+          error: `Invalid domain. Allowed values: ${ALLOWED_CONSULTANT_DOMAINS.join(", ")}`,
+        });
+      }
+
       consultants = await prisma.consultant.findMany({
         where: {
-          domain: {
-            contains: domain,
-            mode: "insensitive",
-          },
-          is_verified: true,
+          domain: normalizedDomain,
+          is_verified: true, // Only show verified consultants
         },
         include: {
           user: {
-            select: {
-              name: true,       // ✅ FIXED
+            select: { 
               email: true,
+              name: true,
               profile: {
                 select: {
+                  languages: true,
+                  availability: true,
                   bio: true,
-                  avatar: true,  // ✅ FIXED: profile_pic -> avatar
-                },
-              },
+                }
+              }
             },
           },
         },
@@ -3526,15 +3832,16 @@ app.delete("/consultant/kyc-document/:id", verifyFirebaseToken, async (req, res)
         where: { is_verified: true },
         include: {
           user: {
-            select: {
-              name: true,      // ✅ FIXED
+            select: { 
               email: true,
+              name: true,
               profile: {
                 select: {
+                  languages: true,
+                  availability: true,
                   bio: true,
-                  avatar: true,  // ✅ FIXED: profile_pic -> avatar
-                },
-              },
+                }
+              }
             },
           },
         },
@@ -3563,18 +3870,22 @@ app.get("/consultants/:id", async (req, res) => {
       },
       include: {
         user: {
-          select: {
-            name: true,
+          select: { 
             email: true,
+            name: true,
             profile: {
               select: {
                 bio: true,
-                avatar: true
+                avatar: true,
+                headline: true,
+                location: true,
+                languages: true,
+                availability: true,
               }
             }
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
 
@@ -4108,13 +4419,43 @@ app.post("/payment/verify", async (req, res) => {
 
     // Verify payment signature (cryptographically secure)
     const crypto = require("crypto");
+    
+    const keySecret = process.env.RAZORPAY_KEY_SECRET || "";
+    
+    console.log("🔐 FULL Payment Verification Debug:", {
+      razorpay_key_secret_length: keySecret.length,
+      razorpay_key_secret_full: keySecret,
+      order_id_full: razorpay_order_id,
+      payment_id_full: razorpay_payment_id,
+      signature_received_full: razorpay_signature,
+      data_to_sign: `${razorpay_order_id}|${razorpay_payment_id}`
+    });
+
     const generated_signature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .createHmac("sha256", keySecret)
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
+    console.log("🔍 FULL Signature Comparison:", {
+      generated_signature: generated_signature,
+      received_signature: razorpay_signature,
+      match: generated_signature === razorpay_signature,
+      generated_length: generated_signature.length,
+      received_length: razorpay_signature?.length
+    });
+
     if (generated_signature !== razorpay_signature) {
-      return res.status(400).json({ error: "Invalid payment signature" });
+      console.error("❌ Signature Mismatch!", {
+        error: "Invalid payment signature",
+        key_secret_exists: !!process.env.RAZORPAY_KEY_SECRET
+      });
+      return res.status(400).json({ 
+        error: "Invalid payment signature",
+        debug: {
+          key_secret_configured: !!process.env.RAZORPAY_KEY_SECRET,
+          message: "Check RAZORPAY_KEY_SECRET in .env"
+        }
+      });
     }
 
     // Fetch order from Razorpay to get metadata
@@ -4179,6 +4520,14 @@ app.post("/payment/verify", async (req, res) => {
     const bonusAmount = orderRecord.bonus || 0;
     const totalCredits = creditsToAdd + bonusAmount;
 
+    console.log("💳 Processing Credits:", {
+      orderId: razorpay_order_id?.substring(0, 10) + "...",
+      userId: user.id,
+      creditsToAdd,
+      bonusAmount,
+      totalCredits
+    });
+
     const result = await prisma.$transaction(async (tx) => {
       const updatedWallet = await tx.wallet.update({
         where: { id: wallet.id },
@@ -4186,6 +4535,12 @@ app.post("/payment/verify", async (req, res) => {
           balance: { increment: creditsToAdd },
           bonus_balance: { increment: bonusAmount },
         },
+      });
+
+      console.log("✅ Wallet Updated:", {
+        newBalance: updatedWallet.balance,
+        newBonusBalance: updatedWallet.bonus_balance,
+        totalBalance: (updatedWallet.balance || 0) + (updatedWallet.bonus_balance || 0)
       });
 
       await tx.transaction.create({
@@ -4199,6 +4554,8 @@ app.post("/payment/verify", async (req, res) => {
         },
       });
 
+      console.log("📝 Transaction Record Created");
+
       await tx.paymentOrder.update({
         where: { id: orderRecord.id },
         data: {
@@ -4207,6 +4564,8 @@ app.post("/payment/verify", async (req, res) => {
           razorpay_signature: razorpay_signature,
         },
       });
+
+      console.log("✅ Payment Order Marked as COMPLETED");
 
       return updatedWallet;
     });
@@ -4571,10 +4930,10 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
     // Calculate commission and final prices
     const basePrice = consultant.hourly_price; // Keep this line
     const globalSettings = await prisma.globalSettings.findUnique({ where: { id: 1 } });
-    const defaultConsultantComm = globalSettings?.default_consultant_comm ?? 20;
     const defaultUserComm = globalSettings?.default_user_comm ?? 10;
 
-    const consultantCommPct = consultant.consultant_commission_pct ?? defaultConsultantComm;
+    const consultantPlan = consultant.currentPlan || consultant.subscription_plan || "Free";
+    const consultantCommPct = consultant.platform_fee_pct ?? getEffectiveConsultantPlatformFeePct(consultantPlan);
     const userMarkupPct = consultant.user_commission_pct ?? defaultUserComm;
 
     // Apply User Subscription Discounts
@@ -4588,14 +4947,7 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
     const finalUserMarkupPct = Math.max(0, userMarkupPct - (userMarkupPct * (userDiscountPct / 100)));
     const userPrice = basePrice * (1 + finalUserMarkupPct / 100);
 
-    // Apply Consultant Subscription Discounts
-    const consultantPlan = consultant.subscription_plan || "Free";
-    let consultantDiscountPct = 0;
-    if (consultantPlan === "Professional") consultantDiscountPct = 2; // Flat 2% off
-    else if (consultantPlan === "Premium") consultantDiscountPct = 5;
-    else if (consultantPlan === "Elite") consultantDiscountPct = 10;
-
-    const finalConsultantCommPct = Math.max(0, consultantCommPct - consultantDiscountPct);
+    const finalConsultantCommPct = consultantCommPct;
     const consultantNet = basePrice * (1 - finalConsultantCommPct / 100);
 
     const platformRev = userPrice - consultantNet;
@@ -4745,7 +5097,7 @@ app.post("/bookings/create", verifyFirebaseToken, async (req, res) => {
                   <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Client</td><td style="padding:12px 0;font-weight:600;color:#1f2937;font-size:14px;">${user.name || user.email}</td></tr>
                   <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Date</td><td style="padding:12px 0;font-weight:600;color:#1f2937;font-size:14px;">${dateStr}</td></tr>
                   <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:12px 0;color:#6b7280;font-size:14px;">Time Slot</td><td style="padding:12px 0;font-weight:700;color:#059669;font-size:14px;">${sessionStr}</td></tr>
-                  <tr><td style="padding:12px 0;color:#6b7280;font-size:14px;">Your Earnings</td><td style="padding:12px 0;font-weight:700;color:#059669;font-size:14px;">₹${(consultant.hourly_price * 0.9).toFixed(2)} <span style="font-size:11px;color:#9ca3af;">(after 10% platform fee)</span></td></tr>
+                  <tr><td style="padding:12px 0;color:#6b7280;font-size:14px;">Your Earnings</td><td style="padding:12px 0;font-weight:700;color:#059669;font-size:14px;">₹${consultantNet.toFixed(2)} <span style="font-size:11px;color:#9ca3af;">(after ${finalConsultantCommPct.toFixed(0)}% platform fee)</span></td></tr>
                 </table>
               </div>
               <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin-bottom:16px;">
@@ -5077,18 +5429,23 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
       return res.status(403).json({ error: "Not authorized to send messages" });
     }
 
+    // Variables to track message limits
+    let totalLimit = 0;
+    let used = 0;
+    let lowMessageWarning = false;
+
     // Enforce Monthly Chat Limits for Clients based on Subscription Plan
     if (isClient) {
       const profile = await prisma.userProfile.findUnique({ where: { userId: sender.id } });
       const plan = profile?.subscription_plan || "Free";
       let baseLimit = 5;
       if (plan === "Starter") baseLimit = 20;
-      else if (plan === "Growth") baseLimit = 50;
+      else if (plan === "Growth" || plan === "Premium") baseLimit = 50;
       else if (plan === "Enterprise") baseLimit = 100;
 
-      const totalLimit = baseLimit + (profile?.purchased_chat_credits || 0);
+      totalLimit = baseLimit + (profile?.purchased_chat_credits || 0);
 
-      let used = profile?.chat_messages_used || 0;
+      used = profile?.chat_messages_used || 0;
       let lastReset = profile?.last_limit_reset || new Date();
 
       // Reset monthly usage if older than 30 days
@@ -5107,6 +5464,51 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
         where: { userId: sender.id },
         data: { chat_messages_used: used + 1, last_limit_reset: lastReset }
       });
+      
+      // Calculate remaining messages after this send
+      const remainingMessages = totalLimit - (used + 1);
+      lowMessageWarning = remainingMessages <= 5 && remainingMessages > 0;
+    }
+
+    // Enforce Monthly Chat Limits for CONSULTANTS based on Subscription Plan
+    if (isConsultant) {
+      const consultant = await prisma.consultant.findFirst({ 
+        where: { userId: sender.id },
+        include: { user: true }
+      });
+      
+      if (consultant) {
+        const plan = consultant.currentPlan || consultant.subscription_plan || "Free";
+        let baseLimit = 5;
+        if (plan === "Professional") baseLimit = 20;
+        else if (plan === "Premium") baseLimit = 50;
+        else if (plan === "Elite") baseLimit = 999999; // Unlimited
+
+        totalLimit = baseLimit + (consultant.purchased_chat_credits || 0);
+        used = consultant.chat_messages_used || 0;
+        let lastReset = consultant.last_limit_reset || new Date();
+
+        // Reset monthly usage if older than 30 days
+        if ((new Date() - new Date(lastReset)) > 30 * 24 * 60 * 60 * 1000) {
+          used = 0;
+          lastReset = new Date();
+        }
+
+        if (used >= totalLimit) {
+          return res.status(403).json({
+            error: `Chat limit reached. Your current limit is ${totalLimit} messages (${baseLimit} from ${plan} plan + ${consultant.purchased_chat_credits || 0} purchased). Please upgrade or buy more credits to continue.`
+          });
+        }
+
+        await prisma.consultant.update({
+          where: { id: consultant.id },
+          data: { chat_messages_used: used + 1, last_limit_reset: lastReset }
+        });
+        
+        // Calculate remaining messages after this send
+        const remainingMessages = totalLimit - (used + 1);
+        lowMessageWarning = remainingMessages <= 5 && remainingMessages > 0;
+      }
     }
 
     // Create message
@@ -5135,10 +5537,21 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
       `💬 Message sent in booking ${bookingId} by user ${sender.email}`
     );
 
-    res.status(201).json({
+    // Prepare response with optional warning for client users
+    const response = {
       message: "Message sent successfully",
       data: message,
-    });
+    };
+
+    // Add remaining message count for both client users and consultants
+    if (isClient || isConsultant) {
+      response.remainingMessages = totalLimit - (used + 1);
+      if (lowMessageWarning) {
+        response.warning = `You have only ${response.remainingMessages} message${response.remainingMessages !== 1 ? 's' : ''} remaining this month. Consider upgrading your plan or purchasing more credits.`;
+      }
+    }
+
+    res.status(201).json(response);
   } catch (error) {
     console.error("Send Message Error:", error.message);
     res.status(500).json({ error: "Failed to send message" });
@@ -5423,14 +5836,14 @@ io.on("connection", (socket) => {
       }
 
       // ==== User Subscription Chat Limit Check ====
-      // Only throttle if the sender is the User (not Consultant)
+      // Throttle for both Users and Consultants based on their plans
       if (user.role === "USER" && booking.userId === user.id) {
         const userProfile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
         const plan = userProfile?.subscription_plan || "Free";
 
         let baseLimit = 5;
         if (plan === "Starter") baseLimit = 20;
-        else if (plan === "Growth") baseLimit = 50;
+        else if (plan === "Growth" || plan === "Premium") baseLimit = 50;
         else if (plan === "Enterprise") baseLimit = 100;
 
         const totalLimit = baseLimit + (userProfile?.purchased_chat_credits || 0);
@@ -5441,52 +5854,25 @@ io.on("connection", (socket) => {
           });
         }
       } else if (user.role === 'CONSULTANT') {
-        // For CONSULTANT: Get data from Consultant model
-        console.log('📊 Fetching consultant usage metrics');
-        
+        // ==== Consultant Subscription Chat Limit Check ====
         const consultant = await prisma.consultant.findFirst({
           where: { userId: user.id }
         });
         
         if (consultant) {
-          // Use consultant subscription data
-          const planName = consultant.currentPlan || consultant.subscription_plan || "Free";
-          let chatLimit = 5;
-          if (planName === "Basic") chatLimit = 10;
-          else if (planName === "Professional") chatLimit = 25;
-          else if (planName === "Enterprise") chatLimit = 50;
-          
-          // Calculate days remaining
-          let daysRemaining = 0;
-          if (consultant.subscriptionEndDate) {
-            const now = new Date();
-            const expiry = new Date(consultant.subscriptionEndDate);
-            daysRemaining = Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+          const plan = consultant.currentPlan || consultant.subscription_plan || "Free";
+          let baseLimit = 5;
+          if (plan === "Professional") baseLimit = 20;
+          else if (plan === "Premium") baseLimit = 50;
+          else if (plan === "Elite") baseLimit = 999999; // Unlimited
+
+          const totalLimit = baseLimit + (consultant.purchased_chat_credits || 0);
+
+          if (consultant.chat_messages_used >= totalLimit) {
+            return socket.emit("chat-error", {
+              message: `Monthly chat limit of ${totalLimit} messages reached. Please upgrade or buy more credits to continue.`,
+            });
           }
-          
-          // Fetch consultant bookings count
-          const bookingsCount = await prisma.booking.count({
-            where: { consultantId: consultant.id }
-          });
-          
-          // Calculate chat messages used from plan features
-          let chatMessagesUsed = 0;
-          if (consultant.planFeatures && consultant.planFeatures.chatMessages) {
-            // For consultants, chat usage could be tracked separately or estimated
-            // For now, we'll use a reasonable default based on plan
-            chatMessagesUsed = Math.floor(Math.random() * chatLimit * 0.3); // Simulate some usage
-          }
-          
-          usageData = {
-            plan: planName,
-            chat_messages_used: chatMessagesUsed,
-            chat_limit: chatLimit,
-            bookings_made: bookingsCount,
-            days_remaining: daysRemaining,
-            bonus_balance: user.wallet?.bonus_balance || 0
-          };
-          
-          console.log('📊 Consultant usage data:', usageData);
         }
       }
       
@@ -5499,12 +5885,22 @@ io.on("connection", (socket) => {
         },
       });
 
-      // Increment User's monthly chat usage if sender is the User
+      // Increment monthly chat usage for both Users and Consultants
       if (user.role === "USER" && booking.userId === user.id) {
         await prisma.userProfile.update({
           where: { userId: user.id },
           data: { chat_messages_used: { increment: 1 } }
         });
+      } else if (user.role === "CONSULTANT") {
+        const consultant = await prisma.consultant.findFirst({
+          where: { userId: user.id }
+        });
+        if (consultant) {
+          await prisma.consultant.update({
+            where: { id: consultant.id },
+            data: { chat_messages_used: { increment: 1 } }
+          });
+        }
       }
 
       // 4️⃣ 👇 MODIFY THIS - add role to sender info
@@ -7635,7 +8031,7 @@ app.get("/admin/users/:id", verifyAdminToken, async (req, res) => {
     const plan = profile.subscription_plan || "Free";
     let baseChatLimit = 5;
     if (plan === "Starter") baseChatLimit = 20;
-    else if (plan === "Growth") baseChatLimit = 50;
+    else if (plan === "Growth" || plan === "Premium") baseChatLimit = 50;
     else if (plan === "Enterprise") baseChatLimit = 100;
 
     const totalChatLimit = baseChatLimit + (profile.purchased_chat_credits || 0);
@@ -8122,10 +8518,10 @@ app.post("/bookings/slot-book", verifyFirebaseToken, async (req, res) => {
     const basePrice = consultant.hourly_price || 0;
     // Calculate commission and final prices from Global Settings -> Overrides -> Subscriptions
     const globalSettings = await prisma.globalSettings.findUnique({ where: { id: 1 } });
-    const defaultConsultantComm = globalSettings?.default_consultant_comm ?? 20;
     const defaultUserComm = globalSettings?.default_user_comm ?? 10;
 
-    const consultantCommPct = consultant.consultant_commission_pct ?? defaultConsultantComm;
+    const consultantPlan = consultant.currentPlan || consultant.subscription_plan || "Free";
+    const consultantCommPct = consultant.platform_fee_pct ?? getEffectiveConsultantPlatformFeePct(consultantPlan);
     const userMarkupPct = consultant.user_commission_pct ?? defaultUserComm;
 
     // Apply User Subscription Discounts
@@ -8139,14 +8535,7 @@ app.post("/bookings/slot-book", verifyFirebaseToken, async (req, res) => {
     const finalUserMarkupPct = Math.max(0, userMarkupPct - (userMarkupPct * (userDiscountPct / 100)));
     const userPrice = basePrice * (1 + finalUserMarkupPct / 100);
 
-    // Apply Consultant Subscription Discounts
-    const consultantPlan = consultant.subscription_plan || "Free";
-    let consultantDiscountPct = 0;
-    if (consultantPlan === "Professional") consultantDiscountPct = 2; // Flat 2% off
-    else if (consultantPlan === "Premium") consultantDiscountPct = 5;
-    else if (consultantPlan === "Elite") consultantDiscountPct = 10;
-
-    const finalConsultantCommPct = Math.max(0, consultantCommPct - consultantDiscountPct);
+    const finalConsultantCommPct = consultantCommPct;
     const consultantNet = basePrice * (1 - finalConsultantCommPct / 100);
 
     const platformRev = userPrice - consultantNet;
@@ -8184,7 +8573,7 @@ app.post("/bookings/slot-book", verifyFirebaseToken, async (req, res) => {
         userId: user.id,
         consultantId: consultant_id,
         type: "DEBIT",
-        amount: fee,
+        amount: userPrice,
         status: "SUCCESS",
         description: `Booking #${booking.id} - ${consultant.domain || "Consultation"}`,
       },
@@ -8372,13 +8761,16 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
         // Get chat limit from plan features or use default
         if (consultant.planFeatures?.chatMessages) {
           chatLimit = consultant.planFeatures.chatMessages;
-        } else if (planName === "Basic") {
-          chatLimit = 10;
         } else if (planName === "Professional") {
-          chatLimit = 25;
-        } else if (planName === "Enterprise") {
+          chatLimit = 20;
+        } else if (planName === "Premium") {
           chatLimit = 50;
+        } else if (planName === "Elite") {
+          chatLimit = 999999; // Unlimited
         }
+        
+        // Add any purchased chat credits
+        chatLimit += (consultant.purchased_chat_credits || 0);
         
         // Calculate days remaining
         const now = new Date();
@@ -8393,25 +8785,8 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
           where: { consultantId: consultant.id }
         });
         
-        // Count chat messages sent by this consultant in their bookings since subscription start
-        let chatMessagesUsed = 0;
-        try {
-          const consultantMessages = await prisma.message.count({
-            where: {
-              booking: {
-                consultantId: consultant.id
-              },
-              senderId: user.id,
-              created_at: {
-                gte: new Date(consultant.subscriptionStartDate || new Date())
-              }
-            }
-          });
-          chatMessagesUsed = consultantMessages;
-        } catch (err) {
-          console.log('⚠️ Could not count chat messages:', err.message);
-          chatMessagesUsed = 0;
-        }
+        // Use chat_messages_used from consultant table (tracked when messages are sent)
+        const chatMessagesUsed = consultant.chat_messages_used || 0;
         
         // Get wallet bonus balance
         const wallet = await prisma.wallet.findUnique({
@@ -8437,7 +8812,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
       const plan = profile.subscription_plan || "Free";
       let chatLimit = 5;
       if (plan === "Starter") chatLimit = 20;
-      else if (plan === "Growth") chatLimit = 50;
+      else if (plan === "Growth" || plan === "Premium") chatLimit = 50;
       else if (plan === "Enterprise") chatLimit = 100;
       
       // Add any separate credits bought via Razorpay
@@ -8524,6 +8899,26 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
     // Define plan features and duration
     const planConfig = {
+      'Starter': {
+        duration: 1, // months
+        price: 199,
+        features: {
+          chatMessages: 20,
+          videoCalls: 10,
+          prioritySupport: false,
+          profileVisibility: "Standard"
+        }
+      },
+      'Growth': {
+        duration: 1,
+        price: 499,
+        features: {
+          chatMessages: 50,
+          videoCalls: 25,
+          prioritySupport: true,
+          profileVisibility: "Featured"
+        }
+      },
       'Basic': {
         duration: 1, // months
         price: 299,
@@ -8589,6 +8984,7 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
     const startDate = new Date();
     const endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + selectedPlan.duration);
+    const planPlatformFeePct = getEffectiveConsultantPlatformFeePct(planName);
 
     // Update user with subscription data
     if (user.role === 'CONSULTANT') {
@@ -8620,6 +9016,7 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
             subscriptionEndDate: endDate,
             planFeatures: selectedPlan.features,
             paymentId: razorpay_payment_id,
+            platform_fee_pct: planPlatformFeePct,
             // Also update legacy fields for backward compatibility
             subscription_plan: planName,
             subscription_expiry: endDate
@@ -9032,10 +9429,14 @@ app.post("/payment/chat-credits/create-order", verifyFirebaseToken, async (req, 
 
 app.post("/payment/chat-credits/verify", verifyFirebaseToken, async (req, res) => {
   try {
+    console.log('💳 Chat credit verification request:', req.body);
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, packName } = req.body;
+    
     let user = await prisma.user.findFirst({ where: { firebase_uid: req.user.firebase_uid } });
     if (!user && req.user.id) user = await prisma.user.findUnique({ where: { id: req.user.id } });
     if (!user) return res.status(404).json({ error: "User not found" });
+
+    console.log('👤 User found:', user.email, 'Role:', user.role);
 
     // Verify Signature
     const body = razorpay_order_id + "|" + razorpay_payment_id;
@@ -9044,22 +9445,50 @@ app.post("/payment/chat-credits/verify", verifyFirebaseToken, async (req, res) =
       .update(body.toString())
       .digest("hex");
 
+    console.log('🔒 Signature verification:');
+    console.log('  Expected:', expectedSignature);
+    console.log('  Received:', razorpay_signature);
+
     if (expectedSignature !== razorpay_signature) {
+      console.error('❌ Signature mismatch!');
       return res.status(400).json({ error: "Invalid payment signature" });
     }
+
+    console.log('✅ Signature verified successfully');
 
     let messagesToAdd = 0;
     if (packName === "Mini Pack") messagesToAdd = 10;
     else if (packName === "Starter Pack") messagesToAdd = 25;
     else if (packName === "Pro Pack") messagesToAdd = 60;
 
-    // Instead of decrementing usage, we track purchased credits separately
-    const updatedProfile = await prisma.userProfile.update({
-      where: { userId: user.id },
-      data: {
-        purchased_chat_credits: { increment: messagesToAdd }
+    console.log('📦 Pack:', packName, '→ Adding', messagesToAdd, 'messages');
+
+    // Check if user is a consultant or regular user and update accordingly
+    if (user.role === "CONSULTANT") {
+      // Update consultant table
+      const consultant = await prisma.consultant.findFirst({
+        where: { userId: user.id }
+      });
+      
+      if (consultant) {
+        await prisma.consultant.update({
+          where: { id: consultant.id },
+          data: {
+            purchased_chat_credits: { increment: messagesToAdd }
+          }
+        });
+        console.log('✅ Consultant credits updated');
       }
-    });
+    } else {
+      // Update user profile table for regular users
+      await prisma.userProfile.update({
+        where: { userId: user.id },
+        data: {
+          purchased_chat_credits: { increment: messagesToAdd }
+        }
+      });
+      console.log('✅ User profile credits updated');
+    }
 
     // Create transaction record for chat credits
     let chatPackAmount = 0;
@@ -9101,14 +9530,223 @@ app.post("/payment/chat-credits/verify", verifyFirebaseToken, async (req, res) =
       transporter.sendMail(mailOptions).catch(err => console.error("Email send failed:", err));
     }
 
-    res.json({ message: "Chat credits added successfully", profile: updatedProfile });
+    console.log('✅ Chat credits purchase completed successfully');
+    res.json({ 
+      message: "Chat credits added successfully", 
+      messagesAdded: messagesToAdd,
+      packName: packName
+    });
   } catch (error) {
     console.error("Chat Credits Verify Error:", error);
     res.status(500).json({ error: "Failed to verify chat credits payment" });
   }
 });
 
+/**
+ * ================= SUBSCRIPTION EXPIRY NOTIFICATION SYSTEM =================
+ */
+
+// Function to check and notify expiring subscriptions
+async function checkExpiringSubscriptions() {
+  try {
+    const now = new Date();
+    const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const twoDaysFromNow = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+
+    console.log("🔍 Checking for expiring subscriptions...");
+
+    // Find consultants with subscriptions expiring in 2-3 days
+    const expiringConsultants = await prisma.consultant.findMany({
+      where: {
+        subscriptionEndDate: {
+          gte: twoDaysFromNow,
+          lte: threeDaysFromNow,
+        },
+        subscriptionStatus: "Active",
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    console.log(`📧 Found ${expiringConsultants.length} subscriptions expiring soon`);
+
+    for (const consultant of expiringConsultants) {
+      const daysLeft = Math.ceil(
+        (new Date(consultant.subscriptionEndDate) - now) / (1000 * 60 * 60 * 24)
+      );
+
+      // Send email notification
+      if (transporter && consultant.user.email) {
+        const mailOptions = {
+          from: process.env.EMAIL_USER,
+          to: consultant.user.email,
+          subject: `⚠️ Your ${consultant.currentPlan} Plan Expires in ${daysLeft} Days`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+                <h1 style="color: white; margin: 0;">⚠️ Subscription Expiring Soon</h1>
+              </div>
+              
+              <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px;">
+                <p style="font-size: 16px; color: #333;">Hi ${consultant.user.name || 'there'},</p>
+                
+                <p style="font-size: 16px; color: #333;">
+                  Your <strong>${consultant.currentPlan || 'Premium'}</strong> plan is expiring in <strong style="color: #e74c3c;">${daysLeft} days</strong>.
+                </p>
+
+                <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #e74c3c;">
+                  <p style="margin: 5px 0; color: #555;"><strong>Current Plan:</strong> ${consultant.currentPlan || 'Premium'}</p>
+                  <p style="margin: 5px 0; color: #555;"><strong>Expiry Date:</strong> ${new Date(consultant.subscriptionEndDate).toLocaleDateString('en-IN')}</p>
+                  <p style="margin: 5px 0; color: #555;"><strong>Days Remaining:</strong> ${daysLeft} days</p>
+                </div>
+
+                <p style="font-size: 16px; color: #333;">
+                  Don't lose access to your premium features! Renew your subscription today to continue enjoying:
+                </p>
+
+                <ul style="color: #555; line-height: 1.8;">
+                  <li>Reduced platform fees</li>
+                  <li>Priority support</li>
+                  <li>Enhanced visibility</li>
+                  <li>Advanced analytics</li>
+                  <li>Unlimited bookings</li>
+                </ul>
+
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="http://localhost:5173/consultant/dashboard" 
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                            color: white; 
+                            padding: 15px 40px; 
+                            text-decoration: none; 
+                            border-radius: 25px; 
+                            font-weight: bold; 
+                            display: inline-block;">
+                    Renew Now
+                  </a>
+                </div>
+
+                <p style="font-size: 14px; color: #666; text-align: center; margin-top: 30px;">
+                  Questions? Contact us at <a href="mailto:sonuayadavsk@gmail.com">sonuayadavsk@gmail.com</a>
+                </p>
+              </div>
+            </div>
+          `,
+        };
+
+        try {
+          await transporter.sendMail(mailOptions);
+          console.log(`✅ Expiry notification sent to ${consultant.user.email}`);
+        } catch (err) {
+          console.error(`❌ Failed to send expiry email to ${consultant.user.email}:`, err.message);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("❌ Error checking expiring subscriptions:", error);
+  }
+}
+
+// Run expiry check every 12 hours
+setInterval(checkExpiringSubscriptions, 12 * 60 * 60 * 1000);
+
+// Run immediately on startup
+setTimeout(checkExpiringSubscriptions, 5000); // Wait 5 seconds after server start
+
+/**
+ * GET /subscription/status
+ * Get subscription status and expiry warning
+ */
+app.get("/subscription/status", verifyFirebaseToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.firebase_uid },
+      include: {
+        consultant: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    let subscriptionData = null;
+    let expiryWarning = null;
+
+    if (user.role === "CONSULTANT" && user.consultant) {
+      const consultant = user.consultant;
+      const now = new Date();
+
+      if (consultant.subscriptionEndDate && consultant.subscriptionStatus === "Active") {
+        const endDate = new Date(consultant.subscriptionEndDate);
+        const daysLeft = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+
+        subscriptionData = {
+          currentPlan: consultant.currentPlan || "Free",
+          status: consultant.subscriptionStatus,
+          startDate: consultant.subscriptionStartDate,
+          endDate: consultant.subscriptionEndDate,
+          daysLeft: daysLeft,
+        };
+
+        // Show warning if expiring within 3 days
+        if (daysLeft <= 3 && daysLeft > 0) {
+          expiryWarning = {
+            daysLeft: daysLeft,
+            message: `Your ${consultant.currentPlan || 'Premium'} plan expires in ${daysLeft} day${daysLeft > 1 ? 's' : ''}!`,
+            severity: daysLeft === 1 ? "critical" : "warning",
+          };
+        }
+      } else {
+        subscriptionData = {
+          currentPlan: consultant.currentPlan || "Free",
+          status: consultant.subscriptionStatus || "None",
+          startDate: null,
+          endDate: null,
+          daysLeft: null,
+        };
+      }
+    } else {
+      // Handle regular USER subscription
+      const userProfile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
+      const userPlan = userProfile?.subscription_plan || "Free";
+      const subscriptionEndDate = userProfile?.subscription_end_date;
+      const now = new Date();
+
+      subscriptionData = {
+        currentPlan: userPlan,
+        plan: userPlan, // Add both fields for compatibility
+        status: subscriptionEndDate && new Date(subscriptionEndDate) > now ? "Active" : "None",
+        startDate: userProfile?.subscription_start_date || null,
+        endDate: subscriptionEndDate || null,
+        daysLeft: subscriptionEndDate ? Math.ceil((new Date(subscriptionEndDate) - now) / (1000 * 60 * 60 * 24)) : null,
+      };
+
+      // Show warning if expiring within 3 days
+      if (subscriptionEndDate) {
+        const daysLeft = Math.ceil((new Date(subscriptionEndDate) - now) / (1000 * 60 * 60 * 24));
+        if (daysLeft <= 3 && daysLeft > 0) {
+          expiryWarning = {
+            daysLeft: daysLeft,
+            message: `Your ${userPlan} plan expires in ${daysLeft} day${daysLeft > 1 ? 's' : ''}!`,
+            severity: daysLeft === 1 ? "critical" : "warning",
+          };
+        }
+      }
+    }
+
+    res.json({
+      subscriptionData,
+      expiryWarning,
+    });
+  } catch (error) {
+    console.error("Subscription Status Error:", error);
+    res.status(500).json({ error: "Failed to fetch subscription status" });
+  }
+});
+
 const SERVER_PORT = process.env.PORT || 5000;
 server.listen(SERVER_PORT, () => {
   console.log(`🚀 Server running on http://localhost:${SERVER_PORT}`);
+  console.log(`📧 Subscription expiry check running every 12 hours`);
 });

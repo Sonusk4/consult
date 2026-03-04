@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
+import ConsultantKycGate from "../components/ConsultantKycGate";
+import useConsultantKycCheck from "../hooks/useConsultantKycCheck";
 import {
   TrendingUp,
   ArrowDownRight,
@@ -11,6 +14,28 @@ import {
 import api from "../services/api";
 import { useAuth } from "../App";
 import { consultants as consultantsApi } from "../services/api";
+/* ----------------------------------------------------
+   Profile Check Hook
+---------------------------------------------------- */
+const useProfileCheck = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const checkProfile = async () => {
+      try {
+        const profileData = await consultantsApi.getProfile();
+        const isIncomplete = !profileData || !profileData.name || !profileData.domain || 
+                            !profileData.hourly_price || !profileData.bio || !profileData.languages;
+        if (isIncomplete) {
+          navigate('/consultant/dashboard', { replace: true });
+        }
+      } catch (error) {
+        navigate('/consultant/dashboard', { replace: true });
+      }
+    };
+    checkProfile();
+  }, [navigate]);
+};
+
 /* ----------------------------------------------------
    Payout Method Modal
 ---------------------------------------------------- */
@@ -121,7 +146,9 @@ const WithdrawModal = ({ open, onClose, maxAmount, onWithdraw }) => {
    MAIN PAGE
 ---------------------------------------------------- */
 const EarningsPage: React.FC = () => {
-  const { user, setUser } = useAuth();  // CORRECT PLACE
+  const { user, setUser } = useAuth();
+  const { kycStatus, loading: kycLoading, isApprovalSuccess } = useConsultantKycCheck();
+  useProfileCheck(); // Check profile completion
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -206,11 +233,22 @@ const EarningsPage: React.FC = () => {
     },
   ];
 
+  if (kycLoading) {
+    return (
+      <Layout title="Finances">
+        <div className="flex items-center justify-center min-h-screen">
+          <p>Loading...</p>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
-    <Layout title="Finances">
-      <div className="max-w-6xl mx-auto space-y-8">
-        
-        {/* Stats Cards */}
+    <ConsultantKycGate kycStatus={kycStatus} showSuccessModal={isApprovalSuccess}>
+      <Layout title="Finances">
+        <div className="max-w-6xl mx-auto space-y-8">
+          
+          {/* Stats Cards */}
         <div className="grid lg:grid-cols-4 gap-6">
           {statsCards.map((card, i) => (
             <div
@@ -397,6 +435,7 @@ const EarningsPage: React.FC = () => {
         }}
       />
     </Layout>
+    </ConsultantKycGate>
   );
 };
 

@@ -142,8 +142,8 @@ const InviteAcceptPage: React.FC = () => {
         firebase_uid: mockFirebaseUid,
       };
 
-      console.log("💾 Storing user in localStorage:", userToStore);
-      localStorage.setItem("user", JSON.stringify(userToStore));
+      console.log("💾 Storing user in sessionStorage:", userToStore);
+      sessionStorage.setItem("user", JSON.stringify(userToStore));
 
       // Update auth context
       console.log("🔐 Updating user state in Auth context...");

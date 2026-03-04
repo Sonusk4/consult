@@ -25,7 +25,11 @@ api.interceptors.response.use(
     const isAuthEndpoint =
       error.config?.url?.includes("/auth/verify-otp") ||
       error.config?.url?.includes("/auth/me") ||
-      error.config?.url?.includes("/auth/send-otp");
+      error.config?.url?.includes("/auth/send-otp") ||
+      error.config?.url?.includes("/auth/signup") ||
+      error.config?.url?.includes("/auth/forgot-password") ||
+      error.config?.url?.includes("/auth/reset-password") ||
+      error.config?.url?.includes("/auth/change-password-first-login");
 
     // Auto-logout when session is invalid (stale token / user deleted from DB)
     const isUserNotFound =
@@ -36,12 +40,15 @@ api.interceptors.response.use(
 
     if (!isAuthEndpoint && (error.response?.status === 401 || isUserNotFound)) {
       console.warn("⚠️ Stale session detected — clearing tokens and redirecting to login");
-      localStorage.removeItem("user");
-      localStorage.removeItem("devToken");
+      sessionStorage.removeItem("user");
+      sessionStorage.removeItem("devToken");
       sessionStorage.clear();
-      // Redirect to login (only if not already there)
-      if (!window.location.pathname.includes("/login") && !window.location.pathname.includes("/signup")) {
-        window.location.href = "/login";
+      // Redirect to login (HashRouter-safe)
+      const currentRoute =
+        window.location.hash?.replace(/^#/, "") || window.location.pathname;
+
+      if (!currentRoute.includes("/login") && !currentRoute.includes("/signup")) {
+        window.location.hash = "/login";
       }
     }
 
@@ -62,17 +69,16 @@ api.interceptors.response.use(
 /* ================= REQUEST INTERCEPTOR ================= */
 api.interceptors.request.use(
   async (config) => {
-    // Check for dev mode token first (stored in localStorage)
-    let devToken = localStorage.getItem("devToken");
+    // Check for dev mode token first (stored in sessionStorage)
+    let devToken = sessionStorage.getItem("devToken");
 
     if (devToken) {
       config.headers.Authorization = `Bearer ${devToken}`;
-      console.log("✅ Added dev token to request");
       return config;
     }
 
     // If no dev token but user is logged in, use a session-based auth
-    const storedUser = localStorage.getItem("user");
+    const storedUser = sessionStorage.getItem("user");
     if (storedUser && !devToken) {
       try {
         const user = JSON.parse(storedUser);
@@ -87,7 +93,7 @@ api.interceptors.request.use(
         }));
         const signature = btoa("dev-mode-signature");
         devToken = `${header}.${payload}.${signature}`;
-        localStorage.setItem("devToken", devToken);
+        sessionStorage.setItem("devToken", devToken);
         config.headers.Authorization = `Bearer ${devToken}`;
         console.log("✅ Created and added JWT dev token for:", user.email);
         return config;
@@ -251,6 +257,26 @@ export const auth = {
       return response.data;
     } catch (error) {
       console.error("❌ acceptInvitation error:", error);
+      throw error;
+    }
+  },
+
+  saveConsultantKyc: async (kycData: {
+    domain: string;
+    expertise: string;
+    hourlyPrice: string;
+    yearsExperience: string;
+    education?: string;
+    aadharNumber?: string;
+    panNumber?: string;
+  }) => {
+    try {
+      console.log(`📤 Saving consultant KYC data`);
+      const response = await api.post("/auth/consultant-kyc", kycData);
+      console.log("📥 KYC save response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("❌ saveConsultantKyc error:", error);
       throw error;
     }
   },
@@ -461,6 +487,32 @@ export const subscriptions = {
   },
   getUsageMetrics: async () => {
     const response = await api.get("/metrics/subscription-usage");
+    return response.data;
+  },
+  getSubscriptionStatus: async () => {
+    const response = await api.get("/subscription/status");
+    return response.data;
+  },
+  purchaseSubscription: async (planName: string, price: number, features: any, duration: number, paymentId: string) => {
+    const response = await api.post("/api/subscriptions/purchase", {
+      planName,
+      price,
+      features,
+      duration,
+      paymentId
+    });
+    return response.data;
+  },
+  getUserSubscription: async (userId: string) => {
+    const response = await api.get(`/api/subscriptions/user/${userId}`);
+    return response.data;
+  },
+  getSubscriptionPlans: async () => {
+    const response = await api.get("/api/subscriptions/plans");
+    return response.data;
+  },
+  cancelSubscription: async () => {
+    const response = await api.post("/api/subscriptions/cancel");
     return response.data;
   }
 };

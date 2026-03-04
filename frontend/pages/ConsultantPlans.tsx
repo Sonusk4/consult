@@ -1,15 +1,17 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
-import { subscriptions, users } from "../services/api";
-import { X, Check, Star, TrendingUp, MessageCircle, Wallet, ArrowUp, AlertCircle, Crown, Zap, Shield, Sparkles, CheckCircle } from "lucide-react";
+import { subscriptions, users, chatCredits, payments } from "../services/api";
+import { X, Check, Star, TrendingUp, MessageCircle, Wallet, ArrowUp, AlertCircle, Crown, Zap, Shield, Sparkles, CheckCircle, ArrowRight } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 
 // Payment Success Modal Component
 const PaymentSuccessModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
+  onViewDashboard: () => void;
   message: string;
-}> = ({ isOpen, onClose, message }) => {
+}> = ({ isOpen, onClose, onViewDashboard, message }) => {
   if (!isOpen) return null;
 
   return (
@@ -36,17 +38,26 @@ const PaymentSuccessModal: React.FC<{
 
         {/* Content */}
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">Payment Successful!</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">✅ Subscription Activated!</h2>
           <p className="text-gray-600 mb-8">{message}</p>
         </div>
 
-        {/* OK Button */}
-        <button
-          onClick={onClose}
-          className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
-        >
-          OK
-        </button>
+        {/* Buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={onViewDashboard}
+            className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+          >
+            View Dashboard
+            <ArrowRight size={18} />
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-3 border border-gray-300 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -166,23 +177,23 @@ const plans = [
 const chatCreditsPacks = [
   {
     name: "Mini Pack",
-    messages: "50 Messages",
-    price: "TBD",
-    validity: "Valid for 30 days",
+    messages: "10 messages",
+    price: "₹49",
+    validity: "30 days",
     popular: false,
   },
   {
     name: "Starter Pack",
-    messages: "150 Messages",
-    price: "TBD",
-    validity: "Valid for 45 days",
+    messages: "25 messages",
+    price: "₹99",
+    validity: "45 days",
     popular: true,
   },
   {
     name: "Pro Pack",
-    messages: "300 Messages",
-    price: "TBD",
-    validity: "Valid for 60 days",
+    messages: "60 messages",
+    price: "₹199",
+    validity: "60 days",
     popular: false,
   },
 ];
@@ -221,6 +232,7 @@ const importantTerms = [
 ];
 
 const ConsultantPlans: React.FC = () => {
+  const navigate = useNavigate();
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
@@ -228,7 +240,21 @@ const ConsultantPlans: React.FC = () => {
   const { addToast } = useToast();
 
   const handleSubscribe = async () => {
-    if (!selectedPlan) return;
+    if (!selectedPlan) {
+      console.log("❌ No plan selected");
+      addToast("Please select a plan", "error");
+      return;
+    }
+    
+    // Validate plan name
+    const validPlans = ["Basic", "Professional", "Premium", "Elite"];
+    if (!validPlans.includes(selectedPlan.name)) {
+      console.log("❌ Invalid plan name:", selectedPlan.name);
+      addToast("Invalid plan selected", "error");
+      return;
+    }
+    
+    console.log("🔍 Subscribing to plan:", selectedPlan.name, "Type:", typeof selectedPlan.name);
     setLoading(true);
     try {
       const res = await loadRazorpayScript();
@@ -266,9 +292,13 @@ const ConsultantPlans: React.FC = () => {
               planName: selectedPlan.name,
               userType: "CONSULTANT",
             });
-            setPaymentSuccessMessage(`You are now on the ${selectedPlan.name} plan! An email receipt has been sent.`);
+            setPaymentSuccessMessage(`You are now on the ${selectedPlan.name} plan! Your subscription is active immediately.`);
             setShowPaymentSuccess(true);
             setSelectedPlan(null);
+            
+            // Dispatch event for any listening components
+            window.dispatchEvent(new CustomEvent('subscriptionUpdated'));
+            addToast('✅ Subscription activated! Your new plan is now active.', 'success');
           } catch (err: any) {
             addToast(`Verification failed: ${err.message}`, 'error');
           } finally {
@@ -289,6 +319,138 @@ const ConsultantPlans: React.FC = () => {
 
     } catch (error: any) {
       addToast(`Subscription failed: ${error.response?.data?.error || error.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBuyCredits = async (packName: string) => {
+    console.log("🔍 Buying credits pack:", packName);
+    setLoading(true);
+    try {
+      const res = await loadRazorpayScript();
+      if (!res) throw new Error("Razorpay SDK failed to load. Are you online?");
+
+      // Create order for chat credits
+      const orderData = await chatCredits.createOrder(packName);
+      console.log('📦 Order created:', orderData);
+
+      // Fetch user profile
+      let userName = "Consultant";
+      let userEmail = "consultant@example.com";
+      try {
+        const profileResponse = await users.getProfile();
+        if (profileResponse?.name) userName = profileResponse.name;
+        if (profileResponse?.email) userEmail = profileResponse.email;
+      } catch (e) {
+        // fail silently
+      }
+
+      // Init Razorpay
+      const options = {
+        key: orderData.key_id,
+        amount: orderData.order.amount, // Use amount from order object
+        currency: "INR",
+        name: "Chat Credits",
+        description: `${packName} - ${chatCreditsPacks.find(p => p.name === packName)?.messages}`,
+        order_id: orderData.order.id, // Correct path to order ID
+        handler: async function (response: any) {
+          try {
+            setLoading(true);
+            await chatCredits.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              packName: packName,
+            });
+            addToast(`Chat credits purchased successfully!`, 'success');
+            // Refresh the page to update dashboard metrics
+            window.location.reload();
+          } catch (err: any) {
+            addToast(`Payment verification failed: ${err.message}`, 'error');
+          } finally {
+            setLoading(false);
+          }
+        },
+        prefill: {
+          name: userName,
+          email: userEmail,
+        },
+        theme: {
+          color: "#2563EB",
+        },
+      };
+
+      const paymentObject = new window.Razorpay(options);
+      paymentObject.open();
+
+    } catch (error: any) {
+      addToast(`Credits purchase failed: ${error.response?.data?.error || error.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWalletRecharge = async (amount: number, bonus: number) => {
+    console.log("🔍 Recharging wallet:", amount);
+    setLoading(true);
+    try {
+      const res = await loadRazorpayScript();
+      if (!res) throw new Error("Razorpay SDK failed to load. Are you online?");
+
+      // Create order for wallet recharge
+      const orderData = await payments.createOrder(amount);
+
+      // Fetch user profile
+      let userName = "Consultant";
+      let userEmail = "consultant@example.com";
+      try {
+        const profileResponse = await users.getProfile();
+        if (profileResponse?.name) userName = profileResponse.name;
+        if (profileResponse?.email) userEmail = profileResponse.email;
+      } catch (e) {
+        // fail silently
+      }
+
+      // Init Razorpay
+      const options = {
+        key: orderData.key_id,
+        amount: orderData.amount * 100,
+        currency: "INR",
+        name: "Wallet Recharge",
+        description: `Recharge wallet with ₹${amount} + ₹${bonus} bonus`,
+        order_id: orderData.order_id,
+        handler: async function (response: any) {
+          try {
+            setLoading(true);
+            await payments.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              amount: amount,
+              userType: "CONSULTANT",
+            });
+            addToast(`Wallet recharged successfully!`, 'success');
+          } catch (err: any) {
+            addToast(`Payment verification failed: ${err.message}`, 'error');
+          } finally {
+            setLoading(false);
+          }
+        },
+        prefill: {
+          name: userName,
+          email: userEmail,
+        },
+        theme: {
+          color: "#2563EB",
+        },
+      };
+
+      const paymentObject = new window.Razorpay(options);
+      paymentObject.open();
+
+    } catch (error: any) {
+      addToast(`Wallet recharge failed: ${error.response?.data?.error || error.message}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -378,8 +540,8 @@ const ConsultantPlans: React.FC = () => {
                   <span className="font-medium">{plan.chat}/month</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Platform Fee</span>
-                  <span className="font-medium">-{plan.reduction}%</span>
+                  <span className="text-gray-500">Effective Platform Fee</span>
+                  <span className="font-medium text-red-600">{BASE_PLATFORM_FEE - plan.reduction}%</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Badge</span>
@@ -432,13 +594,14 @@ const ConsultantPlans: React.FC = () => {
                 <p className="text-2xl font-semibold text-center mb-2">{pack.price}</p>
                 <p className="text-sm text-gray-600 text-center mb-4">{pack.validity}</p>
                 <button
+                  onClick={() => handleBuyCredits(pack.name)}
                   className={`w-full py-3 rounded-xl font-semibold transition ${
                     pack.popular
                       ? "bg-green-500 text-white hover:bg-green-600"
                       : "bg-gray-100 text-gray-800 hover:bg-gray-200"
                   }`}
                 >
-                  Buy
+                  Buy Now
                 </button>
               </div>
             ))}
@@ -478,97 +641,7 @@ const ConsultantPlans: React.FC = () => {
           </div>
         </div>
 
-        {/* Wallet Recharge Bonus Structure */}
-        <div className="mb-12">
-          <h2 className="text-2xl font-bold text-center mb-8">Wallet Recharge Bonus Structure</h2>
-          <div className="grid md:grid-cols-3 gap-6">
-            {walletRechargePlans.map((plan) => (
-              <div
-                key={plan.amount}
-                className={`relative p-6 rounded-2xl border-2 transition-all duration-300 hover:shadow-lg hover:scale-105 ${
-                  plan.color === "blue"
-                    ? "border-blue-200 bg-blue-50"
-                    : plan.color === "green"
-                    ? "border-green-200 bg-green-50"
-                    : "border-purple-200 bg-purple-50"
-                }`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                    <span className="bg-green-500 text-white text-xs px-3 py-1 rounded-full font-semibold">
-                      POPULAR
-                    </span>
-                  </div>
-                )}
-                <div className="text-center mb-4">
-                  <p className="text-4xl font-bold mb-1">₹{plan.amount}</p>
-                  <p className="text-2xl font-semibold">₹{plan.bonus}</p>
-                  <span
-                    className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold ${
-                      plan.color === "blue"
-                        ? "bg-blue-500 text-white"
-                        : plan.color === "green"
-                        ? "bg-green-500 text-white"
-                        : "bg-purple-500 text-white"
-                    }`}
-                  >
-                    {plan.percentage} Bonus
-                  </span>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center">
-                    <div
-                      className={`w-2 h-2 rounded-full mr-2 ${
-                        plan.color === "blue"
-                          ? "bg-blue-500"
-                          : plan.color === "green"
-                          ? "bg-green-500"
-                          : "bg-purple-500"
-                      }`}
-                    />
-                    <span>{plan.credits}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div
-                      className={`w-2 h-2 rounded-full mr-2 ${
-                        plan.color === "blue"
-                          ? "bg-blue-500"
-                          : plan.color === "green"
-                          ? "bg-green-500"
-                          : "bg-purple-500"
-                      }`}
-                    />
-                    <span>Usable only for platform fee</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div
-                      className={`w-2 h-2 rounded-full mr-2 ${
-                        plan.color === "blue"
-                          ? "bg-blue-500"
-                          : plan.color === "green"
-                          ? "bg-green-500"
-                          : "bg-purple-500"
-                      }`}
-                    />
-                    <span>Expires in 60 days</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div
-                      className={`w-2 h-2 rounded-full mr-2 ${
-                        plan.color === "blue"
-                          ? "bg-blue-500"
-                          : plan.color === "green"
-                          ? "bg-green-500"
-                          : "bg-purple-500"
-                      }`}
-                    />
-                    <span>Non-withdrawable</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+    
 
         {/* Important Terms */}
         <div className="bg-gray-50 rounded-2xl p-8">
@@ -703,19 +776,20 @@ const ConsultantPlans: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Platform Fee Reduction */}
+                {/* Platform Fee */}
                 <div className="bg-gray-50 rounded-xl p-6">
                   <div className="flex items-center mb-3">
                     <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center mr-3">
                       <Wallet className="w-5 h-5 text-red-600" />
                     </div>
-                    <h3 className="font-semibold text-gray-900">Platform Fee Reduction</h3>
+                    <h3 className="font-semibold text-gray-900">Platform Fee (% of Hourly Rate)</h3>
                   </div>
-                  <p className="text-2xl font-bold text-gray-900 mb-1">-{selectedPlan.reduction}%</p>
+                  <p className="text-2xl font-bold text-red-600 mb-1">{BASE_PLATFORM_FEE - selectedPlan.reduction}%</p>
                   <p className="text-sm text-gray-600">
-                    Final platform fee: {BASE_PLATFORM_FEE - selectedPlan.reduction}%
-                    {selectedPlan.reduction === 0 && " (Standard rate)"}
-                    {selectedPlan.reduction > 0 && " (Reduced rate)"}
+                    {selectedPlan.reduction === 0 && "Standard rate - no plan benefits"}
+                    {selectedPlan.reduction === 2 && "Reduced from base 20%"}
+                    {selectedPlan.reduction === 5 && "Reduced from base 20%"}
+                    {selectedPlan.reduction === 10 && "Reduced from base 20%"}
                   </p>
                 </div>
 
@@ -778,18 +852,20 @@ const ConsultantPlans: React.FC = () => {
 
               {/* Action Buttons */}
               <div className="flex gap-4">
-                <button
-                  onClick={handleSubscribe}
-                  disabled={loading}
-                  className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50"
-                >
-                  {loading ? "Processing..." : "Subscribe Now"}
-                </button>
+                {selectedPlan.name !== "Free" && (
+                  <button
+                    onClick={handleSubscribe}
+                    disabled={loading}
+                    className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+                  >
+                    {loading ? "Processing..." : "Subscribe Now"}
+                  </button>
+                )}
                 <button
                   onClick={() => setSelectedPlan(null)}
-                  className="px-6 py-3 border border-gray-300 rounded-xl font-semibold hover:bg-gray-50 transition"
+                  className={`${selectedPlan.name === "Free" ? "flex-1" : ""} px-6 py-3 border border-gray-300 rounded-xl font-semibold hover:bg-gray-50 transition`}
                 >
-                  Cancel
+                  {selectedPlan.name === "Free" ? "Close" : "Cancel"}
                 </button>
               </div>
             </div>
@@ -800,6 +876,10 @@ const ConsultantPlans: React.FC = () => {
         <PaymentSuccessModal
           isOpen={showPaymentSuccess}
           onClose={() => setShowPaymentSuccess(false)}
+          onViewDashboard={() => {
+            setShowPaymentSuccess(false);
+            navigate('/consultant/dashboard');
+          }}
           message={paymentSuccessMessage}
         />
       </div>

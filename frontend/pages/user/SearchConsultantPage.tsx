@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
-import Layout from "../../components/Layout";
-import { useNavigate } from "react-router-dom";
-import { consultants as consultantsApi } from "../../services/api";
-import { Consultant } from "../../types";
-import { Search, Loader, Star, X } from "lucide-react";
-import "../../styles/UserPopupModal.css";
+import React, { useState, useEffect, useMemo } from 'react';
+import Layout from '../../components/Layout';
+import { useNavigate } from 'react-router-dom';
+import { consultants as consultantsApi } from '../../services/api';
+import { Consultant } from '../../types';
+import { Search, Loader, Star, X } from 'lucide-react';
+import '../../styles/UserPopupModal.css';
 
 const weekdays = [
   "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"
@@ -28,16 +28,25 @@ const SearchConsultantPage: React.FC = () => {
     fetchConsultants();
   }, []);
 
+  // Update maxPrice when data loads
+  useEffect(() => {
+    if (consultantsData.length > 0) {
+      const prices = consultantsData.map(c => c.hourly_price || 0);
+      const limit = prices.length > 0 ? Math.max(...prices, 5000) : 5000;
+      setMaxPrice(limit);
+    }
+  }, [consultantsData]);
+
   const fetchConsultants = async () => {
     setLoading(true);
     try {
       const data = await consultantsApi.getAll();
-      console.log("API consultants:", data);
+      console.log('API consultants:', data);
 
       const normalized = data.map((c: any) => ({
         ...c,
         user: c.user || {
-          name: c.name || "Unknown",
+          name: c.name || 'Unknown',
           profile: { bio: c.bio || c.short_bio || c.description || null },
         },
       }));
@@ -52,26 +61,66 @@ const SearchConsultantPage: React.FC = () => {
 
   /* ------------ DYNAMIC DOMAIN LIST ------------ */
   const domains = useMemo(() => {
-    return [...new Set(consultantsData.map((c) => c.domain).filter(Boolean))];
+    const result = [...new Set(consultantsData.map(c => c.domain).filter(Boolean))].sort();
+    console.log('Dynamic domains:', result);
+    return result;
   }, [consultantsData]);
 
-  /* ------------ DYNAMIC LANGUAGE LIST ------------ */
   const languagesList = useMemo(() => {
-    const dynamic = [
-      ...new Set(
-        consultantsData
-          .flatMap((c) =>
-            Array.isArray(c.languages)
-              ? c.languages
-              : (c.languages?.split(",") || [])
-          )
-          .map((l) => l.trim())
-          .filter(Boolean)
-      ),
-    ];
+    const allLanguages = new Set<string>();
+    
+    consultantsData.forEach(c => {
+      // Languages are stored in user.profile.languages
+      const profileLangs = c.user?.profile?.languages;
+      const langs = Array.isArray(profileLangs)
+        ? profileLangs
+        : (profileLangs?.split(',') || []);
+      
+      langs.forEach(l => {
+        const trimmed = l.trim();
+        if (trimmed) allLanguages.add(trimmed);
+      });
+    });
 
-    return ["English", "Kannada", ...dynamic];
+    // Convert to array and sort, with English and Kannada prioritized
+    const langArray = Array.from(allLanguages);
+    const priority = ['English', 'Kannada'];
+    const priorityLangs = priority.filter(p => langArray.includes(p));
+    const otherLangs = langArray.filter(l => !priority.includes(l)).sort();
+    
+    const result = [...priorityLangs, ...otherLangs];
+    console.log('Dynamic languages:', result);
+    return result;
   }, [consultantsData]);
+
+  const maxPriceLimit = useMemo(() => {
+    const prices = consultantsData.map(c => c.hourly_price || 0);
+    const limit = prices.length > 0 ? Math.max(...prices, 5000) : 5000;
+    console.log('Dynamic max price:', limit);
+    return limit;
+  }, [consultantsData]);
+
+  const availableDays = useMemo(() => {
+    const days = new Set<string>();
+    consultantsData.forEach(c => {
+      const availability = c.user?.profile?.availability || c.availability;
+      if (availability) {
+        weekdays.forEach(day => {
+          if (availability.includes(day)) {
+            days.add(day);
+          }
+        });
+      }
+    });
+    // If no availability data, show all weekdays
+    const result = days.size > 0 ? Array.from(days) : weekdays;
+    console.log('Dynamic available days:', result);
+    return result;
+  }, [consultantsData]);
+
+  /* ---------------- Filtering Logic ---------------- */
+
+  const filteredConsultants = consultantsData.filter(c => {
 
   /* ------------ FILTER LOGIC ------------ */
   const filteredConsultants = consultantsData.filter((c) => {
@@ -83,50 +132,61 @@ const SearchConsultantPage: React.FC = () => {
 
     const matchesDomain =
       selectedDomains.length === 0 ||
-      selectedDomains.includes(c.domain);
+      (c.domain && selectedDomains.includes(c.domain));
 
-    const matchesPrice = (c.hourly_price ?? 0) <= maxPrice;
+    const matchesPrice =
+      (c.hourly_price ?? 0) <= maxPrice;
 
     const matchesLanguage =
       selectedLanguages.length === 0 ||
-      selectedLanguages.some((lang) =>
-        (Array.isArray(c.languages)
-          ? c.languages
-          : (c.languages?.split(",") || [])
-        )
-          .map((l) => l.trim())
-          .includes(lang)
-      );
+      selectedLanguages.some(lang => {
+        // Languages are stored in user.profile.languages
+        const profileLangs = c.user?.profile?.languages;
+        const consultantLangs = Array.isArray(profileLangs)
+          ? profileLangs
+          : (profileLangs?.split(',') || []);
+        return consultantLangs.map(l => l.trim()).includes(lang);
+      });
 
     const matchesAvailability =
       selectedDays.length === 0 ||
-      selectedDays.some((day) => c.availability?.includes(day));
+      selectedDays.some(day => {
+        const availability = c.user?.profile?.availability || c.availability;
+        return availability?.includes(day);
+      });
 
-    return (
-      matchesQuery &&
-      matchesDomain &&
-      matchesPrice &&
-      matchesLanguage &&
-      matchesAvailability
-    );
+    const matches = matchesQuery && matchesDomain && matchesPrice && matchesLanguage && matchesAvailability;
+    
+    // Debug logging (can be removed in production)
+    if (!matches && query) {
+      console.log(`Consultant ${c.name} filtered out:`, {
+        matchesQuery,
+        matchesDomain,
+        matchesPrice,
+        matchesLanguage,
+        matchesAvailability
+      });
+    }
+
+    return matches;
   });
 
   /* ------------ CLEAR FILTERS ------------ */
   const clearFilters = () => {
     setSelectedDomains([]);
     setSelectedLanguages([]);
-    setMaxPrice(5000);
+    setMaxPrice(maxPriceLimit);
     setSelectedDays([]);
   };
 
   /* ------------ REMOVE INDIVIDUAL FILTER TAG ------------ */
   const removeTag = (type: string, value: string) => {
-    if (type === "domain")
-      setSelectedDomains(selectedDomains.filter((d) => d !== value));
-    if (type === "language")
-      setSelectedLanguages(selectedLanguages.filter((l) => l !== value));
-    if (type === "day")
-      setSelectedDays(selectedDays.filter((d) => d !== value));
+    if (type === 'domain')
+      setSelectedDomains(selectedDomains.filter(d => d !== value));
+    if (type === 'language')
+      setSelectedLanguages(selectedLanguages.filter(l => l !== value));
+    if (type === 'day')
+      setSelectedDays(selectedDays.filter(d => d !== value));
   };
 
   return (
@@ -141,7 +201,7 @@ const SearchConsultantPage: React.FC = () => {
               <input
                 type="text"
                 placeholder="Search by name or domain..."
-                className="w-full bg-gray-50 rounded-2xl pl-12 pr-4 py-4 border focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-gray-50 rounded-2xl pl-12 pr-4 py-4 border focus:ring-2 focus:ring-blue-500 outline-none"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
@@ -149,9 +209,14 @@ const SearchConsultantPage: React.FC = () => {
 
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-semibold hover:bg-blue-700 transition shadow"
+              className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-semibold hover:bg-blue-700 transition shadow flex items-center gap-2"
             >
-              {showFilters ? "Hide Filters" : "Filters"}
+              {showFilters ? 'Hide Filters' : 'Filters'}
+              {(selectedDomains.length + selectedLanguages.length + selectedDays.length) > 0 && (
+                <span className="bg-white text-blue-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                  {selectedDomains.length + selectedLanguages.length + selectedDays.length}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -165,29 +230,36 @@ const SearchConsultantPage: React.FC = () => {
             {selectedDomains.map((d) => (
               <span key={d} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
                 {d}
-                <X size={14} className="cursor-pointer" onClick={() => removeTag("domain", d)} />
+                <X size={14} className="cursor-pointer hover:text-blue-900" onClick={() => removeTag('domain', d)} />
               </span>
             ))}
 
             {selectedLanguages.map((l) => (
               <span key={l} className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
                 {l}
-                <X size={14} className="cursor-pointer" onClick={() => removeTag("language", l)} />
+                <X size={14} className="cursor-pointer hover:text-green-900" onClick={() => removeTag('language', l)} />
               </span>
             ))}
 
             {selectedDays.map((d) => (
               <span key={d} className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
                 {d}
-                <X size={14} className="cursor-pointer" onClick={() => removeTag("day", d)} />
+                <X size={14} className="cursor-pointer hover:text-purple-900" onClick={() => removeTag('day', d)} />
               </span>
             ))}
+
+            <button
+              onClick={clearFilters}
+              className="text-sm text-red-600 font-semibold hover:underline"
+            >
+              Clear All
+            </button>
           </div>
         )}
 
         {/* HORIZONTAL FILTER PANEL */}
         {showFilters && (
-          <div className="bg-white rounded-3xl p-6 border shadow-md animate-fadeIn">
+          <div className="bg-white rounded-3xl p-6 border shadow-md">
 
             <div className="flex flex-wrap gap-10">
 
@@ -195,21 +267,25 @@ const SearchConsultantPage: React.FC = () => {
               <div>
                 <h3 className="font-semibold mb-3">Domain</h3>
                 <div className="flex flex-wrap gap-3">
-                  {domains.map((d) => (
-                    <label key={d} className="flex items-center text-sm">
-                      <input
-                        type="checkbox"
-                        checked={selectedDomains.includes(d)}
-                        onChange={() =>
-                          selectedDomains.includes(d)
-                            ? setSelectedDomains(selectedDomains.filter((x) => x !== d))
-                            : setSelectedDomains([...selectedDomains, d])
-                        }
-                        className="mr-2 accent-blue-600"
-                      />
-                      {d}
-                    </label>
-                  ))}
+                  {domains.length === 0 ? (
+                    <p className="text-sm text-gray-400">No domains available</p>
+                  ) : (
+                    domains.map((d) => (
+                      <label key={d} className="flex items-center text-sm cursor-pointer hover:text-blue-600 transition">
+                        <input
+                          type="checkbox"
+                          checked={selectedDomains.includes(d)}
+                          onChange={() =>
+                            selectedDomains.includes(d)
+                              ? setSelectedDomains(selectedDomains.filter((x) => x !== d))
+                              : setSelectedDomains([...selectedDomains, d])
+                          }
+                          className="mr-2 accent-blue-600"
+                        />
+                        <span className="font-medium">{d}</span>
+                      </label>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -217,44 +293,72 @@ const SearchConsultantPage: React.FC = () => {
               <div>
                 <h3 className="font-semibold mb-3">Language</h3>
                 <div className="flex flex-wrap gap-3">
-                  {languagesList.map((l) => (
-                    <label key={l} className="flex items-center text-sm">
-                      <input
-                        type="checkbox"
-                        checked={selectedLanguages.includes(l)}
-                        onChange={() =>
-                          selectedLanguages.includes(l)
-                            ? setSelectedLanguages(selectedLanguages.filter((x) => x !== l))
-                            : setSelectedLanguages([...selectedLanguages, l])
-                        }
-                        className="mr-2 accent-blue-600"
-                      />
-                      {l}
-                    </label>
-                  ))}
+                  {languagesList.length === 0 ? (
+                    <p className="text-sm text-gray-400">No languages available</p>
+                  ) : (
+                    languagesList.map((l) => (
+                      <label key={l} className="flex items-center text-sm cursor-pointer hover:text-green-600 transition">
+                        <input
+                          type="checkbox"
+                          checked={selectedLanguages.includes(l)}
+                          onChange={() =>
+                            selectedLanguages.includes(l)
+                              ? setSelectedLanguages(selectedLanguages.filter((x) => x !== l))
+                              : setSelectedLanguages([...selectedLanguages, l])
+                          }
+                          className="mr-2 accent-green-600"
+                        />
+                        <span className="font-medium">{l}</span>
+                      </label>
+                    ))
+                  )}
                 </div>
               </div>
 
               {/* PRICE */}
               <div>
-                <h3 className="font-semibold mb-3">Max Price: ₹{maxPrice}</h3>
+                <h3 className="font-semibold mb-2">Price Range</h3>
+                <div className="text-sm text-gray-600 mb-1">
+                  Up to <span className="font-bold text-blue-600">₹{maxPrice}</span> / session
+                </div>
                 <input
                   type="range"
                   min={0}
-                  max={5000}
+                  max={maxPriceLimit}
                   step={100}
                   value={maxPrice}
                   onChange={(e) => setMaxPrice(Number(e.target.value))}
                   className="w-48 accent-blue-600"
                 />
+                <div className="text-xs text-gray-400 mt-1 flex justify-between w-48">
+                  <span>₹0</span>
+                  <span>₹{maxPriceLimit}</span>
+                </div>
               </div>
 
               {/* AVAILABILITY */}
               <div>
-                <h3 className="font-semibold mb-3">Availability</h3>
+                <h3 className="font-semibold mb-3">Available Days</h3>
+                <div className="mb-3">
+                  <label className="flex items-center text-sm font-semibold cursor-pointer hover:text-purple-600 transition">
+                    <input
+                      type="checkbox"
+                      checked={selectedDays.length === availableDays.length}
+                      onChange={() => {
+                        if (selectedDays.length === availableDays.length) {
+                          setSelectedDays([]);
+                        } else {
+                          setSelectedDays([...availableDays]);
+                        }
+                      }}
+                      className="mr-2 accent-purple-600"
+                    />
+                    <span className="font-bold text-purple-600">All Days</span>
+                  </label>
+                </div>
                 <div className="flex flex-wrap gap-3">
-                  {weekdays.map((day) => (
-                    <label key={day} className="flex items-center text-sm">
+                  {availableDays.map((day) => (
+                    <label key={day} className="flex items-center text-sm cursor-pointer hover:text-purple-600 transition">
                       <input
                         type="checkbox"
                         checked={selectedDays.includes(day)}
@@ -263,22 +367,14 @@ const SearchConsultantPage: React.FC = () => {
                             ? setSelectedDays(selectedDays.filter((x) => x !== day))
                             : setSelectedDays([...selectedDays, day])
                         }
-                        className="mr-2 accent-blue-600"
+                        className="mr-2 accent-purple-600"
                       />
-                      {day}
+                      <span className="font-medium">{day}</span>
                     </label>
                   ))}
                 </div>
               </div>
             </div>
-
-            {/* CLEAR FILTERS */}
-            <button
-              onClick={clearFilters}
-              className="mt-6 text-sm text-blue-600 font-semibold hover:underline"
-            >
-              Clear All Filters
-            </button>
           </div>
         )}
 
@@ -303,7 +399,7 @@ const SearchConsultantPage: React.FC = () => {
                 className="bg-white rounded-3xl border shadow-md hover:shadow-xl transition p-6 text-center"
               >
                 <img
-                  src={c.profile_pic || c.image}
+                  src={c.profile_pic || c.image || 'https://via.placeholder.com/150'}
                   alt={c.name}
                   className="w-24 h-24 rounded-full mx-auto mb-4 object-cover"
                 />
@@ -311,25 +407,30 @@ const SearchConsultantPage: React.FC = () => {
                 <h3 className="text-lg font-bold">{c.user?.name || c.name}</h3>
                 <p className="text-blue-600 text-sm">{c.domain}</p>
 
-                <p className="text-gray-600 text-sm mt-2 line-clamp-2">
-                  {c.user?.profile?.bio || "No bio available"}
-                </p>
-
                 <p className="text-sm text-gray-500 mt-2 flex justify-center items-center gap-1">
-                  <Star size={14} className="text-yellow-500" />
-                  {c.rating ?? 5} • {c.languages}
+                  <Star size={14} className="text-yellow-500 fill-yellow-500" />
+                  {c.rating ?? 5} • {Array.isArray(c.user?.profile?.languages) 
+                    ? c.user.profile.languages.join(', ') 
+                    : c.user?.profile?.languages || 'Not specified'}
                 </p>
 
                 <p className="text-xl font-bold mt-3">₹{c.hourly_price} / session</p>
 
                 <button
                   onClick={() => navigate(`/user/consultant/${c.id}`)}
-                  className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-xl hover:bg-blue-700"
+                  className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-xl hover:bg-blue-700 transition"
                 >
                   View Details
                 </button>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ERROR STATE */}
+        {error && (
+          <div className="text-center py-20 text-red-600">
+            <p>{error}</p>
           </div>
         )}
       </div>

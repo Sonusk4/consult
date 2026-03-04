@@ -59,9 +59,13 @@ export interface Consultant {
   profile_pic?: string | null;
   rating: number;
   total_reviews: number;
-  availability?: any;
+  availability?: string | null;
   linkedin_url?: string | null;
   website_url?: string | null;
+  // New mandatory fields
+  designation?: string | null;
+  years_experience?: number | null;
+  education?: string | null;
   user?: {
     email: string;
     name?: string;

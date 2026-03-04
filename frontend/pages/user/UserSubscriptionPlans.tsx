@@ -25,10 +25,33 @@ export default function UserSubscriptionPlans() {
   const [selectedPlan, setSelectedPlan] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
   const [buyingCredit, setBuyingCredit] = React.useState<string | null>(null);
+  const [currentSubscription, setCurrentSubscription] = React.useState<any>(null);
   const { showPaymentSuccess, showPaymentError, showPaymentInfo, popup, hidePaymentPopup } = usePaymentPopup();
+
+  // Fetch current subscription on component mount
+  React.useEffect(() => {
+    const fetchCurrentSubscription = async () => {
+      try {
+        const response = await subscriptions.getSubscriptionStatus();
+        setCurrentSubscription(response);
+        console.log('📋 Current subscription:', response);
+      } catch (error) {
+        console.log('No active subscription');
+      }
+    };
+    fetchCurrentSubscription();
+  }, []);
 
   const handleSubscribe = async () => {
     if (!selectedPlan) return;
+    
+    // Prevent subscription for Free plan
+    if (selectedPlan.name === 'Free') {
+      showPaymentInfo('Free Plan', 'You are already on the Free plan. No payment required!');
+      setSelectedPlan(null);
+      return;
+    }
+    
     setLoading(true);
     try {
       const res = await loadRazorpayScript();
@@ -104,6 +127,7 @@ export default function UserSubscriptionPlans() {
       }
 
       const orderData = await chatCredits.createOrder(packName);
+      console.log('📦 Order created:', orderData);
 
       let userName = "User";
       let userEmail = "user@example.com";
@@ -115,11 +139,11 @@ export default function UserSubscriptionPlans() {
 
       const options = {
         key: orderData.key_id,
-        amount: orderData.amount * 100, // paise
+        amount: orderData.order.amount, // Use amount from order object
         currency: "INR",
         name: "ConsultPro",
         description: `Purchase ${packName} `,
-        order_id: orderData.order.id,
+        order_id: orderData.order.id, // Correct path to order ID
         handler: async function (response: any) {
           try {
             setBuyingCredit("verifying");
@@ -130,6 +154,8 @@ export default function UserSubscriptionPlans() {
               packName: packName,
             });
             showPaymentSuccess('Payment Successful!', 'Your limits have been bumped and you are ready to chat!');
+            // Refresh to update dashboard metrics
+            setTimeout(() => window.location.reload(), 2000);
           } catch (err: any) {
             showPaymentError('Verification Failed', err.message);
           } finally {
@@ -270,6 +296,33 @@ export default function UserSubscriptionPlans() {
   return (
     <Layout title="Subscription Plans">
 
+      {/* ========= CURRENT SUBSCRIPTION BANNER ========= */}
+      {currentSubscription && (
+        <div className="max-w-7xl mx-auto p-6 mb-8">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-8 text-white shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-100 text-sm font-semibold uppercase tracking-wider mb-1">Current Active Plan</p>
+                <h2 className="text-4xl font-bold mb-2">{currentSubscription.plan_name || 'Free'}</h2>
+                <div className="flex items-center gap-3 text-blue-100">
+                  <Crown size={18} />
+                  <span>Enjoy all benefits of your current tier including booking discounts & wallet bonuses</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-5xl font-bold mb-2">
+                  {currentSubscription.plan_name === 'Free' || !currentSubscription.plan_name ? '0%' : 
+                    currentSubscription.plan_name === 'Starter' ? '10%' :
+                    currentSubscription.plan_name === 'Professional' ? '15%' :
+                    currentSubscription.plan_name === 'Premium' ? '20%' : '25%'} OFF
+                </div>
+                <p className="text-blue-100 font-semibold">On All Bookings</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ========= SIMPLE CARDS VIEW ========= */}
       <div className="max-w-7xl mx-auto p-6">
         <div className="text-center mb-16">
@@ -330,6 +383,20 @@ export default function UserSubscriptionPlans() {
         <div className="text-center mb-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Wallet Recharge Bonus Structure</h2>
           <p className="text-lg text-gray-600">Get bonus credits when you recharge your wallet</p>
+          
+          {/* Subscription Tier Bonus Info */}
+          <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 inline-block border border-blue-100 max-w-2xl">
+            <p className="text-sm text-gray-700">
+              <span className="font-semibold text-blue-700">💡 Tip:</span> Your bonus percentage increases with your subscription plan!
+            </p>
+            <div className="mt-4 grid grid-cols-5 gap-2 text-xs">
+              <div className="bg-white rounded p-2 font-semibold">Free<br/>2%</div>
+              <div className="bg-white rounded p-2 font-semibold text-blue-700">Starter<br/>2%+</div>
+              <div className="bg-white rounded p-2 font-semibold text-green-700">Growth<br/>5%</div>
+              <div className="bg-white rounded p-2 font-semibold text-purple-700">Premium<br/>7%</div>
+              <div className="bg-white rounded p-2 font-semibold text-yellow-700">Enterprise<br/>10%</div>
+            </div>
+          </div>
         </div>
 
         <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
@@ -471,7 +538,8 @@ export default function UserSubscriptionPlans() {
               <h3 className="text-xl font-bold text-gray-900 mb-2">Mini Pack</h3>
               <div className="text-3xl font-bold text-blue-600 mb-2">10</div>
               <div className="text-gray-600 mb-1">messages</div>
-              <div className="text-lg font-semibold text-gray-800">TBD</div>
+              <div className="text-2xl font-bold text-gray-900 mb-1">₹49</div>
+              <div className="text-sm text-gray-500">₹4.90 per message</div>
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex items-center text-gray-700">
@@ -496,7 +564,8 @@ export default function UserSubscriptionPlans() {
               <h3 className="text-xl font-bold text-gray-900 mb-2">Starter Pack</h3>
               <div className="text-3xl font-bold text-green-600 mb-2">25</div>
               <div className="text-gray-600 mb-1">messages</div>
-              <div className="text-lg font-semibold text-gray-800">TBD</div>
+              <div className="text-2xl font-bold text-gray-900 mb-1">₹99</div>
+              <div className="text-sm text-gray-500">₹3.96 per message</div>
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex items-center text-gray-700">
@@ -518,7 +587,8 @@ export default function UserSubscriptionPlans() {
               <h3 className="text-xl font-bold text-gray-900 mb-2">Pro Pack</h3>
               <div className="text-3xl font-bold text-purple-600 mb-2">60</div>
               <div className="text-gray-600 mb-1">messages</div>
-              <div className="text-lg font-semibold text-gray-800">TBD</div>
+              <div className="text-2xl font-bold text-gray-900 mb-1">₹199</div>
+              <div className="text-sm text-gray-500">₹3.32 per message</div>
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex items-center text-gray-700">
@@ -647,24 +717,21 @@ export default function UserSubscriptionPlans() {
     Close
   </button>
 
-  {/* Hide Choose button for Free plan */}
-  {selectedPlan.name !== "Free" && (
-    <button
-      disabled={loading}
-      onClick={handleSubscribe}
-      className="px-6 py-2 rounded-lg bg-blue-600 text-white 
-                 hover:bg-blue-700 transition text-sm font-semibold 
-                 shadow-md disabled:opacity-50"
-    >
-      {loading
-        ? "Processing..."
-        : selectedPlan.name === "Enterprise"
-        ? "Contact Sales"
-        : `Choose ${selectedPlan.name}`}
-    </button>
-  )}
-
-</div>
+        {selectedPlan.name !== 'Free' && (
+          <button
+            disabled={loading}
+            onClick={handleSubscribe}
+            className="px-6 py-2 rounded-lg bg-blue-600 text-white 
+                       hover:bg-blue-700 transition text-sm font-semibold 
+                       shadow-md disabled:opacity-50"
+          >
+            {loading
+              ? "Processing..."
+              : selectedPlan.name === "Enterprise"
+              ? "Contact Sales"
+              : `Choose ${selectedPlan.name}`}
+          </button>
+        )}
 
       </div>
     </div>

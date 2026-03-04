@@ -7,6 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ConsultantDomain {
+  Legal
+  Engineering
+  Doctor
+  Finance
+  Technology
+  Education
+  Marketing
+}
+
 model User {
   id                        Int             @id @default(autoincrement())
   firebase_uid              String          @unique
@@ -28,6 +38,15 @@ model User {
   password_changed          Boolean         @default(false)
   created_at                DateTime        @default(now())
   updated_at                DateTime?       @updatedAt
+  
+  // Subscription Fields
+  currentPlan               String?         // Current subscription plan name
+  subscriptionStatus        String?         // Active, Expired, Cancelled
+  subscriptionStartDate     DateTime?       // When subscription started
+  subscriptionEndDate       DateTime?       // When subscription ends
+  planFeatures             Json?           // Store plan features as JSON
+  paymentId               String?          // Payment ID for the subscription
+  
   bookings                  Booking[]
   consultant                Consultant?
   enterpriseId              Int?
@@ -40,6 +59,7 @@ model User {
   transactions              Transaction[]
   profile                   UserProfile?
   wallet                    Wallet?
+  subscriptions             Subscription[]
   enterpriseBookings        Booking[] @relation("EnterpriseMemberBookings")
 }
 
@@ -79,7 +99,7 @@ model Consultant {
   id             Int             @id @default(autoincrement())
   userId         Int             @unique
   type           String?
-  domain         String?
+  domain         ConsultantDomain?
   profile_pic    String?
   hourly_price   Float?
   rating         Float           @default(0)
@@ -112,6 +132,19 @@ model Consultant {
   // Social & Web Links
   linkedin_url        String?
   website_url         String?
+
+  // Subscription Fields
+  currentPlan               String?         // Current subscription plan name
+  subscriptionStatus        String?         // Active, Expired, Cancelled
+  subscriptionStartDate     DateTime?       // When subscription started
+  subscriptionEndDate       DateTime?       // When subscription ends
+  planFeatures             Json?           // Store plan features as JSON
+  paymentId               String?          // Payment ID for the subscription
+
+  // Chat Message Tracking (for subscription limits)
+  chat_messages_used       Int       @default(0)
+  purchased_chat_credits   Int       @default(0)
+  last_limit_reset         DateTime  @default(now())
 
   availabilitySlots Availability[]
   bookings       Booking[]
@@ -326,6 +359,24 @@ model ConsultantPayout {
   created_at   DateTime   @default(now())
   updated_at   DateTime   @updatedAt
   consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  planName    String
+  price       Float
+  features    Json     // Store plan features as JSON
+  startDate   DateTime @default(now())
+  endDate     DateTime
+  status      String   @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED
+  paymentId   String?  // Razorpay payment ID
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, status]) // Only one active subscription per user
 }
 
 model GlobalSettings {

@@ -92,7 +92,7 @@ const App: React.FC = () => {
         sessionDuration: 3600000, // 1 hour in milliseconds
       };
 
-      localStorage.setItem("user", JSON.stringify(sessionData));
+      sessionStorage.setItem("user", JSON.stringify(sessionData));
       console.log("✅ User session stored:", userData.email);
       return userData;
     } finally {
@@ -103,14 +103,14 @@ const App: React.FC = () => {
   /* ================= LOGOUT ================= */
   const logout = () => {
     setUser(null);
-    localStorage.removeItem("user");
-    localStorage.removeItem("devToken"); // Clear dev JWT token
+    sessionStorage.removeItem("user");
+    sessionStorage.removeItem("devToken"); // Clear dev JWT token
   };
 
   /* ================= RESTORE SESSION ================= */
   useEffect(() => {
     try {
-      const storedUserStr = localStorage.getItem("user");
+      const storedUserStr = sessionStorage.getItem("user");
       if (storedUserStr) {
         const storedSession = JSON.parse(storedUserStr);
 
@@ -127,14 +127,14 @@ const App: React.FC = () => {
         } else {
           // Session has expired
           console.log("⏰ Session expired, clearing stored user");
-          localStorage.removeItem("user");
-          localStorage.removeItem("devToken");
+          sessionStorage.removeItem("user");
+          sessionStorage.removeItem("devToken");
         }
       }
     } catch (error) {
       console.error("Error restoring session:", error);
-      localStorage.removeItem("user");
-      localStorage.removeItem("devToken");
+      sessionStorage.removeItem("user");
+      sessionStorage.removeItem("devToken");
     } finally {
       setLoading(false);
     }
