@@ -39,7 +39,7 @@ api.interceptors.response.use(
         message.includes("Cannot read properties of null"));
 
     if (!isAuthEndpoint && (error.response?.status === 401 || isUserNotFound)) {
-      console.warn("⚠️ Stale session detected — clearing tokens and redirecting to login");
+      console.warn(" Stale session detected — clearing tokens and redirecting to login");
       sessionStorage.removeItem("user");
       sessionStorage.removeItem("devToken");
       sessionStorage.clear();

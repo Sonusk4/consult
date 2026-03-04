@@ -116,15 +116,28 @@ const UserDashboard: React.FC = () => {
   const profileCompletion = useMemo(() => {
     if (!user) return 0;
 
+    // Debug: Log user data to understand what's available
+    console.log('User data for profile completion:', user);
+
     const fields = [
       user.name,
       user.email,
       user.phone,
-      user.profile_pic,
+      user.profile_pic || user.avatar || user.profile_photo,
     ];
 
     const filled = fields.filter(Boolean).length;
-    return Math.round((filled / fields.length) * 100);
+    const completion = Math.round((filled / fields.length) * 100);
+    
+    // Debug: Log completion calculation
+    console.log('Profile completion calculation:', {
+      fields: fields.map(f => Boolean(f)),
+      filled,
+      total: fields.length,
+      completion
+    });
+
+    return completion;
   }, [user]);
 
   if (loading) {
@@ -143,109 +156,142 @@ const UserDashboard: React.FC = () => {
 
         {/* ================= LIVE SESSION ================= */}
         {liveSession && (
-          <div className="bg-gradient-to-r from-red-600 to-pink-600 text-white p-8 rounded-3xl flex justify-between items-center shadow-lg">
+          <div className="bg-gradient-to-r from-red-600 via-pink-600 to-purple-600 text-white p-8 rounded-3xl flex justify-between items-center shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.02]">
             <div>
-              <p className="text-xs font-semibold bg-white/20 px-3 py-1 rounded-full mb-2 inline-block">
-                LIVE
-              </p>
-              <h2 className="text-2xl font-bold">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                <p className="text-xs font-bold bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm">
+                  LIVE SESSION
+                </p>
+              </div>
+              <h2 className="text-3xl font-bold mb-2">
                 {liveSession.consultant?.user?.email}
               </h2>
-              <p className="text-sm opacity-90">
+              <p className="text-sm opacity-90 flex items-center gap-2">
+                <div className="w-2 h-2 bg-white/60 rounded-full"></div>
                 {liveSession.consultant?.domain}
               </p>
             </div>
-            <button className="bg-white text-red-600 px-6 py-2 rounded-xl font-semibold">
+            <button className="bg-white text-red-600 px-8 py-3 rounded-xl font-bold hover:bg-red-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105">
               Join Now →
             </button>
           </div>
         )}
 
         {/* ================= WELCOME ================= */}
-        {/* ================= WELCOME ================= */}
-        <div className="bg-white p-10 rounded-3xl shadow-sm border flex justify-between items-center">
-
-          <div>
-            <h1 className="text-4xl font-bold mb-4">
-              {greeting}, {user?.name || user?.email?.split("@")[0]} 👋
-            </h1>
-
-            <p className="text-gray-500">
-              You have {upcomingSessions.length} upcoming session(s).
+        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white p-10 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 flex justify-between items-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/10 rounded-full blur-2xl"></div>
+          
+          <div className="relative z-10">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                <span className="text-2xl">👋</span>
+              </div>
+              <h1 className="text-4xl font-bold">
+                {greeting}, {user?.name || user?.email?.split("@")[0]}!
+              </h1>
+            </div>
+            <p className="text-blue-100 text-lg flex items-center gap-2">
+              <Calendar className="w-5 h-5" />
+              You have {upcomingSessions.length} upcoming session{upcomingSessions.length !== 1 ? 's' : ''}
             </p>
           </div>
 
           <button
             onClick={() => navigate("/user/search")}
-            className="bg-blue-600 text-white px-8 py-3 rounded-xl font-semibold hover:bg-blue-700 transition shadow-md"
+            className="bg-white text-blue-600 px-8 py-3 rounded-xl font-bold hover:bg-blue-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 relative z-10"
           >
             Book Session
           </button>
-
         </div>
-
 
         {/* ================= PROFILE COMPLETION ================= */}
         <div
           onClick={() => navigate("/user/profile")}
-          className="bg-white p-6 rounded-3xl shadow-sm border cursor-pointer hover:shadow-md transition"
+          className="bg-gradient-to-r from-green-50 to-emerald-50 p-6 rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer border border-green-100 hover:border-green-200 transform hover:scale-[1.01]"
         >
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="font-bold">Profile Completion</h3>
-            <span className="text-blue-600 font-semibold text-sm">
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center">
+                <Star className="w-4 h-4 text-white" />
+              </div>
+              <h3 className="font-bold text-gray-800">Profile Completion</h3>
+            </div>
+            <span className="text-green-600 font-bold text-sm bg-green-100 px-3 py-1 rounded-full">
               Edit →
             </span>
           </div>
 
-          <div className="w-full bg-gray-200 rounded-full h-3 mb-3">
+          <div className="w-full bg-green-200 rounded-full h-4 mb-3 overflow-hidden">
             <div
-              className="bg-blue-600 h-3 rounded-full transition-all"
+              className="bg-gradient-to-r from-green-500 to-emerald-500 h-4 rounded-full transition-all duration-500 shadow-sm"
               style={{ width: `${profileCompletion}%` }}
             />
           </div>
 
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 font-medium">
             {profileCompletion}% completed
+            {profileCompletion < 100 && (
+              <span className="text-orange-500 ml-2">
+                • {100 - profileCompletion}% to go!
+              </span>
+            )}
           </p>
         </div>
 
         {/* ================= QUICK ACTIONS ================= */}
         <div>
-          <h2 className="text-2xl font-bold mb-6">
-            Quick Actions
-          </h2>
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+              <Activity className="w-4 h-4 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800">Quick Actions</h2>
+          </div>
 
           <div className="grid md:grid-cols-4 gap-6">
             <button
               onClick={() => navigate("/user/search")}
-              className="bg-white p-6 rounded-3xl border shadow-sm hover:shadow-md"
+              className="group bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-3xl border border-blue-100 hover:border-blue-200 hover:shadow-lg transition-all duration-300 transform hover:scale-105 hover:from-blue-100 hover:to-indigo-100"
             >
-              <Video className="mb-3 text-blue-600" />
-              Find Consultant
+              <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-3 group-hover:shadow-lg transition-all">
+                <Video className="w-6 h-6 text-white" />
+              </div>
+              <p className="font-semibold text-gray-800">Find Consultant</p>
+              <p className="text-xs text-gray-500 mt-1">Browse experts</p>
             </button>
 
             <button
               onClick={() => navigate("/user/messages")}
-              className="bg-white p-6 rounded-3xl border shadow-sm hover:shadow-md"
+              className="group bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-3xl border border-green-100 hover:border-green-200 hover:shadow-lg transition-all duration-300 transform hover:scale-105 hover:from-green-100 hover:to-emerald-100"
             >
-              <MessageCircle className="mb-3 text-green-600" />
-              Continue Chat
+              <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-600 rounded-xl flex items-center justify-center mb-3 group-hover:shadow-lg transition-all">
+                <MessageCircle className="w-6 h-6 text-white" />
+              </div>
+              <p className="font-semibold text-gray-800">Continue Chat</p>
+              <p className="text-xs text-gray-500 mt-1">Active conversations</p>
             </button>
 
             <button
               onClick={() => navigate("/user/subscription-plans")}
-              className="bg-white p-6 rounded-3xl border shadow-sm hover:shadow-md"
+              className="group bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-3xl border border-purple-100 hover:border-purple-200 hover:shadow-lg transition-all duration-300 transform hover:scale-105 hover:from-purple-100 hover:to-pink-100"
             >
-              <Wallet className="mb-3 text-purple-600" />
-              Buy Credits
+              <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl flex items-center justify-center mb-3 group-hover:shadow-lg transition-all">
+                <Wallet className="w-6 h-6 text-white" />
+              </div>
+              <p className="font-semibold text-gray-800">Buy Credits</p>
+              <p className="text-xs text-gray-500 mt-1">Add balance</p>
             </button>
 
             <button
               onClick={() => navigate("/user/bookings")}
-              className="bg-white p-6 rounded-3xl border shadow-sm hover:shadow-md"
+              className="group bg-gradient-to-br from-yellow-50 to-orange-50 p-6 rounded-3xl border border-yellow-100 hover:border-yellow-200 hover:shadow-lg transition-all duration-300 transform hover:scale-105 hover:from-yellow-100 hover:to-orange-100"
             >
-              <Calendar className="mb-3 text-yellow-500" />
-              View Bookings
+              <div className="w-12 h-12 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center mb-3 group-hover:shadow-lg transition-all">
+                <Calendar className="w-6 h-6 text-white" />
+              </div>
+              <p className="font-semibold text-gray-800">View Bookings</p>
+              <p className="text-xs text-gray-500 mt-1">Your sessions</p>
             </button>
           </div>
         </div>

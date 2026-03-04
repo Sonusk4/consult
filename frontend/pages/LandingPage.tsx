@@ -30,7 +30,7 @@ const PerfectLandingPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-8">
               <Link to="/" className="text-2xl font-bold text-gray-900">
-                ConsultaPro
+                
               </Link>
               <div className="hidden md:flex items-center space-x-6">
                 <button 
@@ -53,18 +53,27 @@ const PerfectLandingPage: React.FC = () => {
                 </button>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
               <Link 
                 to="/login" 
-                className="text-gray-700 hover:text-gray-900 font-medium transition-colors"
+                className="bg-blue-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-300 flex items-center"
               >
-                Login
+                <Users className="w-4 h-4 mr-2" />
+                User
               </Link>
               <Link 
-                to="/signup" 
-                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:shadow-lg transform hover:-translate-y-1 transition-all duration-300"
+                to="/login?role=CONSULTANT" 
+                className="bg-purple-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-purple-700 transition-all duration-300 flex items-center"
               >
-                Get Started
+                <Award className="w-4 h-4 mr-2" />
+                Consultant
+              </Link>
+              <Link 
+                to="/login?role=ENTERPRISE_ADMIN" 
+                className="bg-green-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-green-700 transition-all duration-300 flex items-center"
+              >
+                <TrendingUp className="w-4 h-4 mr-2" />
+                Enterprise
               </Link>
             </div>
           </div>
@@ -121,18 +130,28 @@ const PerfectLandingPage: React.FC = () => {
               {/* CTA Buttons */}
               <div className="flex flex-col sm:flex-row gap-4">
                 <Link 
-                  to="/search" 
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300 flex items-center justify-center group"
+                  to="/login" 
+                  className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-4 rounded-xl font-bold text-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300 flex items-center justify-center group"
                 >
-                  Find Experts
+                  <Users className="mr-2 w-5 h-5" />
+                  Join as User
                   <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
                 <Link 
-                  to="/signup/consultant" 
-                  className="bg-white text-gray-900 px-8 py-4 rounded-xl font-bold text-lg border-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-300 flex items-center justify-center"
+                  to="/login?role=CONSULTANT" 
+                  className="bg-gradient-to-r from-purple-600 to-purple-700 text-white px-8 py-4 rounded-xl font-bold text-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300 flex items-center justify-center group"
                 >
-                  Become a Consultant
-                  <ArrowRight className="ml-2 w-5 h-5" />
+                  <Award className="mr-2 w-5 h-5" />
+                  Join as Consultant
+                  <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </Link>
+                <Link 
+                  to="/login?role=ENTERPRISE_ADMIN" 
+                  className="bg-gradient-to-r from-green-600 to-green-700 text-white px-8 py-4 rounded-xl font-bold text-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300 flex items-center justify-center group"
+                >
+                  <TrendingUp className="mr-2 w-5 h-5" />
+                  Join as Enterprise
+                  <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </div>
 
@@ -279,7 +298,7 @@ const PerfectLandingPage: React.FC = () => {
         <div className="container mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-4">
-              Why Choose <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">ConsultaPro</span>?
+              Why Choose <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">Our Platform</span>?
             </h2>
             <p className="text-xl text-gray-800 max-w-3xl mx-auto">
               Experience the future of professional consultations with our cutting-edge platform

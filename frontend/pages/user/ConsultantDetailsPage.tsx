@@ -528,7 +528,7 @@ const consultantName =
           onClose={() => setShowInsufficientModal(false)}
           onAddCredits={() => {
             setShowInsufficientModal(false);
-            navigate('/user/subscription-plans');
+            navigate('/user/credit');
           }}
         />
       )}
