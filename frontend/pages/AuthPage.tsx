@@ -1,8 +1,8 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../App";
 import { UserRole } from "../types";
-import { ArrowRight, Mail, Shield, ChevronLeft, Info, Eye, EyeOff } from "lucide-react";
+import { ArrowRight, Mail, Shield, ChevronLeft, Info, Eye, EyeOff, User } from "lucide-react";
 import { auth } from "../services/api";
 
 type AuthStep = "ROLE" | "EMAIL" | "OTP" | "PASSWORD" | "SIGNUP_PASSWORD" | "FORGOT_PASSWORD" | "RESET_PASSWORD" | "CONSULTANT_KYC" | "PENDING_APPROVAL";
@@ -12,10 +12,15 @@ interface AuthPageProps {
 }
 
 const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
-  const [step, setStep] = useState<AuthStep>(
-    type === "LOGIN" ? "ROLE" : "ROLE"
-  );
-  const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.USER);
+  const [searchParams] = useSearchParams();
+  const roleParam = searchParams.get('role');
+  
+  // If role is provided in URL, skip to EMAIL step
+  const initialStep = roleParam ? "EMAIL" : (type === "LOGIN" ? "ROLE" : "ROLE");
+  const initialRole = roleParam ? (roleParam as UserRole) : UserRole.USER;
+  
+  const [step, setStep] = useState<AuthStep>(initialStep);
+  const [selectedRole, setSelectedRole] = useState<UserRole>(initialRole);
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -49,6 +54,20 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  // If consultant, enterprise admin, or user is on ROLE step, automatically move to EMAIL step
+  useEffect(() => {
+    if (
+      step === "ROLE" &&
+      (
+        selectedRole === UserRole.CONSULTANT ||
+        selectedRole === UserRole.ENTERPRISE_ADMIN ||
+        selectedRole === UserRole.USER
+      )
+    ) {
+      setStep("EMAIL");
+    }
+  }, [step, selectedRole]);
 
   // Password validation
   const validatePassword = (pwd: string) => {
@@ -248,7 +267,17 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       // For now, we show a success message
       setError(""); // Clear error
       alert("If an account exists with this email, you will receive password reset instructions.");
-      setStep("ROLE");
+      
+      // For consultants, enterprise admins, and users, go back to email step; for others, go to role selection
+      if (
+        selectedRole === UserRole.CONSULTANT ||
+        selectedRole === UserRole.ENTERPRISE_ADMIN ||
+        selectedRole === UserRole.USER
+      ) {
+        setStep("EMAIL");
+      } else {
+        setStep("ROLE");
+      }
       setResetEmail("");
     } catch (err: any) {
       console.error("Forgot password failed:", err);
@@ -385,9 +414,17 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
   // Reset step if type changes
   React.useEffect(() => {
-    setStep("ROLE");
+    if (
+      selectedRole === UserRole.CONSULTANT ||
+      selectedRole === UserRole.ENTERPRISE_ADMIN ||
+      selectedRole === UserRole.USER
+    ) {
+      setStep("EMAIL");
+    } else {
+      setStep("ROLE");
+    }
     setError("");
-  }, [type]);
+  }, [type, selectedRole]);
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
@@ -548,6 +585,1137 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
     PASSWORD: 100,
   }[step];
 
+  // Special layout for user login
+  if (type === "LOGIN" && selectedRole === UserRole.USER && step === "EMAIL") {
+    return (
+      <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-[#2D2F7F] via-[#3F3FB5] to-[#5A4CF0]">
+        <div className="absolute inset-0 bg-black/30"></div>
+        <div className="absolute w-[700px] h-[700px] bg-indigo-400/20 blur-[160px] rounded-full"></div>
+
+        <button
+          onClick={() => navigate("/")}
+          className="absolute top-8 left-8 text-white flex items-center gap-2 opacity-80 hover:opacity-100 transition z-10"
+        >
+          <ChevronLeft size={20} />
+          Back to Home
+        </button>
+
+        <div className="flex flex-col lg:flex-row items-center gap-24 px-10 relative z-10">
+          <div className="text-white max-w-lg text-center lg:text-left">
+            <User className="w-20 h-20 mb-6 p-4 bg-white/20 rounded-full backdrop-blur-md mx-auto lg:mx-0" />
+
+            <h1 className="text-5xl font-bold mb-6 flex items-center justify-center lg:justify-start gap-3">
+              Hello Seeker 👋
+            </h1>
+
+            <p className="text-lg text-white/90 leading-relaxed">
+              Connect with top expert consultants anytime, anywhere.
+              Get professional guidance, boost productivity,
+              and achieve your goals faster.
+            </p>
+
+            <p className="mt-20 text-white/70 text-sm">
+              © 2026 CONSULTANTPRO. ALL RIGHTS RESERVED.
+            </p>
+          </div>
+
+          <div className="w-[420px] backdrop-blur-xl bg-white/95 rounded-3xl shadow-[0_30px_80px_rgba(0,0,0,0.45)] p-10 border border-white/30 transition hover:scale-[1.02]">
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
+              ConsultantPro
+            </h2>
+
+            <h3 className="text-xl text-gray-600 mb-6">
+              Welcome Back
+            </h3>
+
+            <p className="text-gray-600 mb-8">
+              Don't have an account?{" "}
+              <button
+                type="button"
+                onClick={() => navigate("/signup?role=USER")}
+                className="text-indigo-600 font-semibold hover:underline"
+              >
+                Create a new account
+              </button>
+            </p>
+
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm font-medium rounded-xl">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handlePasswordLogin}>
+              <div className="relative mb-5">
+                <Mail className="absolute left-3 top-4 text-gray-400 w-5 h-5" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email address"
+                  className="w-full pl-10 pr-4 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="relative mb-6">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
+                  className="w-full pl-4 pr-12 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  disabled={isLoading}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-4 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-[#4F46E5] to-[#9333EA] text-white py-4 rounded-xl font-bold text-lg hover:shadow-xl hover:scale-[1.03] transition disabled:opacity-50"
+              >
+                {isLoading ? "Logging in..." : "Login Now"}
+              </button>
+            </form>
+
+            <div className="text-center mt-6">
+              <button
+                type="button"
+                onClick={() => { setStep("FORGOT_PASSWORD"); setError(""); setResetEmail(email); }}
+                className="text-indigo-600 hover:underline font-semibold"
+              >
+                Forgot password?
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Special layout for user signup
+  if (type === "SIGNUP" && selectedRole === UserRole.USER && step === "EMAIL") {
+    return (
+      <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-[#2D2F7F] via-[#3F3FB5] to-[#5A4CF0]">
+        <div className="absolute inset-0 bg-black/30"></div>
+        <div className="absolute w-[700px] h-[700px] bg-indigo-400/20 blur-[160px] rounded-full"></div>
+
+        <button
+          onClick={() => navigate("/")}
+          className="absolute top-8 left-8 text-white flex items-center gap-2 opacity-80 hover:opacity-100 transition z-10"
+        >
+          <ChevronLeft size={20} />
+          Back to Home
+        </button>
+
+        <div className="flex flex-col lg:flex-row items-center gap-24 px-10 relative z-10">
+          <div className="text-white max-w-lg text-center lg:text-left">
+            <div className="w-20 h-20 mb-6 p-4 bg-white/20 rounded-full backdrop-blur-md mx-auto lg:mx-0 flex items-center justify-center">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+            </div>
+
+            <h1 className="text-5xl font-bold mb-6 flex items-center justify-center lg:justify-start gap-3">
+              Join as a Seeker 👋
+            </h1>
+
+            <p className="text-lg text-white/90 leading-relaxed">
+              Sign up to connect with expert consultants.
+              Get instant access to professional guidance and achieve your goals.
+            </p>
+
+            <p className="mt-20 text-white/70 text-sm">
+              © 2026 CONSULTANTPRO. ALL RIGHTS RESERVED.
+            </p>
+          </div>
+
+          <div className="w-[420px] backdrop-blur-xl bg-white/95 rounded-3xl shadow-[0_30px_80px_rgba(0,0,0,0.45)] p-10 border border-white/30 transition hover:scale-[1.02]">
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
+              ConsultantPro
+            </h2>
+
+            <h3 className="text-xl text-gray-600 mb-6">
+              Create Account
+            </h3>
+
+            <p className="text-gray-600 mb-8">
+              Already have an account?{" "}
+              <button
+                type="button"
+                onClick={() => navigate("/login?role=USER")}
+                className="text-indigo-600 font-semibold hover:underline"
+              >
+                Login here
+              </button>
+            </p>
+
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm font-medium rounded-xl">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSignupWithPassword}>
+              <div className="relative mb-5">
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Full Name"
+                  className="w-full px-4 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="relative mb-5">
+                <Mail className="absolute left-3 top-4 text-gray-400 w-5 h-5" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email address"
+                  className="w-full pl-10 pr-4 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="relative mb-5">
+                <input
+                  type="tel"
+                  required
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Phone Number"
+                  className="w-full px-4 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="relative mb-5">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
+                  className="w-full pl-4 pr-12 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  disabled={isLoading}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-4 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
+              <div className="relative mb-6">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm Password"
+                  className="w-full pl-4 pr-12 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  disabled={isLoading}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-4 text-gray-400 hover:text-gray-600"
+                >
+                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
+              {password && confirmPassword && password !== confirmPassword && (
+                <p className="text-sm text-red-600 font-medium mb-4">Passwords do not match</p>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-[#4F46E5] to-[#9333EA] text-white py-4 rounded-xl font-bold text-lg hover:shadow-xl hover:scale-[1.03] transition disabled:opacity-50"
+              >
+                {isLoading ? "Creating Account..." : "Create Account"}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Special layout for user forgot password
+  if (type === "LOGIN" && selectedRole === UserRole.USER && step === "FORGOT_PASSWORD") {
+    return (
+      <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-[#2D2F7F] via-[#3F3FB5] to-[#5A4CF0]">
+        <div className="absolute inset-0 bg-black/30"></div>
+        <div className="absolute w-[700px] h-[700px] bg-indigo-400/20 blur-[160px] rounded-full"></div>
+
+        <button
+          onClick={() => navigate("/")}
+          className="absolute top-8 left-8 text-white flex items-center gap-2 opacity-80 hover:opacity-100 transition z-10"
+        >
+          <ChevronLeft size={20} />
+          Back to Home
+        </button>
+
+        <div className="flex flex-col lg:flex-row items-center gap-24 px-10 relative z-10">
+          <div className="text-white max-w-lg text-center lg:text-left">
+            <div className="w-20 h-20 mb-6 p-4 bg-white/20 rounded-full backdrop-blur-md mx-auto lg:mx-0 flex items-center justify-center">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+            </div>
+
+            <h1 className="text-5xl font-bold mb-6 flex items-center justify-center lg:justify-start gap-3">
+              Reset Password 🔑
+            </h1>
+
+            <p className="text-lg text-white/90 leading-relaxed">
+              Forgot your password? No worries!
+              Enter your email and we'll send you a reset link.
+            </p>
+
+            <p className="mt-20 text-white/70 text-sm">
+              © 2026 CONSULTANTPRO. ALL RIGHTS RESERVED.
+            </p>
+          </div>
+
+          <div className="w-[420px] backdrop-blur-xl bg-white/95 rounded-3xl shadow-[0_30px_80px_rgba(0,0,0,0.45)] p-10 border border-white/30 transition hover:scale-[1.02]">
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
+              ConsultantPro
+            </h2>
+
+            <h3 className="text-xl text-gray-600 mb-6">
+              Forgot Password?
+            </h3>
+
+            <p className="text-gray-600 mb-8">
+              <button
+                type="button"
+                onClick={() => { setStep("EMAIL"); setError(""); }}
+                className="text-indigo-600 font-semibold hover:underline"
+              >
+                Back to login
+              </button>
+            </p>
+
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm font-medium rounded-xl">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleForgotPassword}>
+              <div className="relative mb-6">
+                <Mail className="absolute left-3 top-4 text-gray-400 w-5 h-5" />
+                <input
+                  type="email"
+                  required
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  placeholder="Email address"
+                  className="w-full pl-10 pr-4 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  disabled={isLoading}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-[#4F46E5] to-[#9333EA] text-white py-4 rounded-xl font-bold text-lg hover:shadow-xl hover:scale-[1.03] transition disabled:opacity-50"
+              >
+                {isLoading ? "Sending..." : "Send Reset Link"}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Special layout for consultant login
+  if (type === "LOGIN" && selectedRole === UserRole.CONSULTANT && step === "EMAIL") {
+    return (
+      <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400">
+        <div className="absolute inset-0 bg-black/20"></div>
+        <div className="absolute w-[700px] h-[700px] bg-cyan-300/20 blur-[160px] rounded-full"></div>
+
+        <button
+          onClick={() => navigate("/")}
+          className="absolute top-8 left-8 text-white flex items-center gap-2 opacity-80 hover:opacity-100 transition z-10"
+        >
+          <ChevronLeft size={20} />
+          Back to Home
+        </button>
+
+        <div className="flex flex-col lg:flex-row items-center gap-24 px-10 relative z-10">
+          <div className="w-[420px] backdrop-blur-xl bg-white/95 rounded-3xl shadow-[0_30px_80px_rgba(0,0,0,0.45)] p-10 border border-white/30 transition hover:scale-[1.03] hover:shadow-[0_40px_100px_rgba(0,0,0,0.5)]">
+            {/* ConsultantPro Heading */}
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent mb-2">
+              ConsultantPro
+            </h2>
+
+            {/* Welcome Back */}
+            <div className="mb-8">
+              <h3 className="text-2xl font-bold text-gray-800 mb-3">Welcome Back!</h3>
+              <p className="text-gray-600">
+                Don't have an account?{" "}
+                <button
+                  onClick={() => navigate("/signup?role=CONSULTANT")}
+                  className="text-blue-600 font-bold underline hover:text-cyan-600 transition-colors"
+                >
+                  Create a new account 
+                </button>
+                
+              </p>
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm font-medium rounded-xl">
+                {error}
+              </div>
+            )}
+
+            {/* Login Form */}
+            <form onSubmit={handlePasswordLogin} className="space-y-6">
+              {/* Email Field */}
+              <div>
+                <input
+                  type="email"
+                  required
+                  placeholder="Email address"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Password Field */}
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="••••••••"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+
+              {/* Login Now Button */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold py-4 rounded-xl hover:shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50"
+              >
+                {isLoading ? "Logging in..." : "Login Now"}
+              </button>
+
+              {/* Forgot Password */}
+              <div className="text-center pt-2">
+                <span className="text-gray-500">Forgot password </span>
+                <button
+                  type="button"
+                  onClick={() => { setStep("FORGOT_PASSWORD"); setError(""); setResetEmail(email); }}
+                  className="text-blue-600 font-bold underline hover:text-cyan-600 transition-colors"
+                >
+                  Click here
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="text-white max-w-lg text-center lg:text-left">
+            <div className="w-20 h-20 mb-6 p-4 bg-white/20 rounded-full backdrop-blur-md mx-auto lg:mx-0 flex items-center justify-center">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+
+            <h1 className="text-5xl font-bold mb-6 flex items-center justify-center lg:justify-start gap-3">
+              Hello Consultant 💼
+            </h1>
+
+            <p className="text-lg text-white/90 leading-relaxed">
+              Skip repetitive tasks and boost productivity. Manage bookings, clients, and earnings all in one place.
+            </p>
+
+            <p className="mt-20 text-white/70 text-sm">
+              © 2026 CONSULTANTPRO. ALL RIGHTS RESERVED.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Special layout for consultant signup
+  if (type === "SIGNUP" && selectedRole === UserRole.CONSULTANT && step === "EMAIL") {
+    return (
+      <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400">
+        <div className="absolute inset-0 bg-black/20"></div>
+        <div className="absolute w-[700px] h-[700px] bg-cyan-300/20 blur-[160px] rounded-full"></div>
+
+        <button
+          onClick={() => navigate("/")}
+          className="absolute top-8 left-8 text-white flex items-center gap-2 opacity-80 hover:opacity-100 transition z-10"
+        >
+          <ChevronLeft size={20} />
+          Back to Home
+        </button>
+
+        <div className="flex flex-col lg:flex-row items-center gap-24 px-10 relative z-10">
+          <div className="w-[420px] backdrop-blur-xl bg-white/95 rounded-3xl shadow-[0_30px_80px_rgba(0,0,0,0.45)] p-10 border border-white/30 transition hover:scale-[1.03] hover:shadow-[0_40px_100px_rgba(0,0,0,0.5)]">
+            {/* ConsultantPro Heading */}
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent mb-2">
+              ConsultantPro
+            </h2>
+
+            {/* Create Account */}
+            <div className="mb-8">
+              <h3 className="text-2xl font-bold text-gray-800 mb-3">Create Account</h3>
+              <p className="text-gray-600">
+                Already have an account?{" "}
+                <button
+                  onClick={() => navigate("/login?role=CONSULTANT")}
+                  className="text-blue-600 font-bold underline hover:text-cyan-600 transition-colors"
+                >
+                  Login here
+                </button>
+              </p>
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm font-medium rounded-xl">
+                {error}
+              </div>
+            )}
+
+            {/* Signup Form */}
+            <form onSubmit={handleSignupWithPassword} className="space-y-5">
+              {/* Full Name Field */}
+              <div>
+                <input
+                  type="text"
+                  required
+                  placeholder="Full Name"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Email Field */}
+              <div>
+                <input
+                  type="email"
+                  required
+                  placeholder="Email Address"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Phone Field */}
+              <div>
+                <input
+                  type="tel"
+                  required
+                  placeholder="Phone Number"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Password Field */}
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="Password"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+
+              {/* Confirm Password Field */}
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  placeholder="Confirm Password"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+
+              {password && confirmPassword && password !== confirmPassword && (
+                <p className="text-sm text-red-600 font-medium">Passwords do not match</p>
+              )}
+
+              {/* Create Account Button */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold py-4 rounded-xl hover:shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50"
+              >
+                {isLoading ? "Creating Account..." : "Create Account"}
+              </button>
+            </form>
+          </div>
+
+          <div className="text-white max-w-lg text-center lg:text-left">
+            <div className="w-20 h-20 mb-6 p-4 bg-white/20 rounded-full backdrop-blur-md mx-auto lg:mx-0 flex items-center justify-center">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+            </div>
+
+            <h1 className="text-5xl font-bold mb-6 flex items-center justify-center lg:justify-start gap-3">
+              Join Consultants ✨
+            </h1>
+
+            <p className="text-lg text-white/90 leading-relaxed">
+              Create your profile and start earning. Connect with clients seeking expert guidance and grow your business.
+            </p>
+
+            <p className="mt-20 text-white/70 text-sm">
+              © 2026 CONSULTANTPRO. ALL RIGHTS RESERVED.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Special layout for consultant forgot password
+  if (selectedRole === UserRole.CONSULTANT && step === "FORGOT_PASSWORD") {
+    return (
+      <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400">
+        <div className="absolute inset-0 bg-black/20"></div>
+        <div className="absolute w-[700px] h-[700px] bg-cyan-300/20 blur-[160px] rounded-full"></div>
+
+        <button
+          onClick={() => navigate("/")}
+          className="absolute top-8 left-8 text-white flex items-center gap-2 opacity-80 hover:opacity-100 transition z-10"
+        >
+          <ChevronLeft size={20} />
+          Back to Home
+        </button>
+
+        <div className="flex flex-col lg:flex-row items-center gap-24 px-10 relative z-10">
+          <div className="w-[420px] backdrop-blur-xl bg-white/95 rounded-3xl shadow-[0_30px_80px_rgba(0,0,0,0.45)] p-10 border border-white/30 transition hover:scale-[1.03] hover:shadow-[0_40px_100px_rgba(0,0,0,0.5)]">
+            {/* ConsultantPro Heading */}
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent mb-2">
+              ConsultantPro
+            </h2>
+
+            {/* Reset Password Heading */}
+            <div className="mb-8">
+              <h3 className="text-2xl font-bold text-gray-800 mb-3">Reset Password</h3>
+              <p className="text-gray-600">
+                Remember your password?{" "}
+                <button
+                  onClick={() => { setStep("EMAIL"); setError(""); }}
+                  className="text-blue-600 font-bold underline hover:text-cyan-600 transition-colors"
+                >
+                  Back to login
+                </button>
+              </p>
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm font-medium rounded-xl">
+                {error}
+              </div>
+            )}
+
+            {/* Forgot Password Form */}
+            <form onSubmit={handleForgotPassword} className="space-y-6">
+              {/* Email Field */}
+              <div>
+                <input
+                  type="email"
+                  required
+                  placeholder="Enter your email address"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Send Reset Link Button */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold py-4 rounded-xl hover:shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50"
+              >
+                {isLoading ? "Sending..." : "Send Reset Link"}
+              </button>
+            </form>
+          </div>
+
+          <div className="text-white max-w-lg text-center lg:text-left">
+            <div className="w-20 h-20 mb-6 p-4 bg-white/20 rounded-full backdrop-blur-md mx-auto lg:mx-0 flex items-center justify-center">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+
+            <h1 className="text-5xl font-bold mb-6 flex items-center justify-center lg:justify-start gap-3">
+              Reset Password 🔐
+            </h1>
+
+            <p className="text-lg text-white/90 leading-relaxed">
+              No worries! Enter your email address and we'll send you instructions to reset your password securely.
+            </p>
+
+            <p className="mt-20 text-white/70 text-sm">
+              © 2026 CONSULTANTPRO. ALL RIGHTS RESERVED.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Special layout for enterprise login
+  if (type === "LOGIN" && selectedRole === UserRole.ENTERPRISE_ADMIN && step === "EMAIL") {
+    return (
+      <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-blue-700 via-slate-700 to-slate-800">
+        <div className="absolute inset-0 bg-black/30"></div>
+        <div className="absolute w-[700px] h-[700px] bg-slate-500/20 blur-[160px] rounded-full"></div>
+
+        <button
+          onClick={() => navigate("/")}
+          className="absolute top-8 left-8 text-white flex items-center gap-2 opacity-80 hover:opacity-100 transition z-10"
+        >
+          <ChevronLeft size={20} />
+          Back to Home
+        </button>
+
+        <div className="flex flex-col lg:flex-row items-center gap-24 px-10 relative z-10">
+          <div className="w-[420px] backdrop-blur-xl bg-white/95 rounded-3xl shadow-[0_30px_80px_rgba(0,0,0,0.45)] p-10 border border-white/30 transition hover:scale-[1.03] hover:shadow-[0_40px_100px_rgba(0,0,0,0.5)]">
+            {/* ConsultantPro Heading */}
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-blue-700 to-slate-600 bg-clip-text text-transparent mb-2">
+              ConsultantPro
+            </h2>
+
+            {/* Welcome Back */}
+            <div className="mb-8">
+              <h3 className="text-2xl font-bold text-gray-800 mb-3">Welcome Back!</h3>
+              <p className="text-gray-600">
+                Don't have an account?{" "}
+                <button
+                  onClick={() => navigate("/signup?role=ENTERPRISE_ADMIN")}
+                  className="text-slate-700 font-bold underline hover:text-slate-800 transition-colors"
+                >
+                  Create a new account
+                </button>
+              
+              </p>
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm font-medium rounded-xl">
+                {error}
+              </div>
+            )}
+
+            {/* Login Form */}
+            <form onSubmit={handlePasswordLogin} className="space-y-6">
+              {/* Email Field */}
+              <div>
+                <input
+                  type="email"
+                  required
+                  placeholder="Email address"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Password Field */}
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="••••••••"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+
+              {/* Login Now Button */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-blue-700 to-slate-600 text-white font-bold py-4 rounded-xl hover:shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50"
+              >
+                {isLoading ? "Logging in..." : "Login Now"}
+              </button>
+
+              {/* Forgot Password */}
+              <div className="text-center pt-2">
+                <span className="text-gray-500">Forgot password </span>
+                <button
+                  type="button"
+                  onClick={() => { setStep("FORGOT_PASSWORD"); setError(""); setResetEmail(email); }}
+                  className="text-slate-700 font-bold underline hover:text-slate-800 transition-colors"
+                >
+                  Click here
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="text-white max-w-lg text-center lg:text-left">
+            <div className="w-20 h-20 mb-6 p-4 bg-white/20 rounded-full backdrop-blur-md mx-auto lg:mx-0 flex items-center justify-center">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+
+            <h1 className="text-5xl font-bold mb-6 flex items-center justify-center lg:justify-start gap-3">
+              Hello Enterprise 🏢
+            </h1>
+
+            <p className="text-lg text-white/90 leading-relaxed">
+              Manage your enterprise on one secure platform. Oversee teams, consultants, and operations seamlessly.
+            </p>
+
+            <p className="mt-20 text-white/70 text-sm">
+              © 2026 CONSULTANTPRO. ALL RIGHTS RESERVED.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Special layout for enterprise signup
+  if (type === "SIGNUP" && selectedRole === UserRole.ENTERPRISE_ADMIN && step === "EMAIL") {
+    return (
+      <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-blue-700 via-slate-700 to-slate-800">
+        <div className="absolute inset-0 bg-black/30"></div>
+        <div className="absolute w-[700px] h-[700px] bg-slate-500/20 blur-[160px] rounded-full"></div>
+
+        <button
+          onClick={() => navigate("/")}
+          className="absolute top-8 left-8 text-white flex items-center gap-2 opacity-80 hover:opacity-100 transition z-10"
+        >
+          <ChevronLeft size={20} />
+          Back to Home
+        </button>
+
+        <div className="flex flex-col lg:flex-row items-center gap-24 px-10 relative z-10">
+          <div className="w-[420px] backdrop-blur-xl bg-white/95 rounded-3xl shadow-[0_30px_80px_rgba(0,0,0,0.45)] p-10 border border-white/30 transition hover:scale-[1.03] hover:shadow-[0_40px_100px_rgba(0,0,0,0.5)]">
+            {/* ConsultantPro Heading */}
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-blue-700 to-slate-600 bg-clip-text text-transparent mb-2">
+              ConsultantPro
+            </h2>
+
+            {/* Create Account */}
+            <div className="mb-8">
+              <h3 className="text-2xl font-bold text-gray-800 mb-3">Create Account</h3>
+              <p className="text-gray-600">
+                Already have an account?{" "}
+                <button
+                  onClick={() => navigate("/login?role=ENTERPRISE_ADMIN")}
+                  className="text-slate-700 font-bold underline hover:text-slate-800 transition-colors"
+                >
+                  Login here
+                </button>
+              </p>
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm font-medium rounded-xl">
+                {error}
+              </div>
+            )}
+
+            {/* Signup Form */}
+            <form onSubmit={handleSignupWithPassword} className="space-y-5">
+              {/* Full Name Field */}
+              <div>
+                <input
+                  type="text"
+                  required
+                  placeholder="Full Name"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Email Field */}
+              <div>
+                <input
+                  type="email"
+                  required
+                  placeholder="Email Address"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Phone Field */}
+              <div>
+                <input
+                  type="tel"
+                  required
+                  placeholder="Phone Number"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Password Field */}
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="Password"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+
+              {/* Confirm Password Field */}
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  placeholder="Confirm Password"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+
+              {password && confirmPassword && password !== confirmPassword && (
+                <p className="text-sm text-red-600 font-medium">Passwords do not match</p>
+              )}
+
+              {/* Create Account Button */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-blue-700 to-slate-600 text-white font-bold py-4 rounded-xl hover:shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50"
+              >
+                {isLoading ? "Creating Account..." : "Create Account"}
+              </button>
+            </form>
+          </div>
+
+          <div className="text-white max-w-lg text-center lg:text-left">
+            <div className="w-20 h-20 mb-6 p-4 bg-white/20 rounded-full backdrop-blur-md mx-auto lg:mx-0 flex items-center justify-center">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-2a6 6 0 0112 0v2zm0 0h6v-2a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            </div>
+
+            <h1 className="text-5xl font-bold mb-6 flex items-center justify-center lg:justify-start gap-3">
+              Create Enterprise 🏢
+            </h1>
+
+            <p className="text-lg text-white/90 leading-relaxed">
+              Set up your enterprise workspace and build your team. Powerful tools for enterprise-scale management.
+            </p>
+
+            <p className="mt-20 text-white/70 text-sm">
+              © 2026 CONSULTANTPRO. ALL RIGHTS RESERVED.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Special layout for enterprise forgot password
+  if (selectedRole === UserRole.ENTERPRISE_ADMIN && step === "FORGOT_PASSWORD") {
+    return (
+      <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-blue-700 via-slate-700 to-slate-800">
+        <div className="absolute inset-0 bg-black/30"></div>
+        <div className="absolute w-[700px] h-[700px] bg-slate-500/20 blur-[160px] rounded-full"></div>
+
+        <button
+          onClick={() => navigate("/")}
+          className="absolute top-8 left-8 text-white flex items-center gap-2 opacity-80 hover:opacity-100 transition z-10"
+        >
+          <ChevronLeft size={20} />
+          Back to Home
+        </button>
+
+        <div className="flex flex-col lg:flex-row items-center gap-24 px-10 relative z-10">
+          <div className="w-[420px] backdrop-blur-xl bg-white/95 rounded-3xl shadow-[0_30px_80px_rgba(0,0,0,0.45)] p-10 border border-white/30 transition hover:scale-[1.03] hover:shadow-[0_40px_100px_rgba(0,0,0,0.5)]">
+            {/* ConsultantPro Heading */}
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-blue-700 to-slate-600 bg-clip-text text-transparent mb-2">
+              ConsultantPro
+            </h2>
+
+            {/* Reset Password Heading */}
+            <div className="mb-8">
+              <h3 className="text-2xl font-bold text-gray-800 mb-3">Reset Password</h3>
+              <p className="text-gray-600">
+                Remember your password?{" "}
+                <button
+                  onClick={() => { setStep("EMAIL"); setError(""); }}
+                  className="text-slate-700 font-bold underline hover:text-slate-800 transition-colors"
+                >
+                  Back to login
+                </button>
+              </p>
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm font-medium rounded-xl">
+                {error}
+              </div>
+            )}
+
+            {/* Forgot Password Form */}
+            <form onSubmit={handleForgotPassword} className="space-y-6">
+              {/* Email Field */}
+              <div>
+                <input
+                  type="email"
+                  required
+                  placeholder="Enter your email address"
+                  className="w-full bg-gray-100 border-0 rounded-xl px-6 py-4 text-gray-900 font-medium placeholder-gray-500 focus:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Send Reset Link Button */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-blue-700 to-slate-600 text-white font-bold py-4 rounded-xl hover:shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50"
+              >
+                {isLoading ? "Sending..." : "Send Reset Link"}
+              </button>
+            </form>
+          </div>
+
+          <div className="text-white max-w-lg text-center lg:text-left">
+            <div className="w-20 h-20 mb-6 p-4 bg-white/20 rounded-full backdrop-blur-md mx-auto lg:mx-0 flex items-center justify-center">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+
+            <h1 className="text-5xl font-bold mb-6 flex items-center justify-center lg:justify-start gap-3">
+              Reset Password 🔐
+            </h1>
+
+            <p className="text-lg text-white/90 leading-relaxed">
+              Secure your enterprise account. Enter your email to receive password reset instructions.
+            </p>
+
+            <p className="mt-20 text-white/70 text-sm">
+              © 2026 CONSULTANTPRO. ALL RIGHTS RESERVED.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6 py-12">
       <div className="max-w-md w-full bg-white rounded-[32px] shadow-2xl overflow-hidden border border-gray-100 transition-all duration-500">
@@ -557,7 +1725,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
             className="absolute top-0 left-0 h-1.5 bg-blue-400 transition-all duration-700"
             style={{ width: `${stepPercentage}%` }}
           ></div>
-          <h2 className="text-3xl font-black mb-1">ConsultaPro</h2>
+          <h2 className="text-3xl font-black mb-1">ConsultantPro</h2>
           <p className="text-blue-100 font-medium text-sm">
             {type === "LOGIN" ? "Welcome back!" : "Join our global community"}
           </p>
@@ -616,8 +1784,14 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
             </div>
           ) : step === "EMAIL" ? (
             <form onSubmit={type === "SIGNUP" ? handleSignupWithPassword : handlePasswordLogin} className="space-y-6">
-              {type === "SIGNUP" && (
+              {type === "SIGNUP" && selectedRole === UserRole.USER && (
+                <BackButton onClick={() => { navigate("/"); setError(""); }} />
+              )}
+              {type === "SIGNUP" && selectedRole !== UserRole.CONSULTANT && selectedRole !== UserRole.USER && (
                 <BackButton onClick={() => { setStep("ROLE"); setError(""); }} />
+              )}
+              {type === "SIGNUP" && selectedRole === UserRole.CONSULTANT && (
+                <BackButton onClick={() => { navigate("/"); setError(""); }} />
               )}
               <div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">
