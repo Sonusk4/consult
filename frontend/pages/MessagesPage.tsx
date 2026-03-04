@@ -3,11 +3,7 @@ import ReviewPopup from "../components/ReviewPopup";
 import UserPopupModal from "../components/UserPopupModal";
 import { useUserPopup } from "../hooks/useUserPopup";
 import React, { useState, useEffect, useRef, useCallback } from "react";
-<<<<<<< HEAD
-import { useLocation } from "react-router-dom";
-=======
 import { useLocation, useNavigate } from "react-router-dom";
->>>>>>> 43d41efb4bed83e06c1e7a9b18630f34c80c4ef6
 import Layout from "../components/Layout";
 import api, { consultants as consultantsApi } from "../services/api";
 import {
@@ -194,6 +190,7 @@ const SessionBanner: React.FC<{
 /* ─── Main Component ─────────────────────────────────────── */
 const MessagesPage: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user: currentUser, loading: userLoading } = useUser();
   const { showError, popup, hidePopup } = useUserPopup();
   const [socket, setSocket] = useState<any>(null);

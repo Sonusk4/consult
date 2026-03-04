@@ -120,9 +120,6 @@ const SearchConsultantPage: React.FC = () => {
 
   /* ---------------- Filtering Logic ---------------- */
 
-  const filteredConsultants = consultantsData.filter(c => {
-
-  /* ------------ FILTER LOGIC ------------ */
   const filteredConsultants = consultantsData.filter((c) => {
     const matchesQuery =
       !query ||
@@ -436,6 +433,6 @@ const SearchConsultantPage: React.FC = () => {
       </div>
     </Layout>
   );
-};
+}
 
 export default SearchConsultantPage;
