@@ -1,17 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import Layout from "../../components/Layout";
-import ConsultantKycGate from "../../components/ConsultantKycGate";
-import useConsultantKycCheck from "../../hooks/useConsultantKycCheck";
-import api, { consultants as consultantsApi } from "../../services/api";
+import api from "../../services/api";
 import { useToast } from "../../context/ToastContext";
-import { useAuth } from "../../App";
 import { HelpCircle, Ticket, Send, Clock } from "lucide-react";
 
 const UserSupportPage: React.FC = () => {
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const { kycStatus, loading: kycLoading, isApprovalSuccess } = useConsultantKycCheck();
   const { addToast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -23,25 +16,6 @@ const UserSupportPage: React.FC = () => {
   // ✅ IMPORTANT: initialize as empty array
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-
-  // Check profile completion for consultants
-  useEffect(() => {
-    const isConsultant = user?.role === "CONSULTANT" || user?.role === "ENTERPRISE_ADMIN";
-    if (!isConsultant) return;
-    const checkProfile = async () => {
-      try {
-        const profileData = await consultantsApi.getProfile();
-        const isIncomplete = !profileData || !profileData.name || !profileData.domain || 
-                            !profileData.hourly_price || !profileData.bio || !profileData.languages;
-        if (isIncomplete) {
-          navigate('/consultant/dashboard', { replace: true });
-        }
-      } catch (error) {
-        navigate('/consultant/dashboard', { replace: true });
-      }
-    };
-    checkProfile();
-  }, [user, navigate]);
 
   /* ================= FETCH TICKETS ================= */
   useEffect(() => {
