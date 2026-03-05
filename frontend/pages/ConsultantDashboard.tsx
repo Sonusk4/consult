@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
-import { consultants as consultantsApi, subscriptions, bookings, payments } from "../services/api";
+import api, { consultants as consultantsApi, subscriptions, bookings, payments } from "../services/api";
 import { Consultant } from "../types";
-import { Loader, Users, Calendar, DollarSign, Star, MessageSquare, TrendingUp, Clock, CheckCircle, XCircle, AlertCircle, Video, Edit, Trash2, Plus, ArrowRight, Eye, Check, Crown, Upload, FileText, X } from "lucide-react";
+import { Loader, Users, Calendar, DollarSign, IndianRupee, Star, MessageSquare, TrendingUp, Clock, CheckCircle, XCircle, AlertCircle, Video, Edit, Trash2, Plus, ArrowRight, Eye, Check, Crown, Upload, FileText, X, Bell, Info } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../App";
 
@@ -127,6 +127,7 @@ const ConsultantDashboard = () => {
   const [reviews, setReviews] = useState<any>(null);
   const [performanceMetrics, setPerformanceMetrics] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [liveSession, setLiveSession] = useState<any>(null);
   const [onboardingData, setOnboardingData] = useState({
     // All mandatory fields for backend
@@ -198,6 +199,7 @@ const ConsultantDashboard = () => {
     fetchMessages();
     fetchAvailability();
     fetchPerformanceMetrics();
+    fetchNotifications();
     fetchSubscriptionStatus();
   }, []);
 
@@ -218,6 +220,36 @@ const ConsultantDashboard = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Poll for performance metrics and earnings every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchPerformanceMetrics();
+      fetchEarnings();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Update notifications and refresh metrics when sessions change
+  useEffect(() => {
+    fetchNotifications();
+    // Also refresh performance metrics and earnings when sessions change
+    // (e.g., when a session is completed)
+    fetchPerformanceMetrics();
+    fetchEarnings();
+  }, [upcomingSessions, earnings, reviews, messages]);
+
+  // Handle scroll to notifications section if hash is present
+  useEffect(() => {
+    if (window.location.hash === '#notifications') {
+      setTimeout(() => {
+        const element = document.getElementById('notifications');
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 500); // Delay to ensure content is rendered
+    }
+  }, []);
 
   // Listen for subscription updates from payment success
   useEffect(() => {
@@ -279,10 +311,33 @@ const ConsultantDashboard = () => {
   const fetchUpcomingSessions = async () => {
     try {
       const data = await consultantsApi.getConsultantBookings();
-      setUpcomingSessions(data || []);
+      
+      // Filter to only include bookings from today onwards
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
+      
+      const futureBookings = (data || []).filter((booking: any) => {
+        if (!booking.date) return false;
+        const bookingDate = new Date(booking.date);
+        bookingDate.setHours(0, 0, 0, 0);
+        return bookingDate >= today;
+      }).sort((a: any, b: any) => {
+        // Sort by date and time
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        if (dateA.getTime() === dateB.getTime()) {
+          // If same date, sort by time slot
+          const timeA = a.time_slot || '00:00';
+          const timeB = b.time_slot || '00:00';
+          return timeA.localeCompare(timeB);
+        }
+        return dateA.getTime() - dateB.getTime();
+      });
+      
+      setUpcomingSessions(futureBookings);
       
       // Check for live sessions
-      const activeLiveSession = (data || []).find((booking: any) => isBookingLive(booking));
+      const activeLiveSession = futureBookings.find((booking: any) => isBookingLive(booking));
       setLiveSession(activeLiveSession || null);
     } catch (error) {
       console.error('Failed to fetch upcoming sessions:', error);
@@ -306,17 +361,120 @@ const ConsultantDashboard = () => {
 
   const fetchReviews = async () => {
     try {
-      // For now, we'll use profile data for reviews
-      if (profile) {
-        const mockReviews = {
-          averageRating: profile.rating || 0,
-          totalReviews: profile.total_reviews || 0,
-          recentReviews: [] // This would come from a separate reviews API
-        };
-        setReviews(mockReviews);
-      }
+      // Fetch actual reviews from API
+      const response = await api.get("/consultant/reviews");
+      const reviewsData = response.data || [];
+      
+      // Calculate average rating
+      const avgRating = reviewsData.length > 0
+        ? reviewsData.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewsData.length
+        : profile?.rating || 0;
+      
+      // Format reviews for display
+      const formattedReviews = {
+        averageRating: avgRating,
+        totalReviews: reviewsData.length,
+        recentReviews: reviewsData.slice(0, 3).map((review: any) => ({
+          client: review.userName || 'Anonymous',
+          rating: review.rating || 0,
+          comment: review.comment || '',
+          date: review.created_at
+        }))
+      };
+      
+      setReviews(formattedReviews);
     } catch (error) {
       console.error('Failed to fetch reviews:', error);
+      // Fallback to profile data if API fails
+      if (profile) {
+        setReviews({
+          averageRating: profile.rating || 0,
+          totalReviews: profile.total_reviews || 0,
+          recentReviews: []
+        });
+      }
+    }
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      // Fetch notifications from API or generate based on dashboard data
+      const notifs = [];
+      
+      // Calculate today's bookings from upcomingSessions
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayBookings = upcomingSessions.filter((session: any) => {
+        if (!session.date) return false;
+        const sessionDate = new Date(session.date);
+        sessionDate.setHours(0, 0, 0, 0);
+        return sessionDate.getTime() === today.getTime();
+      });
+      
+      // Add today's booking notifications
+      if (todayBookings && todayBookings.length > 0) {
+        notifs.push({
+          id: 'booking-today',
+          type: 'info',
+          icon: Calendar,
+          title: `${todayBookings.length} ${todayBookings.length === 1 ? 'Booking' : 'Bookings'} Today`,
+          message: `You have ${todayBookings.length} session${todayBookings.length === 1 ? '' : 's'} scheduled for today`,
+          time: new Date().toISOString(),
+          priority: 'high'
+        });
+      }
+      
+      // Add upcoming booking notifications (future bookings, not today)
+      const futureBookings = upcomingSessions.filter((session: any) => {
+        if (!session.date) return false;
+        const sessionDate = new Date(session.date);
+        sessionDate.setHours(0, 0, 0, 0);
+        return sessionDate.getTime() > today.getTime();
+      });
+      
+      if (futureBookings && futureBookings.length > 0) {
+        const nextBooking = futureBookings[0];
+        notifs.push({
+          id: 'booking-upcoming',
+          type: 'success',
+          icon: CheckCircle,
+          title: 'Upcoming Session',
+          message: `Next session with ${nextBooking.user?.name || 'Client'} on ${new Date(nextBooking.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}`,
+          time: nextBooking.date,
+          priority: 'medium'
+        });
+      }
+      
+      // Add earnings notification
+      if (earnings && earnings.total > 0) {
+        notifs.push({
+          id: 'earnings-update',
+          type: 'success',
+          icon: DollarSign,
+          title: 'Earnings Update',
+          message: `Total earnings: ₹${earnings.total}. Available to withdraw: ₹${earnings.available}`,
+          time: new Date().toISOString(),
+          priority: 'low'
+        });
+      }
+      
+      // Add review notification
+      if (reviews && reviews.recentReviews && reviews.recentReviews.length > 0) {
+        const latestReview = reviews.recentReviews[0];
+        notifs.push({
+          id: 'new-review',
+          type: 'info',
+          icon: Star,
+          title: 'New Review Received',
+          message: `${latestReview.client} rated you ${latestReview.rating}/5 stars`,
+          time: latestReview.date,
+          priority: 'medium'
+        });
+      }
+      
+      setNotifications(notifs);
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
     }
   };
 
@@ -360,7 +518,36 @@ const ConsultantDashboard = () => {
   const fetchAvailability = async () => {
     try {
       const data = await consultantsApi.getConsultantAvailability();
-      setAvailability(data || []);
+      
+      // If we get raw slot data, transform it into weekly schedule format
+      if (Array.isArray(data) && data.length > 0 && data[0]?.available_date) {
+        // Filter out past slots - only keep today and future
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const futureSlots = data.filter((slot: any) => {
+          if (!slot.available_date) return false;
+          const slotDate = new Date(slot.available_date);
+          slotDate.setHours(0, 0, 0, 0);
+          return slotDate >= today;
+        });
+        
+        // Get today's slots specifically
+        const todaySlots = futureSlots.filter((slot: any) => {
+          const slotDate = new Date(slot.available_date);
+          slotDate.setHours(0, 0, 0, 0);
+          return slotDate.getTime() === today.getTime();
+        }).filter((slot: any) => !slot.is_booked);
+        
+        const weeklySchedule = transformSlotsToWeekly(futureSlots);
+        setAvailability({
+          weeklySchedule,
+          todaySlots,
+          totalSlots: futureSlots.length
+        });
+      } else {
+        setAvailability(data || []);
+      }
     } catch (error: any) {
       // 404 means no consultant profile yet - show empty state
       if (error.response?.status !== 404) {
@@ -368,6 +555,48 @@ const ConsultantDashboard = () => {
       }
       setAvailability([]);
     }
+  };
+
+  // Transform individual slots into weekly schedule format
+  const transformSlotsToWeekly = (slots: any[]) => {
+    const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const slotsByDay: Record<string, Set<string>> = {};
+
+    // Group slots by day of week
+    slots.forEach(slot => {
+      if (slot.is_booked) return; // Skip booked slots
+      const dayName = new Date(slot.available_date).toLocaleDateString('en-US', { weekday: 'long' });
+      if (!slotsByDay[dayName]) {
+        slotsByDay[dayName] = new Set<string>();
+      }
+      slotsByDay[dayName].add(slot.available_time);
+    });
+
+    // Build weekly schedule with time ranges
+    const schedule = daysOfWeek.map(day => {
+      const daySlots = Array.from(slotsByDay[day] || []).sort();
+      
+      if (daySlots.length === 0) {
+        return {
+          day,
+          timeRange: 'Not available',
+          slotCount: 0
+        };
+      }
+
+      const startTime = daySlots[0];
+      const endTime = `${(parseInt(daySlots[daySlots.length - 1].split(':')[0]) + 1).toString().padStart(2, '0')}:00`;
+      const timeRange = `${startTime} - ${endTime}`;
+
+      return {
+        day,
+        timeRange,
+        slotCount: daySlots.length,
+        slots: daySlots
+      };
+    });
+
+    return schedule.filter(s => s.slotCount > 0);
   };
 
   const fetchPerformanceMetrics = async () => {
@@ -476,9 +705,15 @@ const ConsultantDashboard = () => {
   };
 
   const formatTime = (timeString: string) => {
-  const date = new Date(timeString);
-  return date.toLocaleString();
-};
+    const date = new Date(timeString);
+    return date.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
 const calculateProfileCompletion = () => {
   if (!profile) return 0;
@@ -1383,7 +1618,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* 4.2 Upcoming Sessions */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-3xl shadow-sm border p-6">
+            <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold flex items-center">
                   <Calendar className="w-5 h-5 mr-2 text-blue-600" />
@@ -1402,7 +1637,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                   </div>
                 ) : (
                   upcomingSessions.map((session) => (
-                    <div key={session.id} className="border rounded-xl p-4 hover:shadow-md transition-shadow">
+                    <div key={session.id} className="border border-blue-100 rounded-xl p-4 bg-gradient-to-r from-white to-blue-50/40 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center mb-2">
@@ -1416,7 +1651,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                           </div>
                           <div className="flex items-center text-sm text-gray-600 ml-13">
                             <Clock className="w-4 h-4 mr-1" />
-                            {session.date ? new Date(session.date).toLocaleDateString('en-IN') : 'Date not set'} at {session.time_slot || 'Time not set'}
+                            {session.date ? new Date(session.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Date not set'} at {session.time_slot || 'Time not set'}
                           </div>
                         </div>
                         
@@ -1466,54 +1701,98 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
             </div>
           </div>
 
-          {/* 4.3 Availability Overview */}
+          {/* 4.3 Today's Availability */}
           <div>
-            <div className="bg-white rounded-3xl shadow-sm border p-6">
+            <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold flex items-center">
-                  <Clock className="w-5 h-5 mr-2 text-green-600" />
-                  Availability
-                </h3>
-                <button className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                <div>
+                  <h3 className="text-xl font-bold flex items-center">
+                    <Calendar className="w-5 h-5 mr-2 text-green-600" />
+                    Today's Availability
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => navigate('/consultant/slots')}
+                  className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  title="Manage Availability"
+                >
                   <Plus className="w-4 h-4" />
                 </button>
               </div>
               
-              <div className="space-y-4">
-                {availability ? (
-                  <>
-                    <div className="bg-green-50 rounded-xl p-4">
-                      <p className="text-sm font-medium text-green-900 mb-2">Next Available</p>
-                      <p className="text-lg font-bold text-green-700">
-                        {availability.nextAvailable ? formatTime(availability.nextAvailable) : 'No upcoming slots'}
-                      </p>
-                    </div>
+              {availability ? (
+                <div className="space-y-4">
+                  {(() => {
+                    // Use todaySlots to only show slots for today's specific date
+                    const todaySlots = availability.todaySlots || [];
+                    const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
                     
-                    {availability.weeklySchedule && availability.weeklySchedule.length > 0 ? (
-                      <div className="bg-blue-50 rounded-xl p-4">
-                        <p className="text-sm font-medium text-blue-900 mb-2">This Week</p>
-                        <div className="space-y-1">
-                          {availability.weeklySchedule.map((slot: any, index: number) => (
-                            <div key={index} className="flex justify-between text-sm">
-                              <span>{slot.day}</span>
-                              <span className="font-medium">{slot.timeRange}</span>
+                    if (todaySlots.length > 0) {
+                      // Calculate time range from today's slots
+                      const times = todaySlots.map((slot: any) => slot.available_time).sort();
+                      const startTime = times[0];
+                      const endTime = `${(parseInt(times[times.length - 1].split(':')[0]) + 1).toString().padStart(2, '0')}:00`;
+                      const timeRange = `${startTime} - ${endTime}`;
+                      
+                      return (
+                        <>
+                          {/* Today's Schedule Card */}
+                          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-14 h-14 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 text-white flex items-center justify-center font-bold text-lg">
+                                  {today.substring(0, 3)}
+                                </div>
+                                <div>
+                                  <p className="text-lg font-bold text-gray-800">{today}</p>
+                                  <p className="text-sm text-gray-600">Available Today</p>
+                                </div>
+                              </div>
+                              <span className="bg-green-500 text-white text-xs font-bold px-4 py-2 rounded-full flex items-center gap-2">
+                                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                                Active
+                              </span>
                             </div>
-                          ))}
+                            
+                            <div className="grid grid-cols-2 gap-4 mt-4">
+                              <div className="bg-white rounded-lg p-4 text-center border border-blue-100">
+                                <p className="text-3xl font-bold text-blue-600">{todaySlots.length}</p>
+                                <p className="text-xs text-gray-600 mt-1">Hours Available</p>
+                              </div>
+                              <div className="bg-white rounded-lg p-4 text-center border border-blue-100">
+                                <p className="text-lg font-bold text-green-600">{timeRange}</p>
+                                <p className="text-xs text-gray-600 mt-1">Time Range</p>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    } else {
+                      return (
+                        <div className="bg-yellow-50 rounded-xl p-6 border border-yellow-200 text-center">
+                          <AlertCircle className="w-12 h-12 mx-auto mb-3 text-yellow-600" />
+                          <p className="text-sm font-medium text-yellow-900">No availability set for today ({today})</p>
+                          <p className="text-xs text-yellow-800 mt-2">Add your available time slots to start accepting bookings</p>
+                          <button 
+                            onClick={() => navigate('/consultant/slots')} 
+                            className="mt-4 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                          >
+                            Set Today's Schedule
+                          </button>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="bg-gray-50 rounded-xl p-4">
-                        <p className="text-sm font-medium text-gray-900">No weekly schedule set</p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <Clock className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                    <p>Loading availability...</p>
-                  </div>
-                )}
-              </div>
+                      );
+                    }
+                  })()}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Clock className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p className="text-gray-500 font-medium">Loading availability...</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1604,10 +1883,10 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* 4.4 Earnings Summary */}
-          <div className="bg-white rounded-3xl shadow-sm border p-6">
+          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold flex items-center">
-                <DollarSign className="w-5 h-5 mr-2 text-green-600" />
+                <IndianRupee className="w-5 h-5 mr-2 text-green-600" />
                 Earnings Summary
               </h3>
               <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
@@ -1616,42 +1895,42 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
             </div>
             
             {earnings ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                <div className="text-center">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="text-center bg-green-50 border border-green-100 rounded-xl p-4">
                   <p className="text-sm text-gray-600 mb-1">Total Earnings</p>
                   <p className="text-2xl font-bold text-green-600">₹{(earnings.totalEarnings || 0).toLocaleString()}</p>
                 </div>
-                <div className="text-center">
+                <div className="text-center bg-blue-50 border border-blue-100 rounded-xl p-4">
                   <p className="text-sm text-gray-600 mb-1">Monthly Earnings</p>
                   <p className="text-2xl font-bold text-blue-600">₹{(earnings.monthlyEarnings || 0).toLocaleString()}</p>
                 </div>
-                <div className="text-center">
+                <div className="text-center bg-amber-50 border border-amber-100 rounded-xl p-4">
                   <p className="text-sm text-gray-600 mb-1">Pending Payout</p>
                   <p className="text-2xl font-bold text-yellow-600">₹{(earnings.pendingPayout || 0).toLocaleString()}</p>
                 </div>
-                <div className="text-center">
+                <div className="text-center bg-purple-50 border border-purple-100 rounded-xl p-4">
                   <p className="text-sm text-gray-600 mb-1">Withdrawable</p>
                   <p className="text-2xl font-bold text-purple-600">₹{(earnings.withdrawableBalance || 0).toLocaleString()}</p>
                 </div>
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
-                <DollarSign className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                <IndianRupee className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                 <p>No earnings data available</p>
               </div>
             )}
             
-            <div className="flex space-x-4 mt-6">
+            <div className="flex flex-col sm:flex-row gap-3 mt-6">
               <button 
                 onClick={handleWithdraw}
                 disabled={!earnings || earnings.withdrawableBalance <= 0}
-                className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full sm:flex-1 bg-gradient-to-r from-blue-600 to-cyan-500 text-white py-3 rounded-xl font-semibold hover:from-blue-700 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Withdraw
               </button>
               <button 
                 onClick={() => navigate('/earnings')}
-                className="flex-1 border border-gray-300 py-3 rounded-xl font-semibold hover:bg-gray-50"
+                className="w-full sm:flex-1 border border-blue-200 text-blue-700 py-3 rounded-xl font-semibold hover:bg-blue-50"
               >
                 View Detailed Report
               </button>
@@ -1659,69 +1938,128 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
 
           {/* 4.5 Reviews & Ratings */}
-          <div className="bg-white rounded-3xl shadow-sm border p-6">
+          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold flex items-center">
                 <Star className="w-5 h-5 mr-2 text-yellow-500" />
                 Reviews & Ratings
               </h3>
-              <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                View All
+              <button 
+                onClick={() => navigate('/consultant/reviews')}
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
+              >
+                View All →
               </button>
             </div>
             
             {reviews ? (
-              <div className="space-y-4">
-                <div className="text-center">
-                  <div className="flex items-center justify-center mb-2">
-                    <Star className="w-8 h-8 text-yellow-500 fill-current" />
-                    <span className="text-3xl font-bold ml-2">{reviews.averageRating || 0}</span>
+              <div className="space-y-6">
+                {/* Average Rating Display */}
+                <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-2xl p-6 border border-amber-200">
+                  <div className="flex items-center justify-center mb-3">
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => {
+                        const avgRating = reviews.averageRating || 0;
+                        return (
+                          <Star
+                            key={star}
+                            className={`w-8 h-8 transition-all ${
+                              star <= Math.round(avgRating)
+                                ? 'text-amber-500 fill-amber-500 scale-110'
+                                : 'text-gray-300 fill-gray-300'
+                            }`}
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
-                  <p className="text-gray-600">{reviews.totalReviews || 0} Total Reviews</p>
+                  <div className="text-center">
+                    <span className="text-4xl font-bold text-amber-600">{(reviews.averageRating || 0).toFixed(1)}</span>
+                    <span className="text-lg text-amber-700 ml-1">/5</span>
+                  </div>
+                  <p className="text-center text-sm text-amber-700 mt-2 font-medium">
+                    Based on {reviews.totalReviews || 0} {reviews.totalReviews === 1 ? 'review' : 'reviews'}
+                  </p>
                 </div>
                 
+                {/* Recent Reviews */}
                 {reviews.recentReviews && reviews.recentReviews.length > 0 ? (
-                  <div className="border-t pt-4">
-                    <p className="font-medium mb-3">Recent Reviews</p>
+                  <div>
+                    <p className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-indigo-600" />
+                      Recent Reviews
+                    </p>
                     <div className="space-y-3">
-                      {reviews.recentReviews.map((review: any, index: number) => (
-                        <div key={index} className="border rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium">{review.client || 'Anonymous'}</span>
-                            <div className="flex">
-                              {[...Array(5)].map((_, i) => (
-                                <Star
-                                  key={i}
-                                  className={`w-4 h-4 ${
-                                    i < (review.rating || 0)
-                                      ? 'text-yellow-500 fill-current'
-                                      : 'text-gray-300'
-                                  }`}
-                                />
-                              ))}
+                      {reviews.recentReviews.map((review: any, index: number) => {
+                        const rating = review.rating || 0;
+                        const ratingColor = 
+                          rating >= 4 ? 'from-emerald-500 to-green-600' :
+                          rating >= 3 ? 'from-blue-500 to-indigo-600' :
+                          rating >= 2 ? 'from-amber-500 to-orange-600' :
+                          'from-red-500 to-rose-600';
+                        
+                        return (
+                          <div 
+                            key={index} 
+                            className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-4 border border-gray-200 hover:shadow-md transition-all duration-300 hover:scale-[1.01]"
+                          >
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-center gap-3">
+                                <div className={`bg-gradient-to-br ${ratingColor} w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-md`}>
+                                  {review.client ? review.client.charAt(0).toUpperCase() : 'A'}
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-800">{review.client || 'Anonymous'}</span>
+                                  {review.date && (
+                                    <p className="text-xs text-gray-500">{new Date(review.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-lg">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <span
+                                    key={star}
+                                    className={`text-base transition-all ${
+                                      star <= rating ? 'text-amber-500 scale-110' : 'text-gray-300'
+                                    }`}
+                                  >
+                                    ★
+                                  </span>
+                                ))}
+                                <span className="text-xs font-bold text-amber-700 ml-1">{rating}/5</span>
+                              </div>
                             </div>
+                            {review.comment && review.comment.trim() !== '' ? (
+                              <p className="text-sm text-gray-700 leading-relaxed bg-white p-3 rounded-lg border border-gray-100">
+                                "{review.comment}"
+                              </p>
+                            ) : (
+                              <p className="text-sm text-gray-400 italic">No comment provided</p>
+                            )}
                           </div>
-                          <p className="text-sm text-gray-600">{review.comment || 'No comment provided'}</p>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
-                  <div className="border-t pt-4 text-center text-gray-500">
-                    <p>No recent reviews</p>
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl py-8 text-center border border-gray-200">
+                    <Star className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p className="text-gray-600 font-medium">No recent reviews yet</p>
+                    <p className="text-sm text-gray-500 mt-1">Reviews from clients will appear here</p>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
-                <Star className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p>No reviews data available</p>
+              <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl py-12 text-center border border-gray-200">
+                <Star className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <p className="text-gray-600 font-semibold text-lg">No reviews data available</p>
+                <p className="text-sm text-gray-500 mt-2">Complete sessions to start receiving reviews</p>
               </div>
             )}
           </div>
 
           {/* 4.6 Performance Metrics */}
-          <div className="bg-white rounded-3xl shadow-sm border p-6">
+          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold flex items-center">
                 <TrendingUp className="w-5 h-5 mr-2 text-purple-600" />
@@ -1775,14 +2113,17 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* 4.8 Messages Preview */}
-          <div className="bg-white rounded-3xl shadow-sm border p-6">
+          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold flex items-center">
                 <MessageSquare className="w-5 h-5 mr-2 text-indigo-600" />
                 Messages
               </h3>
-              <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                View All
+              <button 
+                onClick={() => navigate('/consultant/messages')}
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
+              >
+                View All →
               </button>
             </div>
             
@@ -1796,7 +2137,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                 messages.map((message, index) => (
                   <div 
                     key={index} 
-                    className="flex items-start p-3 hover:bg-gray-50 rounded-lg cursor-pointer"
+                    className="flex items-start p-3 hover:bg-blue-50/70 rounded-lg cursor-pointer transition-all duration-300 hover:shadow-md border border-transparent hover:border-blue-100"
                     onClick={() => navigate('/consultant/messages', { state: { bookingId: message.bookingId } })}
                   >
                     <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
@@ -1818,8 +2159,78 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
               )}
             </div>
           </div>
+
+          {/* 4.9 Notifications Section */}
+          <div id="notifications" className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 scroll-mt-24 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold flex items-center">
+                <Bell className="w-5 h-5 mr-2 text-purple-600" />
+                Notifications
+              </h3>
+              <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-3 py-1 rounded-full">
+                {notifications.length} {notifications.length === 1 ? 'Notification' : 'Notifications'}
+              </span>
+            </div>
+            
+            {notifications.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <Bell className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <p className="text-lg font-medium">No new notifications</p>
+                <p className="text-sm mt-1">You're all caught up!</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {notifications.map((notification) => {
+                  const Icon = notification.icon;
+                  const priorityColors = {
+                    high: 'from-red-500 to-rose-600',
+                    medium: 'from-blue-500 to-indigo-600',
+                    low: 'from-gray-500 to-slate-600'
+                  };
+                  const bgColors = {
+                    high: 'bg-red-50 border-red-200',
+                    medium: 'bg-blue-50 border-blue-200',
+                    low: 'bg-gray-50 border-gray-200'
+                  };
+                  
+                  return (
+                    <div 
+                      key={notification.id} 
+                      className={`flex items-start gap-4 p-4 rounded-xl border ${bgColors[notification.priority as keyof typeof bgColors] || bgColors.low} hover:shadow-md transition-all duration-300 hover:scale-[1.01] cursor-pointer group`}
+                    >
+                      <div className={`bg-gradient-to-br ${priorityColors[notification.priority as keyof typeof priorityColors] || priorityColors.low} w-12 h-12 rounded-full flex items-center justify-center shadow-md flex-shrink-0 group-hover:scale-110 transition-transform`}>
+                        <Icon className="w-6 h-6 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <h4 className="font-bold text-gray-900 truncate">{notification.title}</h4>
+                          {notification.priority === 'high' && (
+                            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase flex-shrink-0">New</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-700 mb-2 line-clamp-2">{notification.message}</p>
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(notification.time).toLocaleDateString('en-IN', { 
+                            day: '2-digit',
+                            month: 'short', 
+                            year: 'numeric'
+                          })} {new Date(notification.time).toLocaleTimeString('en-IN', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                      <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-gray-600 group-hover:translate-x-1 transition-all flex-shrink-0" />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+
+        </div>
       )}
     </Layout>
   );

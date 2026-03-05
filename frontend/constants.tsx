@@ -20,6 +20,7 @@ import {
   User,
   Video,
   DollarSign,
+  Bell,
 } from "lucide-react";
 
 import { UserRole, SessionStatus, Session, Consultant } from "./types";
@@ -196,11 +197,6 @@ export const SIDEBAR_LINKS = {
       label: "Earnings",
       icon: <TrendingUp size={20} />,
       path: "/consultant/earnings",
-    },
-    {
-      label: "Profile",
-      icon: <Briefcase size={20} />,
-      path: "/consultant/profile",
     },
     {
       label:"Plans & Pricing",

@@ -12,6 +12,7 @@ interface Slot {
   available_date: string;
   available_time: string;
   is_booked: boolean;
+  booking_status?: 'pending' | 'confirmed' | 'completed' | 'cancelled' | null;
 }
 
 interface DayAvailability {
@@ -82,18 +83,93 @@ const AvailabilityPage: React.FC = () => {
     checkProfile();
   }, [navigate]);
 
-  useEffect(() => { fetchSlots(); }, []);
+  useEffect(() => { 
+    fetchSlots(); 
+  }, []);
 
   const fetchSlots = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/consultant/availability/my');
-      setAllSlots(res.data);
+      const [slotsRes, bookingsRes] = await Promise.all([
+        api.get('/consultant/availability/my'),
+        consultantsApi.getConsultantBookings()
+      ]);
+
+      const slots = slotsRes.data;
+      const bookings = bookingsRes || [];
+
+      // Create a map of date+time to booking status
+      const bookingStatusMap: Record<string, string> = {};
+      bookings.forEach((booking: any) => {
+        if (booking.date && booking.time_slot) {
+          const key = `${booking.date}_${booking.time_slot}`;
+          bookingStatusMap[key] = booking.status;
+        }
+      });
+
+      // Enrich slots with booking status
+      const enrichedSlots = slots.map((slot: Slot) => {
+        const key = `${slot.available_date}_${slot.available_time}`;
+        return {
+          ...slot,
+          booking_status: bookingStatusMap[key] || null
+        };
+      });
+
+      setAllSlots(enrichedSlots);
+      
+      // Load saved weekly availability from the slots
+      loadSavedWeeklyAvailability(enrichedSlots);
     } catch (err) {
       console.error('Failed to fetch slots:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Parse saved slots and populate the weekly availability form
+  const loadSavedWeeklyAvailability = (slots: Slot[]) => {
+    const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const savedByDay: Record<string, Set<string>> = {};
+    
+    // Group slots by day of week
+    slots.forEach(slot => {
+      if (slot.is_booked) return; // Skip booked slots
+      const dayName = new Date(slot.available_date).toLocaleDateString('en-US', { weekday: 'long' });
+      if (!savedByDay[dayName]) {
+        savedByDay[dayName] = new Set<string>();
+      }
+      savedByDay[dayName].add(slot.available_time);
+    });
+
+    // Update weekly availability with saved data
+    const updatedWeekly = daysOfWeek.map(day => {
+      const hasSavedSlots = savedByDay[day] && savedByDay[day].size > 0;
+      
+      if (hasSavedSlots) {
+        const slotsArray = Array.from(savedByDay[day]!).sort();
+        const startTime = slotsArray[0];
+        const endTime = `${(parseInt(slotsArray[slotsArray.length - 1].split(':')[0]) + 1).toString().padStart(2, '0')}:00`;
+        
+        return {
+          day,
+          available: true,
+          startTime,
+          endTime,
+          selectedSlots: slotsArray
+        };
+      }
+      
+      return {
+        day,
+        available: false,
+        startTime: '09:00',
+        endTime: '17:00',
+        selectedSlots: []
+      };
+    });
+
+    setWeeklyAvailability(updatedWeekly);
   };
 
   // Slots for the currently-selected date
@@ -295,7 +371,7 @@ const AvailabilityPage: React.FC = () => {
 
     try {
       const today = new Date();
-      const weeksToGenerate = 1;
+      const weeksToGenerate = 4; // Generate for 4 weeks to ensure consistent data
       let slotsCreated = 0;
 
       for (let week = 0; week < weeksToGenerate; week++) {
@@ -328,9 +404,12 @@ const AvailabilityPage: React.FC = () => {
         }
       }
 
-      setWeeklySavedMessage(`✓ Your weekly availability is updated successfully! ${slotsCreated} slots created for this week.`);
+      setWeeklySavedMessage(`✓ Your weekly availability is updated successfully! ${slotsCreated} slots created for the next 4 weeks.`);
       setTimeout(() => setWeeklySavedMessage(''), 5000);
-      await fetchSlots(); // Refresh slots
+      
+      // Refresh slots and update the display
+      await new Promise(resolve => setTimeout(resolve, 500)); // Small delay to ensure DB is updated
+      await fetchSlots();
     } catch (err: any) {
       const errorMsg = err?.response?.data?.error || 'Failed to save availability';
       setWeeklyError(errorMsg);
@@ -344,17 +423,60 @@ const AvailabilityPage: React.FC = () => {
     .filter(day => day.available && day.selectedSlots.length > 0)
     .map(day => ({ day: day.day, slots: [...day.selectedSlots].sort() }));
 
-  const savedSlotsByDay = allSlots.reduce((acc, slot) => {
-    if (slot.is_booked) return acc;
-    const dayName = new Date(slot.available_date).toLocaleDateString('en-US', { weekday: 'long' });
-    if (!acc[dayName]) acc[dayName] = new Set<string>();
-    acc[dayName].add(slot.available_time);
-    return acc;
-  }, {} as Record<string, Set<string>>);
+  const toLocalDate = (dateInput: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+      const [year, month, day] = dateInput.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+    return new Date(dateInput);
+  };
 
-  const savedWeeklyDays = daysOfWeek
-    .map(day => ({ day, slots: Array.from(savedSlotsByDay[day] || []).sort() }))
-    .filter(day => day.slots.length > 0);
+  const savedSlotsByDate = allSlots.reduce((acc, slot) => {
+    const slotDate = toLocalDate(slot.available_date);
+    const dateKey = slotDate.toLocaleDateString('en-CA');
+    const dayName = slotDate.toLocaleDateString('en-US', { weekday: 'long' });
+
+    if (!acc[dateKey]) {
+      acc[dateKey] = {
+        date: dateKey,
+        day: dayName,
+        slots: new Set<string>()
+      };
+    }
+
+    acc[dateKey].slots.add(slot.available_time);
+    return acc;
+  }, {} as Record<string, { date: string; day: string; slots: Set<string> }>);
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const weekStart = new Date(todayStart);
+  const currentDay = weekStart.getDay();
+  const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
+  weekStart.setDate(weekStart.getDate() + mondayOffset);
+  weekStart.setHours(0, 0, 0, 0);
+
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+
+  const savedDateAvailability = Object.values(savedSlotsByDate)
+    .map(entry => {
+      const entryDate = toLocalDate(entry.date);
+      entryDate.setHours(0, 0, 0, 0);
+      return {
+        date: entry.date,
+        day: entry.day,
+        slots: Array.from(entry.slots).sort(),
+        status: entryDate < todayStart ? 'completed' : 'active'
+      };
+    })
+    .filter(entry => {
+      const entryDate = toLocalDate(entry.date);
+      return entryDate >= weekStart && entryDate <= weekEnd;
+    })
+    .sort((a, b) => toLocalDate(a.date).getTime() - toLocalDate(b.date).getTime());
 
   return (
     <ConsultantKycGate kycStatus={kycStatus} showSuccessModal={isApprovalSuccess}>
@@ -441,7 +563,7 @@ const AvailabilityPage: React.FC = () => {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="font-black text-lg">{selectedDate.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</h3>
-              <p className="text-sm text-gray-500">{slotsForDay.length} slot(s) — {slotsForDay.filter(s => !s.is_booked).length} available, {slotsForDay.filter(s => s.is_booked).length} booked</p>
+              <p className="text-sm text-gray-500">{slotsForDay.length} slot(s) — {slotsForDay.filter(s => !s.is_booked).length} available, {slotsForDay.filter(s => s.booking_status === 'completed').length} completed, {slotsForDay.filter(s => s.is_booked && s.booking_status !== 'completed').length} active</p>
             </div>
             {!showForm && (
               <button onClick={() => { setShowForm(true); setError(''); setSuccess(''); }}
@@ -515,14 +637,19 @@ const AvailabilityPage: React.FC = () => {
                 const startH = parseInt(slot.available_time);
                 const endHH = String(startH + 1).padStart(2, '0');
                 return (
-                  <div key={slot.id} className={`relative rounded-2xl border-2 p-4 transition-all
-                    ${slot.is_booked ? 'border-blue-200 bg-blue-50' : 'border-green-200 bg-green-50 hover:shadow-md'}`}>
+                  <div key={slot.id} className={`relative rounded-2xl border-2 p-4 transition-all ${
+                    slot.booking_status === 'completed' ? 'border-purple-200 bg-purple-50' :
+                    slot.is_booked ? 'border-blue-200 bg-blue-50' : 'border-green-200 bg-green-50 hover:shadow-md'}`}>
                     <div className="flex items-start justify-between mb-3">
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${slot.is_booked ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                        {slot.is_booked ? (
-                          <CheckCircle className="w-3 h-3" />
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                        slot.booking_status === 'completed' ? 'bg-purple-100 text-purple-700' :
+                        slot.is_booked ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                        {slot.booking_status === 'completed' ? (
+                          <> ✓ Completed</>
+                        ) : slot.is_booked ? (
+                          <> <CheckCircle className="w-3 h-3" /> Active</>
                         ) : (
-                          <Check className="w-3 h-3" />
+                          <> <Check className="w-3 h-3" /> Available</>
                         )}
                       </span>
                       {!slot.is_booked && (
@@ -694,30 +821,62 @@ const AvailabilityPage: React.FC = () => {
             </div>
 
             {/* Summary Section */}
-            <div className="bg-gray-50 rounded-xl p-6 mb-6 border border-gray-200">
-              <h4 className="font-bold text-gray-900 mb-3 text-sm">
-                {selectedWeeklyDays.length > 0
-                  ? 'Availability Summary'
-                  : savedWeeklyDays.length > 0
-                  ? 'Saved Availability'
-                  : 'Availability Summary'}
-              </h4>
-              <div className="space-y-2">
-                {(selectedWeeklyDays.length > 0
-                  ? selectedWeeklyDays
-                  : savedWeeklyDays)
-                  .map((day, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-gray-700">{day.day}</span>
-                      <span className="text-gray-600 text-[12px]">
-                        {day.slots.length} slots: {day.slots.map(slot => formatTime(slot)).join(', ')}
-                      </span>
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 mb-6 border border-blue-200 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                <h4 className="font-bold text-gray-900 text-base">
+                  {savedDateAvailability.length > 0 ? '✓ Saved Availability (This Week)' : 'No Schedule Saved Yet'}
+                </h4>
+              </div>
+              
+              {savedDateAvailability.length > 0 ? (
+                <div className="space-y-3">
+                  {savedDateAvailability.map((entry, idx) => (
+                    <div key={idx} className="flex items-start justify-between bg-white rounded-lg p-3 border border-blue-100 hover:shadow-md transition-shadow">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-bold text-gray-800 text-sm">{entry.day}</span>
+                          <span className="text-xs text-gray-600">({new Date(entry.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })})</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                            entry.status === 'completed'
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}>
+                            {entry.status === 'completed' ? 'Completed' : 'Active'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-600 flex flex-wrap gap-1">
+                          {entry.slots.map((slot, i) => (
+                            <span key={i} className="bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                              {formatTime(slot)} - {formatTime(`${(parseInt(slot.split(':')[0]) + 1).toString().padStart(2, '0')}:00`)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <span className="text-xs font-semibold text-blue-600 ml-2">{entry.slots.length} slots</span>
                     </div>
                   ))}
-                {selectedWeeklyDays.length === 0 && savedWeeklyDays.length === 0 && (
-                  <p className="text-xs text-gray-500 italic">No slots selected</p>
-                )}
-              </div>
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-xs text-green-700">
+                      <span className="font-bold">📅 Total:</span> {savedDateAvailability.length} saved dates • {savedDateAvailability.reduce((sum, entry) => sum + entry.slots.length, 0)} total slots
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <Clock className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-gray-600 font-medium">No saved slots for this week. Configure and save your weekly schedule above.</p>
+                </div>
+              )}
+
+              {/* Show what's being prepared to save */}
+              {selectedWeeklyDays.length > 0 && (
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-xs text-yellow-700 font-semibold">
+                    💡 Pending save: {selectedWeeklyDays.length} days ({selectedWeeklyDays.reduce((sum, day) => sum + day.slots.length, 0)} slots)
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Save Button */}

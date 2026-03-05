@@ -1,10 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, LogOut, Lock, Search, MessageSquare, Plus } from "lucide-react";
+import { Menu, X, MessageCircle, LogOut, Lock, ChevronDown, User, CreditCard, Settings, HelpCircle, Search, LayoutDashboard, Wallet, Calendar, Send, CheckCircle, Clock, TrendingUp, Bell } from "lucide-react";
 import { useAuth } from "../App";
 import { SIDEBAR_LINKS } from "../constants";
 import { UserRole } from "../types";
 import useConsultantKycCheck from "../hooks/useConsultantKycCheck";
+import { useUserSessions } from "../hooks/useUserSessions";
+import { useUserUsage } from "../hooks/useUserUsage";
+import { useUserTransactions } from "../hooks/useUserTransactions";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -14,27 +17,85 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children, title }) => {
   const { user, logout } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { kycStatus } = useConsultantKycCheck();
+  const [isHoverOpen, setIsHoverOpen] = useState(false);
+const [isClickOpen, setIsClickOpen] = useState(false);
+  
+  // Fetch user data for the hover panel
+  const { sessions } = useUserSessions();
+  const { usage } = useUserUsage();
+  const { transactions } = useUserTransactions();
+
+  // Close dropdown when clicking outside
+ useEffect(() => {
+  const handleClickOutside = (event: MouseEvent) => {
+    if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      setIsClickOpen(false);
+    }
+  };
+
+  document.addEventListener('mousedown', handleClickOutside);
+  return () => document.removeEventListener('mousedown', handleClickOutside);
+}, []);
+
+  // Get current page name based on route
+  const getCurrentPageName = () => {
+    const pathname = location.pathname;
+    
+    // User routes
+    if (pathname.includes('/user/dashboard')) return 'Dashboard';
+    if (pathname.includes('/user/profile')) return 'Profile';
+    if (pathname.includes('/user/wallet')) return 'Wallet';
+    if (pathname.includes('/user/messages')) return 'Messages';
+    if (pathname.includes('/user/search')) return 'Search';
+    if (pathname.includes('/user/bookings')) return 'Bookings';
+    if (pathname.includes('/user/subscription-plans')) return 'Subscription Plans';
+    if (pathname.includes('/user/support')) return 'Support';
+    if (pathname.includes('/user/settings')) return 'Settings';
+    
+    // Consultant routes
+    if (pathname.includes('/consultant/dashboard')) return 'Dashboard';
+    if (pathname.includes('/consultant/profile')) return 'Profile';
+    if (pathname.includes('/consultant/earnings')) return 'Earnings';
+    if (pathname.includes('/consultant/messages')) return 'Messages';
+    if (pathname.includes('/consultant/bookings')) return 'Bookings';
+    if (pathname.includes('/consultant/slots')) return 'Time Slots';
+    if (pathname.includes('/consultant/plans')) return 'Plans';
+    if (pathname.includes('/consultant/reviews')) return 'Reviews';
+    if (pathname.includes('/consultant/support')) return 'Support';
+    if (pathname.includes('/consultant/settings')) return 'Settings';
+    
+    // Enterprise routes
+    if (pathname.includes('/enterprise/dashboard')) return 'Dashboard';
+    if (pathname.includes('/enterprise/profile')) return 'Profile';
+    if (pathname.includes('/enterprise/members')) return 'Members';
+    if (pathname.includes('/enterprise/analytics')) return 'Analytics';
+    if (pathname.includes('/enterprise/settings')) return 'Settings';
+    
+    // Member routes
+    if (pathname.includes('/member/dashboard')) return 'Dashboard';
+    if (pathname.includes('/member/profile')) return 'Profile';
+    
+    // Default
+    return title;
+  };
 
   const handleLogout = () => {
     logout();
     navigate("/");
   };
 
-  // Hide sidebar for user pages
-  const isUserPage = location.pathname.startsWith("/user");
-  const isConsultantPage = location.pathname.startsWith("/consultant");
-  const showSidebar = !isUserPage && (user?.role === UserRole.CONSULTANT || user?.role === UserRole.ENTERPRISE_ADMIN);
-  const showTopbar = !isConsultantPage;
-
   const links = user ? SIDEBAR_LINKS[user.role as UserRole] || [] : [];
+  const isConsultantRole = user?.role === UserRole.CONSULTANT;
   
   // Determine which links should be disabled based on KYC status for consultants
   const isKycApproved = user?.role === UserRole.CONSULTANT && kycStatus === "APPROVED";
   const disabledPaths = user?.role === UserRole.CONSULTANT && !isKycApproved 
-    ? ["/consultant/bookings", "/consultant/messages", "/consultant/slots", "/consultant/earnings", "/consultant/plans", "/consultant/reviews", "/consultant/profile", "/consultant/support"] 
+    ? ["/consultant/bookings", "/consultant/messages", "/consultant/slots", "/consultant/earnings", "/consultant/plans", "/consultant/reviews", "/consultant/support"] 
     : [];
 
   // ✅ Role-based profile routing
@@ -52,198 +113,847 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
         return "/";
     }
   })();
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* ================= SIDEBAR (Hidden for User Pages) ================= */}
-      {showSidebar && (
-        <aside
-          className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r
-          transition-transform duration-300 transform
-          ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
-          ${isSidebarOpen ? "lg:translate-x-0 lg:static" : ""}`}
-        >
-          <div className="h-full flex flex-col">
-            {/* Logo */}
-            <div className="p-6 flex items-center justify-between">
-              <Link
-                to="/"
-                className="text-2xl font-bold text-blue-600 tracking-tight"
-              >
-                ConsultaPro
-              </Link>
-            </div>
-
-            {/* Sidebar Links */}
-            <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
-              {links.map((link) => {
-                const isDisabled = disabledPaths.includes(link.path);
-                return (
-                  <div
-                    key={link.path}
-                    title={isDisabled ? "Available after KYC approval" : ""}
-                    className={isDisabled ? "relative group" : ""}
-                  >
-                    {isDisabled ? (
-                      <div className="flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-300 cursor-not-allowed opacity-60">
-                        <Lock size={20} />
-                        <span>{link.label}</span>
-                      </div>
-                    ) : (
-                      <Link
-                        to={link.path}
-                        className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
-                          location.pathname === link.path
-                            ? "bg-blue-50 text-blue-600 font-semibold shadow-sm"
-                            : "text-gray-600 hover:bg-gray-100"
-                        }`}
-                      >
-                        {link.icon}
-                        <span>{link.label}</span>
-                      </Link>
-                    )}
-                  </div>
-                );
-              })}
-            </nav>
-
-            {/* Logout */}
-            <div className="p-4 border-t">
-              <button
-                onClick={handleLogout}
-                className="flex items-center space-x-3 px-4 py-3 w-full text-red-500 hover:bg-red-50 rounded-xl transition-all"
-              >
-                <LogOut size={20} />
-                <span>Logout</span>
-              </button>
-            </div>
+return (
+  <div className={`min-h-screen flex ${isConsultantRole ? 'bg-gradient-to-br from-blue-700 via-blue-600 to-cyan-500' : 'bg-gray-50'}`}>
+    {/* ================= SIDEBAR LAYOUT (FOR CONSULTANT & ENTERPRISE) ================= */}
+    {(user?.role === UserRole.CONSULTANT || user?.role === UserRole.ENTERPRISE_ADMIN || user?.role === UserRole.ENTERPRISE_MEMBER) ? (
+      <>
+        {/* Sidebar */}
+        <div className={`w-64 border-r flex-shrink-0 transition-all duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed h-full z-30 ${isConsultantRole ? 'bg-white/95 backdrop-blur-sm border-white/30' : 'bg-white border-gray-200'}`}>
+          <div className="p-6">
+            <Link
+              to="/"
+              className={`text-2xl font-bold tracking-tight ${isConsultantRole ? 'bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent' : 'text-blue-600'}`}
+            >
+              ConsultaPro
+            </Link>
           </div>
-        </aside>
-      )}
+          
+          <nav className="px-4">
+            {links.map((link) => {
+              const isDisabled = disabledPaths.includes(link.path);
+              
+              return (
+                <Link
+                  key={link.path}
+                  to={isDisabled ? "#" : link.path}
+                  onClick={(e) => {
+                    if (isDisabled) {
+                      e.preventDefault();
+                    }
+                  }}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
+                    location.pathname === link.path
+                      ? isConsultantRole
+                        ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-medium shadow-sm"
+                        : "bg-blue-50 text-blue-600 font-medium"
+                      : isDisabled
+                      ? "text-gray-400 cursor-not-allowed"
+                      : isConsultantRole
+                      ? "text-slate-700 hover:bg-blue-50/70"
+                      : "text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {link.icon}
+                  <span>{link.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
 
-      {/* ================= MAIN CONTENT ================= */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* ========== TOP NAVBAR ========== */}
-        {showTopbar && (
-        <header className="h-20 bg-white border-b sticky top-0 z-40 px-6 flex items-center gap-8">
-          {/* Left: Logo */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            {showSidebar && (
-              <button
-                className="mr-2 p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors lg:hidden"
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              >
-                {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
-              </button>
-            )}
-            <Link to="/" className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-purple-700 rounded-lg flex items-center justify-center text-white font-bold text-lg">
-                E
-              </div>
-              <div className="hidden sm:flex flex-col">
-                <span className="font-bold text-gray-900">ExpertConnect</span>
-              </div>
+          {/* Profile Section */}
+          <div className="px-4">
+            <Link
+              to={profileRoute}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors mb-1 ${isConsultantRole ? 'text-slate-700 hover:bg-blue-50/70' : 'text-gray-700 hover:bg-gray-50'}`}
+            >
+              <User size={20} />
+              <span>View Profile</span>
             </Link>
           </div>
 
-          {/* Center: Search Bar */}
-          <div className="flex-1 max-w-2xl hidden md:flex items-center">
-            <div className="w-full relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search for experts, categories or skills..."
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all cursor-pointer"
-                onClick={() => {
-                  if (user?.role === UserRole.USER) {
-                    navigate("/user/search");
-                  }
-                }}
-                readOnly
-              />
+          {/* Logout Button */}
+          <div className="px-4">
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-3 px-4 py-3 rounded-lg w-full text-red-600 hover:bg-red-50 transition-colors mb-1"
+            >
+              <LogOut size={20} />
+              <span>Logout</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
+          {/* Header */}
+          <header className={`h-16 border-b flex items-center justify-between px-6 sticky top-0 z-40 ${isConsultantRole ? 'bg-white/90 backdrop-blur-sm border-white/40' : 'bg-white'}`}>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="lg:hidden p-2 rounded-lg hover:bg-gray-100"
+              >
+                {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+              </button>
+              <h1 className="text-xl font-semibold text-gray-800">
+                {getCurrentPageName()}
+              </h1>
             </div>
+
+            {/* TOP RIGHT ICONS */}
+            <div className="flex items-center gap-3">
+              {/* Notification Bell */}
+              <button
+                onClick={() => {
+                  navigate('/consultant/dashboard#notifications');
+                  setTimeout(() => {
+                    const element = document.getElementById('notifications');
+                    if (element) {
+                      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }, 300);
+                }}
+                className="relative p-2 hover:bg-gray-100 rounded-full transition-colors"
+                title="Notifications"
+              >
+                <Bell size={22} className="text-gray-600" />
+                {/* Notification badge - you can make this dynamic later */}
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+              </button>
+
+              {/* Profile Icon */}
+              {user && (
+                <button
+                  onClick={() => navigate(profileRoute)}
+                  className="flex items-center justify-center p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  title="Profile"
+                >
+                  <img
+                    src={
+                      user?.profile_photo ||
+                      user?.avatar ||
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                        user?.name || user?.email || "User"
+                      )}&background=0D8ABC&color=fff`
+                    }
+                    alt="Profile"
+                    className="w-10 h-10 rounded-full ring-2 ring-blue-50 object-cover shadow-sm"
+                  />
+                </button>
+              )}
+            </div>
+          </header>
+
+          {/* Page Content */}
+          <main className={`flex-1 p-6 overflow-y-auto ${isConsultantRole ? 'bg-gradient-to-br from-blue-50/70 to-cyan-50/60' : ''}`}>{children}</main>
+        </div>
+      </>
+    ) : (
+      /* ================= HEADER LAYOUT (FOR USER) ================= */
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <header className="h-20 bg-white border-b flex items-center justify-between px-8 sticky top-0 z-40">
+          {/* LEFT SECTION */}
+          <div className={`flex items-center min-w-fit ${user?.role === UserRole.USER ? 'gap-10' : 'gap-3'}`}>
+            <Link
+              to="/"
+              className="text-3xl font-bold text-blue-600 tracking-tight"
+            >
+              ConsultaPro
+            </Link>
+
+            <span className={`text-xl font-semibold text-gray-700 ${user?.role === UserRole.USER ? 'uppercase tracking-wide' : ''}`}>
+              {getCurrentPageName()}
+            </span>
           </div>
 
-          {/* Right: Actions and Profile */}
-          <div className="flex items-center gap-6 ml-auto">
-            {/* Wallet Balance */}
-            {user?.role === UserRole.USER && (
-              <button
-                onClick={() => navigate("/user/credits")}
-                className="flex items-center gap-3 px-4 py-2 bg-purple-50 rounded-xl hover:bg-purple-100 transition-colors cursor-pointer"
-                title="View Credits"
-              >
-                <div className="text-right">
-                  <p className="text-xs text-gray-500 font-medium">WALLET BALANCE</p>
-                  <p className="text-sm font-bold text-gray-900">₹2,450.00</p>
-                </div>
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate("/user/subscription-plans");
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      navigate("/user/subscription-plans");
-                    }
-                  }}
-                  className="p-1.5 bg-purple-200 text-purple-700 rounded-lg hover:bg-purple-300 transition-colors flex-shrink-0"
-                  title="Add funds"
-                >
-                  <Plus size={16} />
-                </span>
-              </button>
-            )}
-
-            {/* Messages Icon */}
-            <button
-              onClick={() => navigate("/user/messages")}
-              className="p-2 text-gray-500 hover:bg-gray-100 rounded-full relative transition-colors flex-shrink-0"
-              title="Messages"
+          {/* RIGHT SECTION */}
+          <div className="flex items-center space-x-4">
+            {/* Wallet */}
+            <button 
+              onClick={() => {
+                if (user?.role === UserRole.USER) {
+                  navigate('/user/wallet');
+                } else if (user?.role === UserRole.CONSULTANT) {
+                  navigate('/consultant/earnings');
+                }
+              }}
+              className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
+              title="Wallet"
             >
-              <MessageSquare size={20} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+              <Wallet size={22} />
             </button>
 
-            {/* User Profile */}
-            {user && (
-              <Link
-                to={profileRoute}
-                className="flex items-center gap-3 pl-4 border-l hover:bg-gray-50 py-1 px-3 rounded-xl transition-colors flex-shrink-0 group"
-              >
-                <div className="text-right hidden sm:block">
-                  <p className="text-sm font-semibold text-gray-900 leading-tight">
-                    {user?.name?.split(" ")[0] || user?.email?.split("@")[0]}
-                  </p>
-                  <p className="text-[11px] text-purple-600 font-bold uppercase tracking-tight">
-                    {user?.role === UserRole.USER ? "Premium Member" : user?.role?.replace(/_/g, " ")}
-                  </p>
-                </div>
+            {/* Messages */}
+            <button 
+              onClick={() => {
+                if (user?.role === UserRole.USER) {
+                  navigate('/user/messages');
+                } else if (user?.role === UserRole.CONSULTANT) {
+                  navigate('/consultant/messages');
+                }
+              }}
+              className="p-2 text-gray-500 hover:bg-blue-50 hover:text-blue-600 rounded-full relative transition"
+              title="Messages"
+            >
+              <MessageCircle size={22} />
 
-                {/* Avatar with Status Indicator */}
-                <div className="relative flex-shrink-0">
+              {user?.role === UserRole.CONSULTANT && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+              )}
+            </button>
+
+            {/* PROFILE DROPDOWN */}
+            {user && (
+             <div
+                className="relative"
+                ref={dropdownRef}
+                onMouseEnter={() => setIsHoverOpen(true)}
+                onMouseLeave={() => {
+                if (!isClickOpen) {
+                  setIsHoverOpen(false);
+                }
+              }}
+              >
+                <button
+                
+                  className="flex items-center space-x-3 pl-4 border-l hover:bg-gray-50 p-1 px-2 rounded-xl transition-colors"
+                >
+
+                  <div className="text-right hidden sm:block">
+                    <p className="text-sm font-semibold text-gray-800 leading-none">
+                      {user?.name || user?.email}
+                    </p>
+
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-tighter mt-1">
+                      {user?.role?.toLowerCase().replace("_", " ")}
+                    </p>
+                  </div>
+
                   <img
-                    src={user?.profile_photo || user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.email || "User")}&background=8B5CF6&color=fff`}
+                    src={
+                      user?.profile_photo ||
+                      user?.avatar ||
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                        user?.name || user?.email || "User"
+                      )}&background=0D8ABC&color=fff`
+                    }
                     alt="Avatar"
-                    className="w-10 h-10 rounded-full ring-2 ring-purple-100 object-cover shadow-sm"
+                    className="w-9 h-9 rounded-full ring-2 ring-blue-50 object-cover shadow-sm"
                   />
-                  <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></span>
-                </div>
-              </Link>
+
+                 <ChevronDown
+                  size={16}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsClickOpen(!isClickOpen);
+                      setIsHoverOpen(false);
+                   
+                  }}
+                  className={`text-gray-500 transition-transform cursor-pointer ${
+                    isClickOpen ? "rotate-180" : ""
+                  }`}
+                />
+
+                </button>
+
+                {/* HOVER PANEL - SAME CONTENT */}
+                {isHoverOpen && (
+                  <div className="absolute right-0 mt-2 w-[1100px] max-w-[98vw] bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 rounded-3xl shadow-2xl border border-indigo-200/50 z-50 backdrop-blur-sm animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="grid grid-cols-10 gap-0">
+                      
+                      {/* LEFT COLUMN - 70% - SUBSCRIPTION USAGE & RECENT ACTIVITY */}
+                      <div className="col-span-7 p-5 border-r border-indigo-200/50 bg-gradient-to-br from-indigo-50/50 via-blue-50/30 to-purple-50/20 backdrop-blur-sm">
+                        {/* Wallet Balance Section */}
+                        <div className="bg-gradient-to-r from-emerald-400 to-teal-500 p-3 rounded-xl border border-emerald-300/50 shadow-lg mb-3 hover:scale-[1.02] transition-all duration-300 hover:shadow-xl group">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs font-bold text-white/90 mb-0.5">Wallet Balance</p>
+                              <p className="text-2xl font-bold text-white">₹{transactions?.reduce((sum, t) => sum + (t.type === 'credit' ? t.amount : -t.amount), 0) || 0}</p>
+                            </div>
+                            <Wallet className="w-8 h-8 text-white/40 group-hover:text-white/60 transition-colors" />
+                          </div>
+                        </div>
+
+                        {/* Subscription Usage Section */}
+                        <h3 className="text-base font-bold mb-1 text-indigo-900 flex items-center gap-2">
+                          <CreditCard className="w-4 h-4 text-indigo-600" />
+                          Your Subscription Plan
+                        </h3>
+                        <p className="text-xs text-indigo-600 mb-3 font-medium">Track your plan usage and limits</p>
+                        
+                        {usage ? (
+                          <div className="mb-3">
+                            {/* Chat Usage */}
+                            <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-3 rounded-xl border border-blue-400/30 shadow-lg mb-2 hover:scale-[1.01] transition-all duration-300 hover:shadow-xl group">
+                              <div className="flex justify-between items-center mb-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm">
+                                    <Send className="w-4 h-4 text-white" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-white">Chat Messages</p>
+                                    <p className="text-xs text-blue-100">Messages sent to consultants</p>
+                                  </div>
+                                </div>
+                                <p className="text-base font-bold text-white bg-white/20 px-2 py-1 rounded-lg backdrop-blur-sm">{usage.chat_messages_used}/{usage.chat_limit}</p>
+                              </div>
+                              <div className="w-full bg-blue-300/30 rounded-full h-2.5 backdrop-blur-sm">
+                                <div
+                                  className="bg-gradient-to-r from-white to-blue-100 h-2.5 rounded-full transition-all duration-500 shadow-sm"
+                                  style={{
+                                    width: `${Math.min(
+                                      100,
+                                      (usage.chat_messages_used / usage.chat_limit) * 100
+                                    )}%`
+                                  }}
+                                />
+                              </div>
+                              <p className="text-xs text-white mt-1.5 font-semibold">
+                                {usage.chat_limit - usage.chat_messages_used} remaining ({Math.round((usage.chat_messages_used / usage.chat_limit) * 100)}% used)
+                              </p>
+                            </div>
+
+                            {/* Bookings & Days in a Grid */}
+                            <div className="grid grid-cols-2 gap-2">
+                              {/* Bookings */}
+                              <div className="bg-gradient-to-br from-purple-500 to-indigo-600 p-3 rounded-xl border border-purple-400/30 shadow-lg hover:scale-[1.03] transition-all duration-300 hover:shadow-xl group">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className="bg-white/20 p-1 rounded-lg backdrop-blur-sm">
+                                    <CheckCircle className="w-3.5 h-3.5 text-white" />
+                                  </div>
+                                  <p className="text-xs font-bold text-white">Total Bookings</p>
+                                </div>
+                                <p className="text-2xl font-bold text-white">{usage.bookings_made || 0}</p>
+                                <p className="text-xs text-purple-100 mt-0.5">sessions booked</p>
+                              </div>
+
+                              {/* Days Remaining */}
+                              <div className="bg-gradient-to-br from-cyan-500 to-blue-600 p-3 rounded-xl border border-cyan-400/30 shadow-lg hover:scale-[1.03] transition-all duration-300 hover:shadow-xl group">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className="bg-white/20 p-1 rounded-lg backdrop-blur-sm">
+                                    <Clock className="w-3.5 h-3.5 text-white" />
+                                  </div>
+                                  <p className="text-xs font-bold text-white">Plan Validity</p>
+                                </div>
+                                <p className="text-2xl font-bold text-white">{usage.days_remaining}</p>
+                                <p className="text-xs text-cyan-100 mt-0.5">days left</p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-indigo-700 text-xs mb-3 font-semibold">No subscription data available</p>
+                        )}
+
+                        {/* Recent Activity Section */}
+                        <h3 className="text-base font-bold mb-2 text-indigo-900 flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4 text-indigo-600" />
+                          Recent Activity
+                        </h3>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          {/* Last Booking */}
+                          <div className="bg-white/60 backdrop-blur-md p-3 rounded-xl border border-indigo-200/50 shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300 group">
+                            <p className="text-xs font-bold text-indigo-900 mb-1 flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-indigo-500" />
+                              Last Booking
+                            </p>
+                            <p className="text-xs font-bold text-indigo-600 truncate">
+                              {sessions?.length > 0
+                                ? sessions[0]?.consultant?.domain || 'Consultant'
+                                : 'No bookings yet'}
+                            </p>
+                          </div>
+
+                          {/* Last Payment */}
+                          <div className="bg-white/60 backdrop-blur-md p-3 rounded-xl border border-emerald-200/50 shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300 group">
+                            <p className="text-xs font-bold text-emerald-900 mb-1 flex items-center gap-1">
+                              <Wallet className="w-3 h-3 text-emerald-500" />
+                              Last Payment
+                            </p>
+                            <p className="text-xs font-bold text-emerald-600">
+                              {transactions?.length > 0
+                                ? `₹${transactions[0]?.amount}`
+                                : 'No payments'}
+                            </p>
+                          </div>
+
+                          {/* Last Review */}
+                          <div className="bg-white/60 backdrop-blur-md p-3 rounded-xl border border-amber-200/50 shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300 group">
+                            <p className="text-xs font-bold text-amber-900 mb-1 flex items-center gap-1">
+                              <TrendingUp className="w-3 h-3 text-amber-500" />
+                              Last Review
+                            </p>
+                            <p className="text-xs font-bold text-amber-600">
+                              {sessions?.some(s => s.review)
+                                ? `${sessions.find(s => s.review)?.review?.rating}★`
+                                : 'No reviews'}
+                            </p>
+                          </div>
+
+                          {/* Last Chat */}
+                          <div className="bg-white/60 backdrop-blur-md p-3 rounded-xl border border-blue-200/50 shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300 group">
+                            <p className="text-xs font-bold text-blue-900 mb-1 flex items-center gap-1">
+                              <MessageCircle className="w-3 h-3 text-blue-500" />
+                              Last Chat
+                            </p>
+                            <p className="text-xs font-bold text-blue-600 truncate">
+                              {sessions?.some(s => s.chat_started)
+                                ? sessions.find(s => s.chat_started)?.consultant?.domain
+                                : 'No chats'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* RIGHT COLUMN - 30% - MENU ITEMS */}
+                      <div className="col-span-3 py-6 px-4 flex flex-col items-center bg-gradient-to-b from-indigo-600 to-indigo-800 gap-3">
+                        {/* Profile Icon */}
+                        <div className="mb-2 pb-3 border-b border-indigo-400 w-full flex justify-center">
+                          <img
+                            src={
+                              user?.profile_photo ||
+                              user?.avatar ||
+                              `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                                user?.name || user?.email || "User"
+                              )}&background=5B5BFF&color=fff`
+                            }
+                            alt="Profile"
+                            className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-lg"
+                          />
+                        </div>
+
+                        {/* Menu Items - Icon Only */}
+                        <div className="space-y-4 flex-1 flex flex-col items-center w-full">
+                          {/* My Dashboard */}
+                          <button
+                            onClick={() => {
+                              setIsHoverOpen(false);
+                              if (user?.role === UserRole.USER) {
+                                navigate('/user/dashboard');
+                              } else if (user?.role === UserRole.CONSULTANT) {
+                                navigate('/consultant/dashboard');
+                              } else if (user?.role === UserRole.ENTERPRISE_ADMIN) {
+                                navigate('/enterprise/dashboard');
+                              } else if (user?.role === UserRole.ENTERPRISE_MEMBER) {
+                                navigate('/member/dashboard');
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Dashboard"
+                          >
+                            <LayoutDashboard className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Dashboard</span>
+                          </button>
+
+                          {/* My Bookings */}
+                          <button
+                            onClick={() => {
+                              setIsHoverOpen(false);
+                              if (user?.role === UserRole.USER) {
+                                navigate('/user/bookings');
+                              } else if (user?.role === UserRole.CONSULTANT) {
+                                navigate('/consultant/bookings');
+                              } else if (user?.role === UserRole.ENTERPRISE_ADMIN) {
+                                navigate('/enterprise/bookings');
+                              } else if (user?.role === UserRole.ENTERPRISE_MEMBER) {
+                                navigate('/member/bookings');
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Bookings"
+                          >
+                            <Calendar className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Bookings</span>
+                          </button>
+
+                          {/* My Profile */}
+                          <Link
+                            to={profileRoute}
+                            onClick={() => setIsHoverOpen(false)}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Profile"
+                          >
+                            <User className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Profile</span>
+                          </Link>
+
+                          {/* Messages */}
+                          <button
+                            onClick={() => {
+                              setIsHoverOpen(false);
+                              if (user?.role === UserRole.USER) {
+                                navigate('/user/messages');
+                              } else if (user?.role === UserRole.CONSULTANT) {
+                                navigate('/consultant/messages');
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Messages"
+                          >
+                            <MessageCircle className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Messages</span>
+                          </button>
+
+                          {/* My Plans */}
+                          <button
+                            onClick={() => {
+                              setIsHoverOpen(false);
+                              if (user?.role === UserRole.USER) {
+                                navigate('/user/subscription-plans');
+                              } else if (user?.role === UserRole.CONSULTANT) {
+                                navigate('/consultant/plans');
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Plans"
+                          >
+                            <CreditCard className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Plans</span>
+                          </button>
+
+                          {/* Support */}
+                          <button
+                            onClick={() => {
+                              setIsHoverOpen(false);
+                              if (user?.role === UserRole.USER) {
+                                navigate('/user/support');
+                              } else if (user?.role === UserRole.CONSULTANT) {
+                                navigate('/consultant/support');
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Support"
+                          >
+                            <HelpCircle className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Support</span>
+                          </button>
+
+                          {/* Logout */}
+                          <div className="border-t border-indigo-400 pt-3 mt-auto w-full">
+                            <button
+                              onClick={() => {
+                                setIsHoverOpen(false);
+                                handleLogout();
+                              }}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-red-500/80 hover:bg-red-600 backdrop-blur-sm transition-all"
+                              title="Logout"
+                            >
+                              <LogOut className="w-5 h-5 text-white" />
+                              <span className="text-white text-sm font-medium">Logout</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+
+                {/* Dropdown Menu - Subscription & Activity Focus - CLICK ACTIVATED */}
+                {isClickOpen && (
+                  <div className="absolute right-0 mt-2 w-[1100px] max-w-[98vw] bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 rounded-3xl shadow-2xl border border-indigo-200/50 z-50 backdrop-blur-sm animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="grid grid-cols-10 gap-0">
+                      
+                      {/* LEFT COLUMN - 70% - SUBSCRIPTION USAGE & RECENT ACTIVITY */}
+                      <div className="col-span-7 p-5 border-r border-indigo-200/50 bg-gradient-to-br from-indigo-50/50 via-blue-50/30 to-purple-50/20 backdrop-blur-sm">
+                        {/* Wallet Balance Section */}
+                        <div className="bg-gradient-to-r from-emerald-400 to-teal-500 p-3 rounded-xl border border-emerald-300/50 shadow-lg mb-3 hover:scale-[1.02] transition-all duration-300 hover:shadow-xl group">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs font-bold text-white/90 mb-0.5">Wallet Balance</p>
+                              <p className="text-2xl font-bold text-white">₹{transactions?.reduce((sum, t) => sum + (t.type === 'credit' ? t.amount : -t.amount), 0) || 0}</p>
+                            </div>
+                            <Wallet className="w-8 h-8 text-white/40 group-hover:text-white/60 transition-colors" />
+                          </div>
+                        </div>
+
+                        {/* Subscription Usage Section */}
+                        <h3 className="text-base font-bold mb-1 text-indigo-900 flex items-center gap-2">
+                          <CreditCard className="w-4 h-4 text-indigo-600" />
+                          Your Subscription Plan
+                        </h3>
+                        <p className="text-xs text-indigo-600 mb-3 font-medium">Track your plan usage and limits</p>
+                        
+                        {usage ? (
+                          <div className="mb-3">
+                            {/* Chat Usage */}
+                            <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-3 rounded-xl border border-blue-400/30 shadow-lg mb-2 hover:scale-[1.01] transition-all duration-300 hover:shadow-xl group">
+                              <div className="flex justify-between items-center mb-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm">
+                                    <Send className="w-4 h-4 text-white" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-white">Chat Messages</p>
+                                    <p className="text-xs text-blue-100">Messages sent to consultants</p>
+                                  </div>
+                                </div>
+                                <p className="text-base font-bold text-white bg-white/20 px-2 py-1 rounded-lg backdrop-blur-sm">{usage.chat_messages_used}/{usage.chat_limit}</p>
+                              </div>
+                              <div className="w-full bg-blue-300/30 rounded-full h-2.5 backdrop-blur-sm">
+                                <div
+                                  className="bg-gradient-to-r from-white to-blue-100 h-2.5 rounded-full transition-all duration-500 shadow-sm"
+                                  style={{
+                                    width: `${Math.min(
+                                      100,
+                                      (usage.chat_messages_used / usage.chat_limit) * 100
+                                    )}%`
+                                  }}
+                                />
+                              </div>
+                              <p className="text-xs text-white mt-1.5 font-semibold">
+                                {usage.chat_limit - usage.chat_messages_used} remaining ({Math.round((usage.chat_messages_used / usage.chat_limit) * 100)}% used)
+                              </p>
+                            </div>
+
+                            {/* Bookings & Days in a Grid */}
+                            <div className="grid grid-cols-2 gap-2">
+                              {/* Bookings */}
+                              <div className="bg-gradient-to-br from-purple-500 to-indigo-600 p-3 rounded-xl border border-purple-400/30 shadow-lg hover:scale-[1.03] transition-all duration-300 hover:shadow-xl group">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className="bg-white/20 p-1 rounded-lg backdrop-blur-sm">
+                                    <CheckCircle className="w-3.5 h-3.5 text-white" />
+                                  </div>
+                                  <p className="text-xs font-bold text-white">Total Bookings</p>
+                                </div>
+                                <p className="text-2xl font-bold text-white">{usage.bookings_made || 0}</p>
+                                <p className="text-xs text-purple-100 mt-0.5">sessions booked</p>
+                              </div>
+
+                              {/* Days Remaining */}
+                              <div className="bg-gradient-to-br from-cyan-500 to-blue-600 p-3 rounded-xl border border-cyan-400/30 shadow-lg hover:scale-[1.03] transition-all duration-300 hover:shadow-xl group">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className="bg-white/20 p-1 rounded-lg backdrop-blur-sm">
+                                    <Clock className="w-3.5 h-3.5 text-white" />
+                                  </div>
+                                  <p className="text-xs font-bold text-white">Plan Validity</p>
+                                </div>
+                                <p className="text-2xl font-bold text-white">{usage.days_remaining}</p>
+                                <p className="text-xs text-cyan-100 mt-0.5">days left</p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-indigo-700 text-xs mb-3 font-semibold">No subscription data available</p>
+                        )}
+
+                        {/* Recent Activity Section */}
+                        <h3 className="text-base font-bold mb-2 text-indigo-900 flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4 text-indigo-600" />
+                          Recent Activity
+                        </h3>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          {/* Last Booking */}
+                          <div className="bg-white/60 backdrop-blur-md p-3 rounded-xl border border-indigo-200/50 shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300 group">
+                            <p className="text-xs font-bold text-indigo-900 mb-1 flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-indigo-500" />
+                              Last Booking
+                            </p>
+                            <p className="text-xs font-bold text-indigo-600 truncate">
+                              {sessions?.length > 0
+                                ? sessions[0]?.consultant?.domain || 'Consultant'
+                                : 'No bookings yet'}
+                            </p>
+                          </div>
+
+                          {/* Last Payment */}
+                          <div className="bg-white/60 backdrop-blur-md p-3 rounded-xl border border-emerald-200/50 shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300 group">
+                            <p className="text-xs font-bold text-emerald-900 mb-1 flex items-center gap-1">
+                              <Wallet className="w-3 h-3 text-emerald-500" />
+                              Last Payment
+                            </p>
+                            <p className="text-xs font-bold text-emerald-600">
+                              {transactions?.length > 0
+                                ? `₹${transactions[0]?.amount}`
+                                : 'No payments'}
+                            </p>
+                          </div>
+
+                          {/* Last Review */}
+                          <div className="bg-white/60 backdrop-blur-md p-3 rounded-xl border border-amber-200/50 shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300 group">
+                            <p className="text-xs font-bold text-amber-900 mb-1 flex items-center gap-1">
+                              <TrendingUp className="w-3 h-3 text-amber-500" />
+                              Last Review
+                            </p>
+                            <p className="text-xs font-bold text-amber-600">
+                              {sessions?.some(s => s.review)
+                                ? `${sessions.find(s => s.review)?.review?.rating}★`
+                                : 'No reviews'}
+                            </p>
+                          </div>
+
+                          {/* Last Chat */}
+                          <div className="bg-white/60 backdrop-blur-md p-3 rounded-xl border border-blue-200/50 shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300 group">
+                            <p className="text-xs font-bold text-blue-900 mb-1 flex items-center gap-1">
+                              <MessageCircle className="w-3 h-3 text-blue-500" />
+                              Last Chat
+                            </p>
+                            <p className="text-xs font-bold text-blue-600 truncate">
+                              {sessions?.some(s => s.chat_started)
+                                ? sessions.find(s => s.chat_started)?.consultant?.domain
+                                : 'No chats'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* RIGHT COLUMN - 30% - MENU ITEMS */}
+                      <div className="col-span-3 py-6 px-4 flex flex-col items-center bg-gradient-to-b from-indigo-600 to-indigo-800 gap-3">
+                        {/* Profile Icon */}
+                        <div className="mb-2 pb-3 border-b border-indigo-400 w-full flex flex-col items-center">
+                          <img
+                            src={
+                              user?.profile_photo ||
+                              user?.avatar ||
+                              `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                                user?.name || user?.email || "User"
+                              )}&background=5B5BFF&color=fff`
+                            }
+                            alt="Profile"
+                            className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-lg"
+                          />
+                          <p className="text-white font-semibold text-sm mt-2 text-center truncate w-full px-1">{user?.name || 'User'}</p>
+                        </div>
+
+                        {/* Menu Items - With Labels */}
+                        <div className="space-y-3 flex-1 flex flex-col w-full">
+                          {/* My Dashboard */}
+                          <button
+                            onClick={() => {
+                              setIsClickOpen(false);
+                              if (user?.role === UserRole.USER) {
+                                navigate('/user/dashboard');
+                              } else if (user?.role === UserRole.CONSULTANT) {
+                                navigate('/consultant/dashboard');
+                              } else if (user?.role === UserRole.ENTERPRISE_ADMIN) {
+                                navigate('/enterprise/dashboard');
+                              } else if (user?.role === UserRole.ENTERPRISE_MEMBER) {
+                                navigate('/member/dashboard');
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Dashboard"
+                          >
+                            <LayoutDashboard className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Dashboard</span>
+                          </button>
+
+                          {/* My Bookings */}
+                          <button
+                            onClick={() => {
+                              setIsClickOpen(false);
+                              if (user?.role === UserRole.USER) {
+                                navigate('/user/bookings');
+                              } else if (user?.role === UserRole.CONSULTANT) {
+                                navigate('/consultant/bookings');
+                              } else if (user?.role === UserRole.ENTERPRISE_ADMIN) {
+                                navigate('/enterprise/bookings');
+                              } else if (user?.role === UserRole.ENTERPRISE_MEMBER) {
+                                navigate('/member/bookings');
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Bookings"
+                          >
+                            <Calendar className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Bookings</span>
+                          </button>
+
+                          {/* My Profile */}
+                          <Link
+                            to={profileRoute}
+                            onClick={() => setIsClickOpen(false)}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Profile"
+                          >
+                            <User className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Profile</span>
+                          </Link>
+
+                          {/* Messages */}
+                          <button
+                            onClick={() => {
+                              setIsClickOpen(false);
+                              if (user?.role === UserRole.USER) {
+                                navigate('/user/messages');
+                              } else if (user?.role === UserRole.CONSULTANT) {
+                                navigate('/consultant/messages');
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Messages"
+                          >
+                            <MessageCircle className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Messages</span>
+                          </button>
+
+                          {/* My Plans */}
+                          <button
+                            onClick={() => {
+                              setIsClickOpen(false);
+                              if (user?.role === UserRole.USER) {
+                                navigate('/user/subscription-plans');
+                              } else if (user?.role === UserRole.CONSULTANT) {
+                                navigate('/consultant/plans');
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Plans"
+                          >
+                            <CreditCard className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Plans</span>
+                          </button>
+
+                          {/* Support */}
+                          <button
+                            onClick={() => {
+                              setIsClickOpen(false);
+                              if (user?.role === UserRole.USER) {
+                                navigate('/user/support');
+                              } else if (user?.role === UserRole.CONSULTANT) {
+                                navigate('/consultant/support');
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-all"
+                            title="Support"
+                          >
+                            <HelpCircle className="w-5 h-5 text-white" />
+                            <span className="text-white text-sm font-medium">Support</span>
+                          </button>
+
+                          {/* Logout */}
+                          <div className="border-t border-indigo-400 pt-3 mt-auto w-full">
+                            <button
+                              onClick={() => {
+                                setIsClickOpen(false);
+                                handleLogout();
+                              }}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-red-500/80 hover:bg-red-600 backdrop-blur-sm transition-all"
+                              title="Logout"
+                            >
+                              <LogOut className="w-5 h-5 text-white" />
+                              <span className="text-white text-sm font-medium">Logout</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </header>
-        )}
 
         {/* Page Content */}
         <main className="flex-1 p-6 overflow-y-auto">{children}</main>
       </div>
-    </div>
-  );
+    )}
+  </div>
+);
 };
 
 export default Layout;
