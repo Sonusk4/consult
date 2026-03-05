@@ -96,7 +96,10 @@ app.use(
 
   cors({
 
-    origin: true,
+    origin: function (origin, callback) {
+      // Bypass CORS for all origins in production to allow Vercel frontends
+      callback(null, true);
+    },
 
     methods: ["GET", "POST", "PUT", "DELETE"],
 
@@ -124,7 +127,9 @@ const io = new Server(server, {
 
   cors: {
 
-    origin: true,
+    origin: function (origin, callback) {
+      callback(null, true);
+    },
 
     methods: ["GET", "POST"],
 
@@ -916,7 +921,9 @@ const onlineConsultants = new Map();
 
 const corsOptions = {
 
-  origin: true,
+  origin: function (origin, callback) {
+    callback(null, true);
+  },
 
   methods: ["GET", "POST", "PUT", "DELETE"],
 
