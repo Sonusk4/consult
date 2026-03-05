@@ -95,7 +95,7 @@ const [isClickOpen, setIsClickOpen] = useState(false);
   // Determine which links should be disabled based on KYC status for consultants
   const isKycApproved = user?.role === UserRole.CONSULTANT && kycStatus === "APPROVED";
   const disabledPaths = user?.role === UserRole.CONSULTANT && !isKycApproved 
-    ? ["/consultant/bookings", "/consultant/messages", "/consultant/slots", "/consultant/earnings", "/consultant/plans", "/consultant/reviews", "/consultant/support"] 
+    ? ["/consultant/dashboard", "/consultant/bookings", "/consultant/messages", "/consultant/slots", "/consultant/earnings", "/consultant/plans", "/consultant/reviews", "/consultant/support", "/consultant/profile"] 
     : [];
 
   // ✅ Role-based profile routing
@@ -164,8 +164,23 @@ return (
           {/* Profile Section */}
           <div className="px-4">
             <Link
-              to={profileRoute}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors mb-1 ${isConsultantRole ? 'text-slate-700 hover:bg-blue-50/70' : 'text-gray-700 hover:bg-gray-50'}`}
+              to={disabledPaths.includes(profileRoute) ? "#" : profileRoute}
+              onClick={(e) => {
+                if (disabledPaths.includes(profileRoute)) {
+                  e.preventDefault();
+                }
+              }}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors mb-1 ${
+                disabledPaths.includes(profileRoute)
+                  ? "text-gray-400 cursor-not-allowed"
+                  : location.pathname === profileRoute
+                  ? isConsultantRole
+                    ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-medium shadow-sm"
+                    : "bg-blue-50 text-blue-600 font-medium"
+                  : isConsultantRole
+                  ? "text-slate-700 hover:bg-blue-50/70"
+                  : "text-gray-700 hover:bg-gray-50"
+              }`}
             >
               <User size={20} />
               <span>View Profile</span>
@@ -175,8 +190,13 @@ return (
           {/* Logout Button */}
           <div className="px-4">
             <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg w-full text-red-600 hover:bg-red-50 transition-colors mb-1"
+              onClick={!isKycApproved && isConsultantRole ? undefined : handleLogout}
+              disabled={!isKycApproved && isConsultantRole}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg w-full transition-colors mb-1 ${
+                !isKycApproved && isConsultantRole
+                  ? "text-gray-400 cursor-not-allowed"
+                  : "text-red-600 hover:bg-red-50"
+              }`}
             >
               <LogOut size={20} />
               <span>Logout</span>
@@ -298,7 +318,7 @@ return (
             >
               <MessageCircle size={22} />
 
-              {user?.role === UserRole.CONSULTANT && (
+              {isConsultantRole && (
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
               )}
             </button>

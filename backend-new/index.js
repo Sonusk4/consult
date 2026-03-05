@@ -2956,8 +2956,9 @@ app.get("/consultant/availability", verifyFirebaseToken, async (req, res) => {
       where: { userId: req.user.id },
     });
 
+    // If no consultant profile yet, return empty availability
     if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
+      return res.json([]);
     }
 
     const availability = await prisma.availability.findMany({
@@ -3563,8 +3564,14 @@ app.get("/consultant/kyc-status", verifyFirebaseToken, async (req, res) => {
       }
     });
 
+    // If no consultant profile yet, return PENDING status
     if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
+      return res.json({
+        kyc_status: "PENDING",
+        documents: [],
+        kyc_document: null,
+        kyc_document_data: null
+      });
     }
 
     // For backward compatibility, return single document if only one exists
@@ -3596,8 +3603,12 @@ app.get("/consultant/certificates", verifyFirebaseToken, async (req, res) => {
       }
     });
 
+    // If no consultant profile yet, return empty certificates
     if (!consultant) {
-      return res.status(404).json({ error: "Consultant not found" });
+      return res.json({
+        certificates: [],
+        certificate_urls: []
+      });
     }
 
     const certificates = consultant.certificates || [];
@@ -6702,8 +6713,13 @@ app.get("/consultant/reviews", verifyFirebaseToken, async (req, res) => {
       include: { consultant: true },
     });
 
-    if (!user || !user.consultant) {
-      return res.status(403).json({ error: "Not a consultant" });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // If no consultant profile yet, return empty reviews array (don't block with 403)
+    if (!user.consultant) {
+      return res.json([]);
     }
 
     // Fetch all reviews for this consultant

@@ -205,7 +205,7 @@ export const SIDEBAR_LINKS = {
     },
     {
       label: "Reviews",
-      icon: <TrendingUp size={20} />,
+      icon: <Star size={20} />,
       path: "/consultant/reviews",
     },
     {
