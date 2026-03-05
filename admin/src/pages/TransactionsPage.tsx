@@ -52,9 +52,36 @@ interface BookingRecord {
     consultant_earning: number;
 }
 
+interface SubscriptionRecord {
+    id: number;
+    userId: number;
+    userName: string;
+    userEmail: string;
+    planName: string;
+    price: number;
+    startDate: string;
+    endDate: string;
+    status: string;
+    createdAt: string;
+}
+
+interface PayoutRecord {
+    id: number;
+    consultantName: string;
+    consultantEmail: string;
+    consultantDomain: string;
+    amount: number;
+    status: string;
+    paid_at: string | null;
+    notes: string | null;
+    created_at: string;
+}
+
 interface Stats {
     totalCreditsAdded: number;
     totalCreditTransactions: number;
+    totalSubscriptions: number;
+    totalChatCredits: number;
     totalDebits: number;
     totalDebitTransactions: number;
     totalEarnings: number;
@@ -103,11 +130,14 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 
 /* ===================== MAIN ===================== */
 const TransactionsPage: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<"all" | "bookings" | "credits">("all");
+    const [activeTab, setActiveTab] = useState<"all" | "bookings" | "credits" | "subscriptions" | "payouts">("all");
     const [stats, setStats] = useState<Stats | null>(null);
     const [txList, setTxList] = useState<Transaction[]>([]);
     const [bookingList, setBookingList] = useState<BookingRecord[]>([]);
+    const [subscriptionList, setSubscriptionList] = useState<SubscriptionRecord[]>([]);
+    const [payoutList, setPayoutList] = useState<PayoutRecord[]>([]);
     const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState<number | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     // Filters - All Transactions
@@ -120,6 +150,12 @@ const TransactionsPage: React.FC = () => {
     const [bStartDate, setBStartDate] = useState("");
     const [bEndDate, setBEndDate] = useState("");
 
+    // Filters - Subscriptions
+    const [sStatusFilter, setSStatusFilter] = useState("");
+
+    // Filters - Payouts
+    const [pStatusFilter, setPStatusFilter] = useState("");
+
     useEffect(() => {
         fetchAll();
     }, []);
@@ -128,14 +164,18 @@ const TransactionsPage: React.FC = () => {
         setLoading(true);
         setError(null);
         try {
-            const [statsData, txData, bookData] = await Promise.all([
+            const [statsData, txData, bookData, subData, payoutData] = await Promise.all([
                 transactions.getStats(),
                 transactions.getAll({ limit: 200 }),
                 transactions.getBookings({ limit: 200 }),
+                transactions.getSubscriptions({ limit: 200 }),
+                transactions.getPayouts({ limit: 200 }),
             ]);
             setStats(statsData);
             setTxList(Array.isArray(txData.transactions) ? txData.transactions : []);
             setBookingList(Array.isArray(bookData.bookings) ? bookData.bookings : []);
+            setSubscriptionList(Array.isArray(subData.subscriptions) ? subData.subscriptions : []);
+            setPayoutList(Array.isArray(payoutData.payouts) ? payoutData.payouts : []);
         } catch (err) {
             console.error("Failed to load transaction data:", err);
             setError("Failed to load transaction data. Please try again.");
@@ -163,11 +203,38 @@ const TransactionsPage: React.FC = () => {
                     limit: 200,
                 });
                 setBookingList(Array.isArray(data.bookings) ? data.bookings : []);
+            } else if (activeTab === "subscriptions") {
+                const data = await transactions.getSubscriptions({
+                    status: sStatusFilter || undefined,
+                    limit: 200,
+                });
+                setSubscriptionList(Array.isArray(data.subscriptions) ? data.subscriptions : []);
+            } else if (activeTab === "payouts") {
+                const data = await transactions.getPayouts({
+                    status: pStatusFilter || undefined,
+                    limit: 200,
+                });
+                setPayoutList(Array.isArray(data.payouts) ? data.payouts : []);
             }
         } catch {
             setError("Failed to apply filters.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleMarkPaid = async (payoutId: number) => {
+        setActionLoading(payoutId);
+        try {
+            await transactions.markPayoutPaid(payoutId);
+            // Refresh purely payouts list to get updated status
+            const data = await transactions.getPayouts({ status: pStatusFilter || undefined, limit: 200 });
+            setPayoutList(Array.isArray(data.payouts) ? data.payouts : []);
+        } catch (err) {
+            console.error(err);
+            alert("Failed to mark payout as paid.");
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -233,6 +300,31 @@ const TransactionsPage: React.FC = () => {
                 formatDateTime(t.created_at).replace(/,/g, ''),
                 t.status
             ]);
+        } else if (activeTab === "subscriptions") {
+            headers = ["ID", "User Name", "User Email", "Plan Name", "Price", "Start Date", "End Date", "Status", "Purchased At"];
+            rows = subscriptionList.map(s => [
+                s.id,
+                s.userName,
+                s.userEmail,
+                s.planName,
+                s.price.toFixed(2),
+                formatDate(s.startDate).replace(/,/g, ''),
+                formatDate(s.endDate).replace(/,/g, ''),
+                s.status,
+                formatDateTime(s.createdAt).replace(/,/g, ''),
+            ]);
+        } else if (activeTab === "payouts") {
+            headers = ["ID", "Consultant Name", "Consultant Email", "Domain", "Amount", "Status", "Paid At", "Generated At"];
+            rows = payoutList.map(p => [
+                p.id,
+                p.consultantName,
+                p.consultantEmail,
+                p.consultantDomain,
+                p.amount.toFixed(2),
+                p.status,
+                p.paid_at ? formatDateTime(p.paid_at).replace(/,/g, '') : "Pending",
+                formatDateTime(p.created_at).replace(/,/g, ''),
+            ]);
         }
 
         const csvContent = [
@@ -296,47 +388,70 @@ const TransactionsPage: React.FC = () => {
 
             {/* ── Stats Cards ── */}
             {stats && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-                    <div className="stat-card">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
-                                <ArrowUpRight className="h-5 w-5 text-green-700" />
+                <>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                        <div className="stat-card">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
+                                    <ArrowUpRight className="h-5 w-5 text-green-700" />
+                                </div>
                             </div>
+                            <p className="text-2xl font-bold text-gray-900">₹{(stats.totalCreditsAdded || 0).toFixed(0)}</p>
+                            <p className="text-sm text-gray-500 mt-1">Total Received ({stats.totalCreditTransactions})</p>
                         </div>
-                        <p className="text-2xl font-bold text-gray-900">₹{(stats.totalCreditsAdded || 0).toFixed(0)}</p>
-                        <p className="text-sm text-gray-500 mt-1">Credits Added ({stats.totalCreditTransactions})</p>
+
+                        <div className="stat-card">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="h-10 w-10 rounded-lg bg-red-100 flex items-center justify-center">
+                                    <ArrowDownRight className="h-5 w-5 text-red-700" />
+                                </div>
+                            </div>
+                            <p className="text-2xl font-bold text-gray-900">₹{(stats.totalDebits || 0).toFixed(0)}</p>
+                            <p className="text-sm text-gray-500 mt-1">User Spend ({stats.totalDebitTransactions})</p>
+                        </div>
+
+                        <div className="stat-card">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                                    <TrendingUp className="h-5 w-5 text-blue-700" />
+                                </div>
+                            </div>
+                            <p className="text-2xl font-bold text-gray-900">₹{(stats.totalEarnings || 0).toFixed(0)}</p>
+                            <p className="text-sm text-gray-500 mt-1">Consultant Payouts</p>
+                        </div>
+
+                        <div className="stat-card">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                                    <DollarSign className="h-5 w-5 text-purple-700" />
+                                </div>
+                            </div>
+                            <p className="text-2xl font-bold text-gray-900">₹{(stats.totalCommissions || 0).toFixed(0)}</p>
+                            <p className="text-sm text-gray-500 mt-1">Platform Commission</p>
+                        </div>
                     </div>
 
-                    <div className="stat-card">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="h-10 w-10 rounded-lg bg-red-100 flex items-center justify-center">
-                                <ArrowDownRight className="h-5 w-5 text-red-700" />
+                    <div className="grid grid-cols-2 sm:grid-cols-2 gap-4 mb-8">
+                        <div className="stat-card">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="h-10 w-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                                    <Award className="h-5 w-5 text-indigo-700" />
+                                </div>
                             </div>
+                            <p className="text-2xl font-bold text-gray-900">₹{(stats.totalSubscriptions || 0).toFixed(0)}</p>
+                            <p className="text-sm text-gray-500 mt-1">Subscription Revenue</p>
                         </div>
-                        <p className="text-2xl font-bold text-gray-900">₹{(stats.totalDebits || 0).toFixed(0)}</p>
-                        <p className="text-sm text-gray-500 mt-1">User Spend ({stats.totalDebitTransactions})</p>
-                    </div>
-
-                    <div className="stat-card">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                                <TrendingUp className="h-5 w-5 text-blue-700" />
+                        <div className="stat-card">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="h-10 w-10 rounded-lg bg-orange-100 flex items-center justify-center">
+                                    <Users className="h-5 w-5 text-orange-700" />
+                                </div>
                             </div>
+                            <p className="text-2xl font-bold text-gray-900">₹{(stats.totalChatCredits || 0).toFixed(0)}</p>
+                            <p className="text-sm text-gray-500 mt-1">Chat Credit Revenue</p>
                         </div>
-                        <p className="text-2xl font-bold text-gray-900">₹{(stats.totalEarnings || 0).toFixed(0)}</p>
-                        <p className="text-sm text-gray-500 mt-1">Consultant Payouts</p>
                     </div>
-
-                    <div className="stat-card">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                                <DollarSign className="h-5 w-5 text-purple-700" />
-                            </div>
-                        </div>
-                        <p className="text-2xl font-bold text-gray-900">₹{(stats.totalCommissions || 0).toFixed(0)}</p>
-                        <p className="text-sm text-gray-500 mt-1">Platform Commission</p>
-                    </div>
-                </div>
+                </>
             )}
 
             {/* ── Booking Stats ── */}
@@ -417,7 +532,7 @@ const TransactionsPage: React.FC = () => {
             {/* ── Tabs ── */}
             <div className="bg-white rounded-xl border overflow-hidden">
                 <div className="border-b flex">
-                    {(["all", "bookings", "credits"] as const).map((tab) => (
+                    {(["all", "bookings", "credits", "subscriptions", "payouts"] as const).map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
@@ -429,6 +544,8 @@ const TransactionsPage: React.FC = () => {
                             {tab === "all" && "All Transactions"}
                             {tab === "bookings" && `Bookings (${bookingList.length})`}
                             {tab === "credits" && `Credit Top-ups (${creditTopUps.length})`}
+                            {tab === "subscriptions" && `Subscriptions (${subscriptionList.length})`}
+                            {tab === "payouts" && `Payouts (${payoutList.length})`}
                         </button>
                     ))}
                 </div>
@@ -491,6 +608,39 @@ const TransactionsPage: React.FC = () => {
                                 <label className="text-xs text-gray-500 block mb-1">To</label>
                                 <input type="date" value={bEndDate} onChange={(e) => setBEndDate(e.target.value)}
                                     className="text-sm border rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                        </>
+                    )}
+                    {activeTab === "subscriptions" && (
+                        <>
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">Status</label>
+                                <select
+                                    value={sStatusFilter}
+                                    onChange={(e) => setSStatusFilter(e.target.value)}
+                                    className="text-sm border rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">All Statuses</option>
+                                    <option value="ACTIVE">ACTIVE</option>
+                                    <option value="EXPIRED">EXPIRED</option>
+                                    <option value="CANCELLED">CANCELLED</option>
+                                </select>
+                            </div>
+                        </>
+                    )}
+                    {activeTab === "payouts" && (
+                        <>
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">Status</label>
+                                <select
+                                    value={pStatusFilter}
+                                    onChange={(e) => setPStatusFilter(e.target.value)}
+                                    className="text-sm border rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">All Statuses</option>
+                                    <option value="PENDING">PENDING</option>
+                                    <option value="PAID">PAID</option>
+                                </select>
                             </div>
                         </>
                     )}
@@ -654,6 +804,129 @@ const TransactionsPage: React.FC = () => {
                                             <td className="px-5 py-4 text-sm text-gray-500 max-w-xs truncate">{txn.description || "—"}</td>
                                             <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">{formatDateTime(txn.created_at)}</td>
                                             <td className="px-5 py-4"><StatusBadge status={txn.status} /></td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    )}
+
+                    {/* SUBSCRIPTIONS TAB */}
+                    {activeTab === "subscriptions" && (
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b bg-gray-50 text-left">
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">ID</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Plan Name</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Price</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Start Date</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">End Date</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Purchased At</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {loading ? (
+                                    <tr><td colSpan={8} className="py-12 text-center"><Loader className="h-6 w-6 animate-spin text-blue-600 mx-auto" /></td></tr>
+                                ) : subscriptionList.length === 0 ? (
+                                    <tr><td colSpan={8} className="py-12 text-center text-sm text-gray-500">No subscriptions found</td></tr>
+                                ) : (
+                                    subscriptionList.map((sub) => (
+                                        <tr key={sub.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-5 py-4 text-sm text-gray-500">#{sub.id}</td>
+                                            <td className="px-5 py-4">
+                                                <p className="text-sm font-medium text-gray-900">{sub.userName}</p>
+                                                <p className="text-xs text-gray-400">{sub.userEmail}</p>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">
+                                                    {sub.planName}
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <span className="font-bold text-green-600 text-sm">₹{sub.price.toFixed(2)}</span>
+                                            </td>
+                                            <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">{formatDate(sub.startDate)}</td>
+                                            <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">{formatDate(sub.endDate)}</td>
+                                            <td className="px-5 py-4">
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${sub.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                    {sub.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">{formatDateTime(sub.createdAt)}</td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    )}
+
+                    {/* PAYOUTS TAB */}
+                    {activeTab === "payouts" && (
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b bg-gray-50 text-left">
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">ID</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Consultant</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Generated</th>
+                                    <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {loading ? (
+                                    <tr><td colSpan={6} className="py-12 text-center"><Loader className="h-6 w-6 animate-spin text-blue-600 mx-auto" /></td></tr>
+                                ) : payoutList.length === 0 ? (
+                                    <tr><td colSpan={6} className="py-12 text-center text-sm text-gray-500">No payouts found</td></tr>
+                                ) : (
+                                    payoutList.map((p) => (
+                                        <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-5 py-4 text-sm text-gray-500">#{p.id}</td>
+                                            <td className="px-5 py-4">
+                                                <p className="text-sm font-medium text-gray-900">{p.consultantName}</p>
+                                                <p className="text-xs text-blue-500">{p.consultantDomain}</p>
+                                                <p className="text-xs text-gray-400">{p.consultantEmail}</p>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <span className="font-bold text-gray-900 text-sm">₹{p.amount.toFixed(2)}</span>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                {p.status === "PAID" ? (
+                                                    <div>
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                                                            PAID
+                                                        </span>
+                                                        <p className="text-[10px] text-gray-400 mt-1">{p.paid_at ? formatDateTime(p.paid_at) : ''}</p>
+                                                    </div>
+                                                ) : (
+                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">
+                                                        PENDING
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">{formatDateTime(p.created_at)}</td>
+                                            <td className="px-5 py-4">
+                                                {p.status === "PENDING" && (
+                                                    <button
+                                                        onClick={() => {
+                                                            if (window.confirm(`Mark payout #${p.id} for ₹${p.amount.toFixed(2)} as PAID?`)) {
+                                                                handleMarkPaid(p.id);
+                                                            }
+                                                        }}
+                                                        disabled={actionLoading === p.id}
+                                                        className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-1.5"
+                                                    >
+                                                        {actionLoading === p.id ? (
+                                                            <Loader className="h-3.5 w-3.5 animate-spin" />
+                                                        ) : (
+                                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                                        )}
+                                                        Mark Paid
+                                                    </button>
+                                                )}
+                                            </td>
                                         </tr>
                                     ))
                                 )}

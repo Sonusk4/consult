@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, MessageCircle, LogOut, ChevronDown, User, CreditCard, HelpCircle, LayoutDashboard, Wallet, Calendar, Send, CheckCircle, Clock, TrendingUp, Bell } from "lucide-react";
+import { Menu, X, MessageCircle, LogOut, ChevronDown, User, CreditCard, HelpCircle, LayoutDashboard, Wallet, Calendar, Send, CheckCircle, Clock, TrendingUp, Bell, Plus, Zap, ShieldCheck, Sparkles } from "lucide-react";
 import { useAuth } from "../App";
 import { SIDEBAR_LINKS } from "../constants";
 import { UserRole } from "../types";
@@ -9,6 +9,7 @@ import { useUserSessions } from "../hooks/useUserSessions";
 import { useUserUsage } from "../hooks/useUserUsage";
 import { useUserTransactions } from "../hooks/useUserTransactions";
 import { useWalletBalance } from "../hooks/useWalletBalance";
+import api from "../services/api";
 
 
 interface LayoutProps {
@@ -25,12 +26,14 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
   const { kycStatus } = useConsultantKycCheck();
   const [isHoverOpen, setIsHoverOpen] = useState(false);
   const [isClickOpen, setIsClickOpen] = useState(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [walletBuying, setWalletBuying] = useState<number | null>(null);
 
   // Fetch user data for the hover panel
   const { sessions } = useUserSessions();
   const { usage } = useUserUsage();
   const { transactions } = useUserTransactions();
-  const { balance } = useWalletBalance();
+  const { balance, bonusBalance } = useWalletBalance();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -92,6 +95,78 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
   };
 
   const links = user ? SIDEBAR_LINKS[user.role as UserRole] || [] : [];
+
+  // Credit packs for wallet top-up
+  const creditPacks = [
+    { price: 500, credits: 500, bonus: 10, bonusPercent: 2, validity: "30 days" },
+    { price: 1000, credits: 1000, bonus: 25, bonusPercent: 2.5, validity: "60 days" },
+    { price: 2000, credits: 2000, bonus: 100, bonusPercent: 5, validity: "90 days" },
+    { price: 5000, credits: 5000, bonus: 350, bonusPercent: 7, validity: "180 days" },
+  ];
+
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if ((window as any).Razorpay) return resolve(true);
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleAddCredits = async (packPrice: number, packCredits: number) => {
+    setWalletBuying(packCredits);
+    try {
+      const res = await loadRazorpayScript();
+      if (!res) {
+        alert('Razorpay SDK failed to load. Please check your connection.');
+        setWalletBuying(null);
+        return;
+      }
+      const orderResponse = await api.post('/payment/create-order', { amount: packPrice });
+      if (!orderResponse.data?.order_id) throw new Error('Failed to create order');
+
+      const options = {
+        key: orderResponse.data.key_id || (import.meta as any).env?.VITE_RAZORPAY_KEY_ID,
+        amount: packPrice * 100,
+        currency: "INR",
+        name: "ConsultaPro",
+        description: `Add ₹${packPrice} Credits`,
+        order_id: orderResponse.data.order_id,
+        handler: async function (response: any) {
+          try {
+            // Verify payment and credit wallet on the backend
+            await api.post('/payment/verify', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              amount: packPrice,
+            });
+            alert('Payment Successful! ₹' + packPrice + ' credits added to your wallet.');
+            setShowWalletModal(false);
+            setWalletBuying(null);
+            window.location.reload();
+          } catch (verifyErr) {
+            console.error('Verification failed:', verifyErr);
+            alert('Payment received but verification failed. Please contact support.');
+          }
+        },
+        prefill: {
+          name: user?.name || "User",
+          email: user?.email || "",
+        },
+        theme: { color: "#2563EB" },
+      };
+      const paymentObject = new (window as any).Razorpay(options);
+      paymentObject.open();
+    } catch (error) {
+      console.error('Payment error:', error);
+      alert('Payment failed. Please try again.');
+    } finally {
+      setWalletBuying(null);
+    }
+  };
 
   // Determine which links should be disabled based on KYC status for consultants
   const isKycApproved = user?.role === UserRole.CONSULTANT && kycStatus === "APPROVED";
@@ -279,15 +354,17 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
                 <button
                   onClick={() => {
                     if (user?.role === UserRole.USER) {
-                      navigate('/user/wallet');
+                      setShowWalletModal(true);
                     } else if (user?.role === UserRole.CONSULTANT) {
                       navigate('/consultant/earnings');
                     }
                   }}
-                  className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
-                  title="Wallet"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-full hover:from-emerald-600 hover:to-teal-600 transition-all shadow-sm hover:shadow-md"
+                  title="Wallet - Click to add credits"
                 >
-                  <Wallet size={22} />
+                  <Wallet size={18} />
+                  <span className="text-sm font-bold">₹{balance || 0}</span>
+                  <Plus size={14} className="bg-white/20 rounded-full" />
                 </button>
 
                 {/* Messages */}
@@ -1011,6 +1088,103 @@ const Layout: React.FC<LayoutProps> = ({ children, title }) => {
 
             {/* Page Content */}
             <main className="flex-1 p-6 overflow-y-auto">{children}</main>
+          </div>
+        </div>
+      )}
+
+      {/* ================= WALLET TOP-UP MODAL ================= */}
+      {showWalletModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowWalletModal(false)}>
+          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Close Button */}
+            <button
+              onClick={() => setShowWalletModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 bg-gray-100 hover:bg-gray-200 p-1.5 rounded-full transition z-10"
+            >
+              <X size={18} />
+            </button>
+
+            {/* Header with Balance */}
+            <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-emerald-100 text-sm font-semibold mb-1">Available Balance</p>
+                  <h2 className="text-4xl font-bold">₹{balance || 0}</h2>
+                  {bonusBalance > 0 && (
+                    <p className="text-emerald-100 text-sm mt-1 flex items-center gap-1">
+                      <Zap size={13} /> +₹{bonusBalance} Bonus Credits
+                    </p>
+                  )}
+                </div>
+                <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
+                  <Wallet className="w-8 h-8 text-white" />
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2 text-emerald-100 text-xs">
+                <ShieldCheck size={14} />
+                <span>Credits can be used for any consultation booking</span>
+              </div>
+            </div>
+
+            {/* Subscription Bonus Info */}
+            <div className="px-6 pt-4 pb-2">
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-3 border border-blue-100">
+                <p className="text-xs text-gray-700">
+                  <span className="font-semibold text-blue-700"><Sparkles className="w-3 h-3 inline mr-1" />Tip:</span> Your subscription plan gives you extra bonus on recharge!
+                </p>
+                <div className="mt-2 flex gap-2 text-[10px]">
+                  <span className="bg-white rounded px-2 py-1 font-semibold">Free: 2%</span>
+                  <span className="bg-white rounded px-2 py-1 font-semibold text-blue-700">Starter: 2%+</span>
+                  <span className="bg-white rounded px-2 py-1 font-semibold text-green-700">Growth: 5%</span>
+                  <span className="bg-white rounded px-2 py-1 font-semibold text-purple-700">Enterprise: 10%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Credit Packs */}
+            <div className="px-6 py-4">
+              <h3 className="text-lg font-bold text-gray-900 mb-3">Add Credits</h3>
+              <div className="grid grid-cols-2 gap-3">
+                {creditPacks.map((pack) => (
+                  <div
+                    key={pack.credits}
+                    className="bg-white p-4 rounded-2xl border-2 border-gray-100 hover:border-blue-300 hover:shadow-lg transition-all cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-2xl font-bold text-gray-900">₹{pack.price}</span>
+                      <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        +{pack.bonus} Bonus ({pack.bonusPercent}%)
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500 space-y-0.5 mb-3">
+                      <p className="flex items-center gap-1"><Zap size={10} className="text-blue-500" /> {pack.credits} credits</p>
+                      <p className="flex items-center gap-1"><Clock size={10} className="text-gray-400" /> Valid for {pack.validity}</p>
+                    </div>
+                    <button
+                      onClick={() => handleAddCredits(pack.price, pack.credits)}
+                      disabled={walletBuying === pack.credits}
+                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2 rounded-xl text-sm font-semibold hover:from-blue-700 hover:to-indigo-700 transition disabled:opacity-60 flex items-center justify-center gap-1.5"
+                    >
+                      {walletBuying === pack.credits ? (
+                        <><span className="animate-spin">⏳</span> Processing...</>
+                      ) : (
+                        <><Plus size={14} /> Add ₹{pack.price}</>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer with link to full wallet page */}
+            <div className="px-6 py-3 bg-gray-50 border-t text-center">
+              <button
+                onClick={() => { setShowWalletModal(false); navigate('/user/wallet'); }}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium hover:underline transition"
+              >
+                View Full Wallet & Transaction History →
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import { wallet } from '../services/api.js';
 
 export const useWalletBalance = () => {
   const [balance, setBalance] = useState<number>(0);
+  const [bonusBalance, setBonusBalance] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -10,10 +11,12 @@ export const useWalletBalance = () => {
     try {
       const data = await wallet.getBalance();
       setBalance(data.balance || 0);
+      setBonusBalance(data.bonus_balance || 0);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch wallet balance');
       setBalance(0);
+      setBonusBalance(0);
     } finally {
       setLoading(false);
     }
@@ -29,5 +32,5 @@ export const useWalletBalance = () => {
     fetchBalance();
   }, [fetchBalance]);
 
-  return { balance, loading, error, refresh };
+  return { balance, bonusBalance, loading, error, refresh };
 };

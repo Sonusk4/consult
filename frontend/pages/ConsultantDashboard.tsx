@@ -88,13 +88,13 @@ const DOMAIN_OPTIONS = [
 ];
 
 const DOMAIN_LANGUAGE_MAP: Record<string, string[]> = {
-  Legal: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
-  Engineering: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
-  Doctor: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
-  Finance: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
-  Technology: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
-  Education: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
-  Marketing: ["English", "Hindi", "Marathi", "Tamil","kannada","Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Legal: ["English", "Hindi", "Marathi", "Tamil", "kannada", "Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Engineering: ["English", "Hindi", "Marathi", "Tamil", "kannada", "Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Doctor: ["English", "Hindi", "Marathi", "Tamil", "kannada", "Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Finance: ["English", "Hindi", "Marathi", "Tamil", "kannada", "Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Technology: ["English", "Hindi", "Marathi", "Tamil", "kannada", "Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Education: ["English", "Hindi", "Marathi", "Tamil", "kannada", "Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
+  Marketing: ["English", "Hindi", "Marathi", "Tamil", "kannada", "Bengali", "Gujarati", "Telugu", "Malayalam", "Odia", "Punjabi", "Assamese",],
 };
 
 const BASE_PLATFORM_FEE_PERCENT = 20;
@@ -148,7 +148,9 @@ const ConsultantDashboard = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState<any>(null);
   const [expiryWarning, setExpiryWarning] = useState<any>(null);
   const [kycDocuments, setKycDocuments] = useState<File[]>([]);
+  const [identityProofDocs, setIdentityProofDocs] = useState<File[]>([]);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [reuploadingDocId, setReuploadingDocId] = useState<number | null>(null);
 
   const currentPlanName = profile?.currentPlan || profile?.subscription_plan || "Free";
   const platformFeeReduction = PLAN_PLATFORM_FEE_REDUCTION[currentPlanName] || 0;
@@ -161,17 +163,17 @@ const ConsultantDashboard = () => {
     try {
       const data = await consultantsApi.getProfile();
       setProfile(data);
-      
+
       // Check KYC status and detect approval
       if (data?.kyc_status) {
         const previousStatus = sessionStorage.getItem("consultantKycStatus");
-        
+
         // If status changed from non-APPROVED to APPROVED, show success modal
         if (previousStatus && previousStatus !== "APPROVED" && data.kyc_status === "APPROVED") {
           setShowApprovalModal(true);
           addToast("🎉 Your account has been approved!", "success");
         }
-        
+
         // Store current status
         sessionStorage.setItem("consultantKycStatus", data.kyc_status);
         setKycStatus(data.kyc_status);
@@ -311,11 +313,11 @@ const ConsultantDashboard = () => {
   const fetchUpcomingSessions = async () => {
     try {
       const data = await consultantsApi.getConsultantBookings();
-      
+
       // Filter to only include bookings from today onwards
       const today = new Date();
       today.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
-      
+
       const futureBookings = (data || []).filter((booking: any) => {
         if (!booking.date) return false;
         const bookingDate = new Date(booking.date);
@@ -333,9 +335,9 @@ const ConsultantDashboard = () => {
         }
         return dateA.getTime() - dateB.getTime();
       });
-      
+
       setUpcomingSessions(futureBookings);
-      
+
       // Check for live sessions
       const activeLiveSession = futureBookings.find((booking: any) => isBookingLive(booking));
       setLiveSession(activeLiveSession || null);
@@ -364,12 +366,12 @@ const ConsultantDashboard = () => {
       // Fetch actual reviews from API
       const response = await api.get("/consultant/reviews");
       const reviewsData = response.data || [];
-      
+
       // Calculate average rating
       const avgRating = reviewsData.length > 0
         ? reviewsData.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewsData.length
         : profile?.rating || 0;
-      
+
       // Format reviews for display
       const formattedReviews = {
         averageRating: avgRating,
@@ -381,7 +383,7 @@ const ConsultantDashboard = () => {
           date: review.created_at
         }))
       };
-      
+
       setReviews(formattedReviews);
     } catch (error) {
       console.error('Failed to fetch reviews:', error);
@@ -400,7 +402,7 @@ const ConsultantDashboard = () => {
     try {
       // Fetch notifications from API or generate based on dashboard data
       const notifs = [];
-      
+
       // Calculate today's bookings from upcomingSessions
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -410,7 +412,7 @@ const ConsultantDashboard = () => {
         sessionDate.setHours(0, 0, 0, 0);
         return sessionDate.getTime() === today.getTime();
       });
-      
+
       // Add today's booking notifications
       if (todayBookings && todayBookings.length > 0) {
         notifs.push({
@@ -423,7 +425,7 @@ const ConsultantDashboard = () => {
           priority: 'high'
         });
       }
-      
+
       // Add upcoming booking notifications (future bookings, not today)
       const futureBookings = upcomingSessions.filter((session: any) => {
         if (!session.date) return false;
@@ -431,7 +433,7 @@ const ConsultantDashboard = () => {
         sessionDate.setHours(0, 0, 0, 0);
         return sessionDate.getTime() > today.getTime();
       });
-      
+
       if (futureBookings && futureBookings.length > 0) {
         const nextBooking = futureBookings[0];
         notifs.push({
@@ -444,7 +446,7 @@ const ConsultantDashboard = () => {
           priority: 'medium'
         });
       }
-      
+
       // Add earnings notification
       if (earnings && earnings.total > 0) {
         notifs.push({
@@ -457,7 +459,7 @@ const ConsultantDashboard = () => {
           priority: 'low'
         });
       }
-      
+
       // Add review notification
       if (reviews && reviews.recentReviews && reviews.recentReviews.length > 0) {
         const latestReview = reviews.recentReviews[0];
@@ -471,7 +473,7 @@ const ConsultantDashboard = () => {
           priority: 'medium'
         });
       }
-      
+
       setNotifications(notifs);
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
@@ -483,7 +485,7 @@ const ConsultantDashboard = () => {
       // Get messages from all recent bookings
       const upcomingBookings = await consultantsApi.getConsultantBookings();
       const allMessages = [];
-      
+
       for (const booking of upcomingBookings) {
         if (booking.id) {
           try {
@@ -502,12 +504,12 @@ const ConsultantDashboard = () => {
           }
         }
       }
-      
+
       // Sort by most recent and take last 5
       const sortedMessages = allMessages
         .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
         .slice(0, 5);
-      
+
       setMessages(sortedMessages);
     } catch (error) {
       console.error('Failed to fetch messages:', error);
@@ -518,27 +520,27 @@ const ConsultantDashboard = () => {
   const fetchAvailability = async () => {
     try {
       const data = await consultantsApi.getConsultantAvailability();
-      
+
       // If we get raw slot data, transform it into weekly schedule format
       if (Array.isArray(data) && data.length > 0 && data[0]?.available_date) {
         // Filter out past slots - only keep today and future
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
+
         const futureSlots = data.filter((slot: any) => {
           if (!slot.available_date) return false;
           const slotDate = new Date(slot.available_date);
           slotDate.setHours(0, 0, 0, 0);
           return slotDate >= today;
         });
-        
+
         // Get today's slots specifically
         const todaySlots = futureSlots.filter((slot: any) => {
           const slotDate = new Date(slot.available_date);
           slotDate.setHours(0, 0, 0, 0);
           return slotDate.getTime() === today.getTime();
         }).filter((slot: any) => !slot.is_booked);
-        
+
         const weeklySchedule = transformSlotsToWeekly(futureSlots);
         setAvailability({
           weeklySchedule,
@@ -575,7 +577,7 @@ const ConsultantDashboard = () => {
     // Build weekly schedule with time ranges
     const schedule = daysOfWeek.map(day => {
       const daySlots = Array.from(slotsByDay[day] || []).sort();
-      
+
       if (daySlots.length === 0) {
         return {
           day,
@@ -715,42 +717,42 @@ const ConsultantDashboard = () => {
     });
   };
 
-const calculateProfileCompletion = () => {
-  if (!profile) return 0;
-  
-  // Required fields (weight: 60%) - directly from profile
-  const requiredFields = [
-    profile.name,
-    profile.domain,
-    profile.hourly_price,
-    profile.bio,
-    profile.languages
-  ];
-  
-  // Optional fields (weight: 40%) - directly from profile for accurate dynamic calculation
-  const optionalFields = [
-    profile.designation,
-    profile.years_experience,
-    profile.education,
-    profile.linkedin_url,
-    profile.website_url,
-    profile.availability && profile.availability !== 'Flexible',
-    profile.profile_pic
-  ];
-  
-  const completedRequired = requiredFields.filter(field => field && field?.toString()?.trim() !== '').length;
-  const completedOptional = optionalFields.filter(field => field && field?.toString()?.trim() !== '').length;
-  
-  // Weighted calculation: 60% for required, 40% for optional
-  const requiredScore = (completedRequired / requiredFields.length) * 60;
-  const optionalScore = (completedOptional / optionalFields.length) * 40;
-  
-  return Math.round(requiredScore + optionalScore);
-};
+  const calculateProfileCompletion = () => {
+    if (!profile) return 0;
 
-const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (e.target.files && e.target.files[0]) {
-    const file = e.target.files[0];
+    // Required fields (weight: 60%) - directly from profile
+    const requiredFields = [
+      profile.name,
+      profile.domain,
+      profile.hourly_price,
+      profile.bio,
+      profile.languages
+    ];
+
+    // Optional fields (weight: 40%) - directly from profile for accurate dynamic calculation
+    const optionalFields = [
+      profile.designation,
+      profile.years_experience,
+      profile.education,
+      profile.linkedin_url,
+      profile.website_url,
+      profile.availability && profile.availability !== 'Flexible',
+      profile.profile_pic
+    ];
+
+    const completedRequired = requiredFields.filter(field => field && field?.toString()?.trim() !== '').length;
+    const completedOptional = optionalFields.filter(field => field && field?.toString()?.trim() !== '').length;
+
+    // Weighted calculation: 60% for required, 40% for optional
+    const requiredScore = (completedRequired / requiredFields.length) * 60;
+    const optionalScore = (completedOptional / optionalFields.length) * 40;
+
+    return Math.round(requiredScore + optionalScore);
+  };
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
 
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -801,13 +803,12 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       return;
     }
 
-    // KYC documents are recommended but not mandatory for initial registration
-    // (can be uploaded later from profile page)
-    if (!profile && kycDocuments.length === 0) {
-      const confirmWithoutKyc = window.confirm(
-        "KYC documents are required for verification. You can add them now or later from your profile page.\n\nContinue without KYC documents?"
+    // Both certificate and identity proof are required
+    if (!profile && kycDocuments.length === 0 && identityProofDocs.length === 0) {
+      const confirmWithoutDocs = window.confirm(
+        "Certificate and Identity Proof documents are required for verification. You can add them now or later from your profile page.\n\nContinue without documents?"
       );
-      if (!confirmWithoutKyc) {
+      if (!confirmWithoutDocs) {
         return;
       }
     }
@@ -821,7 +822,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
           const response = await fetch(profilePhoto);
           const blob = await response.blob();
           const file = new File([blob], 'profile-photo.jpg', { type: 'image/jpeg' });
-          
+
           const uploadResponse = await consultantsApi.uploadProfilePic(file);
           profilePicUrl = uploadResponse.profile_pic;
         } catch (uploadError) {
@@ -849,33 +850,43 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       };
 
       await consultantsApi.register(registrationData);
-      
+
       addToast("Consultant profile created successfully!", "success");
 
-      // Upload KYC documents if provided (wait a bit for profile to be fully created)
+      // Upload Certificate documents if provided
       if (kycDocuments.length > 0) {
-        // Wait a moment for the database transaction to complete
         await new Promise(resolve => setTimeout(resolve, 500));
-        
         try {
-          await consultantsApi.uploadKycDoc(kycDocuments);
-          addToast("KYC documents uploaded successfully!", "success");
+          await consultantsApi.uploadKycDoc(kycDocuments, 'certificate');
+          addToast("Certificate documents uploaded successfully!", "success");
         } catch (kycError) {
-          console.error('KYC document upload failed:', kycError);
-          addToast('Profile created! Please upload KYC documents from your profile page.', 'warning');
+          console.error('Certificate upload failed:', kycError);
+          addToast('Profile created! Please upload certificate from your profile page.', 'warning');
+        }
+      }
+
+      // Upload Identity Proof documents if provided
+      if (identityProofDocs.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+          await consultantsApi.uploadKycDoc(identityProofDocs, 'identity_proof');
+          addToast("Identity proof uploaded successfully!", "success");
+        } catch (idError) {
+          console.error('Identity proof upload failed:', idError);
+          addToast('Profile created! Please upload identity proof from your profile page.', 'warning');
         }
       }
 
       // Show platform fee notification
-      
+
       setShowRegistrationFee(true);
       setRegistrationFeeDeducted(true);
 
       addToast("Consultant profile created successfully!", "success");
-      
+
       // Refresh profile data
       fetchProfile();
-      
+
     } catch (error: any) {
       console.error("Registration error:", error);
       addToast(error.response?.data?.error || "Failed to create consultant profile", "error");
@@ -923,12 +934,12 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
 
       await consultantsApi.updateProfile(updateData);
       addToast("Profile updated successfully!", "success");
-      
+
       // Refresh profile and exit edit mode
       fetchProfile();
       setIsEditing(false);
       setProfilePhoto(null);
-      
+
     } catch (error: any) {
       console.error("Update error:", error);
       addToast(error.response?.data?.error || "Failed to update profile", "error");
@@ -947,11 +958,11 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     );
   }
 
-  const isProfileIncomplete = !profile || 
-    !profile.name || 
-    !profile.domain || 
-    !profile.hourly_price || 
-    !profile.bio || 
+  const isProfileIncomplete = !profile ||
+    !profile.name ||
+    !profile.domain ||
+    !profile.hourly_price ||
+    !profile.bio ||
     !profile.languages;
 
   if (isProfileIncomplete) {
@@ -1046,7 +1057,7 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                 }
                 required
               />
-              
+
               {onboardingData.hourly_price && !registrationFeeDeducted && (
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
@@ -1076,218 +1087,268 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                   </p>
                 </div>
               )}
-            
-            {registrationFeeDeducted && (
-              <div className="space-y-4">
-                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                  <div className="flex items-center">
-                    <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-                    <span className="text-sm font-medium text-green-900">
-                      Platform fee structure has been applied
-                    </span>
+
+              {registrationFeeDeducted && (
+                <div className="space-y-4">
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                    <div className="flex items-center">
+                      <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+                      <span className="text-sm font-medium text-green-900">
+                        Platform fee structure has been applied
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Your Hourly Rate:</span>
-                    <span className="text-lg font-bold text-gray-900">₹{hourlyRateValue.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Platform Fee ({effectivePlatformFeePercent}%):</span>
-                    <span className="text-lg font-bold text-red-600">-₹{platformFeeAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="border-t pt-2 mt-2">
+                  <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm font-semibold text-gray-700">You'll Receive:</span>
-                      <span className="text-xl font-bold text-green-600">₹{consultantTakeHome.toFixed(2)}/hr</span>
+                      <span className="text-sm text-gray-600">Your Hourly Rate:</span>
+                      <span className="text-lg font-bold text-gray-900">₹{hourlyRateValue.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600">Platform Fee ({effectivePlatformFeePercent}%):</span>
+                      <span className="text-lg font-bold text-red-600">-₹{platformFeeAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="border-t pt-2 mt-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-semibold text-gray-700">You'll Receive:</span>
+                        <span className="text-xl font-bold text-green-600">₹{consultantTakeHome.toFixed(2)}/hr</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <p className="text-xs text-blue-700">
-                  Base platform fee is 20%. Plan discounts: Professional 2%, Premium 5%, Elite 10%.
-                </p>
-              </div>
-            )}
-            
-            <textarea
-              placeholder="Bio"
-              className="w-full border rounded-xl px-4 py-3 h-32"
-              value={onboardingData.bio}
-              onChange={(e) =>
-                setOnboardingData({
-                  ...onboardingData,
-                  bio: e.target.value,
-                })
-              }
-              required
-            />
-            
-            <select
-              className="w-full border rounded-xl px-4 py-3"
-              value={onboardingData.languages}
-              onChange={(e) =>
-                setOnboardingData({
-                  ...onboardingData,
-                  languages: e.target.value,
-                })
-              }
-              required
-              disabled={!onboardingData.domain}
-            >
-              <option value="" disabled>
-                {onboardingData.domain ? "Select Language" : "Select Domain First"}
-              </option>
-              {(DOMAIN_LANGUAGE_MAP[onboardingData.domain] || []).map((language) => (
-                <option key={language} value={language}>
-                  {language}
-                </option>
-              ))}
-            </select>
-            
-            <input
-              type="text"
-              placeholder="Designation"
-              className="w-full border rounded-xl px-4 py-3"
-              value={onboardingData.designation}
-              onChange={(e) =>
-                setOnboardingData({
-                  ...onboardingData,
-                  designation: e.target.value,
-                })
-              }
-              required
-            />
-            
-            <input
-              type="number"
-              placeholder="Years of Experience"
-              className="w-full border rounded-xl px-4 py-3"
-              value={onboardingData.years_experience}
-              onChange={(e) =>
-                setOnboardingData({
-                  ...onboardingData,
-                  years_experience: e.target.value,
-                })
-              }
-              required
-            />
-            
-            <input
-              type="text"
-              placeholder="Education"
-              className="w-full border rounded-xl px-4 py-3"
-              value={onboardingData.education}
-              onChange={(e) =>
-                setOnboardingData({
-                  ...onboardingData,
-                  education: e.target.value,
-                })
-              }
-              required
-            />
-            
-            <select
-              className="w-full p-3 border border-gray-300 rounded-xl"
-              value={onboardingData.availability}
-              onChange={(e) =>
-                setOnboardingData({
-                  ...onboardingData,
-                  availability: e.target.value,
-                })
-              }
-            >
-              <option>Full-time</option>
-              <option>Part-time</option>
-              <option>Flexible</option>
-              <option>Weekends</option>
-            </select>
-            
-            <input
-              type="url"
-              placeholder="LinkedIn URL (optional)"
-              className="w-full border rounded-xl px-4 py-3"
-              value={onboardingData.linkedin}
-              onChange={(e) =>
-                setOnboardingData({
-                  ...onboardingData,
-                  linkedin: e.target.value,
-                })
-              }
-            />
-            
-            <input
-              type="url"
-              placeholder="Website / Portfolio URL (optional)"
-              className="w-full border rounded-xl px-4 py-3"
-              value={onboardingData.other_social}
-              onChange={(e) =>
-                setOnboardingData({
-                  ...onboardingData,
-                  other_social: e.target.value,
-                })
-              }
-            />
-            
-            {/* KYC Document Upload */}
-            <div className="border-t pt-4 mt-4">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">
-                KYC Documents
-                <span className="text-xs text-orange-600 font-normal ml-2">(Recommended - Required for approval)</span>
-              </h3>
-              <p className="text-sm text-gray-600 mb-3">
-                Upload identity documents (Aadhar, PAN, Driving License, etc.). You can also add these later from your profile page.
-              </p>
-              
-              <label className="w-full border-2 border-dashed border-gray-300 rounded-xl px-4 py-6 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all flex flex-col items-center justify-center">
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files) {
-                      const files = Array.from(e.target.files);
-                      setKycDocuments(prev => [...prev, ...files]);
-                    }
-                  }}
-                />
-                <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                <span className="text-sm font-medium text-gray-600">Click to upload KYC documents</span>
-                <span className="text-xs text-gray-500 mt-1">PDF, JPG, PNG (Max 5MB per file)</span>
-              </label>
-              
-              {kycDocuments.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {kycDocuments.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                        <span className="text-sm text-gray-700 truncate">{file.name}</span>
-                        <span className="text-xs text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setKycDocuments(prev => prev.filter((_, i) => i !== index))}
-                        className="text-red-500 hover:text-red-700 ml-2"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                  <p className="text-xs text-blue-700">
+                    Base platform fee is 20%. Plan discounts: Professional 2%, Premium 5%, Elite 10%.
+                  </p>
                 </div>
               )}
-              
-              <p className="text-xs text-gray-500 mt-2">
-                These documents are required for verification and payout processing. Your information is securely stored.
-              </p>
-            </div>
 
-            <button
-              type="submit"
-              className="w-full bg-blue-600 text-white py-3 rounded-xl"
-            >
-              {!profile ? 'Create Profile' : 'Update Profile'}
-            </button>
+              <textarea
+                placeholder="Bio"
+                className="w-full border rounded-xl px-4 py-3 h-32"
+                value={onboardingData.bio}
+                onChange={(e) =>
+                  setOnboardingData({
+                    ...onboardingData,
+                    bio: e.target.value,
+                  })
+                }
+                required
+              />
+
+              <select
+                className="w-full border rounded-xl px-4 py-3"
+                value={onboardingData.languages}
+                onChange={(e) =>
+                  setOnboardingData({
+                    ...onboardingData,
+                    languages: e.target.value,
+                  })
+                }
+                required
+                disabled={!onboardingData.domain}
+              >
+                <option value="" disabled>
+                  {onboardingData.domain ? "Select Language" : "Select Domain First"}
+                </option>
+                {(DOMAIN_LANGUAGE_MAP[onboardingData.domain] || []).map((language) => (
+                  <option key={language} value={language}>
+                    {language}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="text"
+                placeholder="Designation"
+                className="w-full border rounded-xl px-4 py-3"
+                value={onboardingData.designation}
+                onChange={(e) =>
+                  setOnboardingData({
+                    ...onboardingData,
+                    designation: e.target.value,
+                  })
+                }
+                required
+              />
+
+              <input
+                type="number"
+                placeholder="Years of Experience"
+                className="w-full border rounded-xl px-4 py-3"
+                value={onboardingData.years_experience}
+                onChange={(e) =>
+                  setOnboardingData({
+                    ...onboardingData,
+                    years_experience: e.target.value,
+                  })
+                }
+                required
+              />
+
+              <input
+                type="text"
+                placeholder="Education"
+                className="w-full border rounded-xl px-4 py-3"
+                value={onboardingData.education}
+                onChange={(e) =>
+                  setOnboardingData({
+                    ...onboardingData,
+                    education: e.target.value,
+                  })
+                }
+                required
+              />
+
+              <select
+                className="w-full p-3 border border-gray-300 rounded-xl"
+                value={onboardingData.availability}
+                onChange={(e) =>
+                  setOnboardingData({
+                    ...onboardingData,
+                    availability: e.target.value,
+                  })
+                }
+              >
+                <option>Full-time</option>
+                <option>Part-time</option>
+                <option>Flexible</option>
+                <option>Weekends</option>
+              </select>
+
+              <input
+                type="url"
+                placeholder="LinkedIn URL (optional)"
+                className="w-full border rounded-xl px-4 py-3"
+                value={onboardingData.linkedin}
+                onChange={(e) =>
+                  setOnboardingData({
+                    ...onboardingData,
+                    linkedin: e.target.value,
+                  })
+                }
+              />
+
+              <input
+                type="url"
+                placeholder="Website / Portfolio URL (optional)"
+                className="w-full border rounded-xl px-4 py-3"
+                value={onboardingData.other_social}
+                onChange={(e) =>
+                  setOnboardingData({
+                    ...onboardingData,
+                    other_social: e.target.value,
+                  })
+                }
+              />
+
+              {/* Certificate Document Upload */}
+              <div className="border-t pt-4 mt-4">
+                <h3 className="text-lg font-semibold text-gray-800 mb-1 flex items-center gap-2">
+                  📜 Certificate Documents
+                  <span className="text-xs text-red-500 font-normal">(Required)</span>
+                </h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  Upload professional certificates, degree certificates, or any relevant qualifications.
+                </p>
+
+                <label className="w-full border-2 border-dashed border-gray-300 rounded-xl px-4 py-6 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all flex flex-col items-center justify-center">
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        const files = Array.from(e.target.files);
+                        setKycDocuments(prev => [...prev, ...files]);
+                      }
+                    }}
+                  />
+                  <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                  <span className="text-sm font-medium text-gray-600">Click to upload certificates</span>
+                  <span className="text-xs text-gray-500 mt-1">PDF, JPG, PNG (Max 5MB per file)</span>
+                </label>
+
+                {kycDocuments.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {kycDocuments.map((file, index) => (
+                      <div key={index} className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                          <span className="text-sm text-gray-700 truncate">{file.name}</span>
+                          <span className="text-xs text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setKycDocuments(prev => prev.filter((_, i) => i !== index))}
+                          className="text-red-500 hover:text-red-700 ml-2"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Identity Proof Upload */}
+              <div className="border-t pt-4 mt-4">
+                <h3 className="text-lg font-semibold text-gray-800 mb-1 flex items-center gap-2">
+                  🪪 Identity Proof
+                  <span className="text-xs text-red-500 font-normal">(Required)</span>
+                </h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  Upload government-issued identity proof (Aadhar, PAN, Passport, Driving License, etc.)
+                </p>
+
+                <label className="w-full border-2 border-dashed border-indigo-300 rounded-xl px-4 py-6 cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition-all flex flex-col items-center justify-center">
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        const files = Array.from(e.target.files);
+                        setIdentityProofDocs(prev => [...prev, ...files]);
+                      }
+                    }}
+                  />
+                  <Upload className="w-8 h-8 text-indigo-400 mb-2" />
+                  <span className="text-sm font-medium text-gray-600">Click to upload identity proof</span>
+                  <span className="text-xs text-gray-500 mt-1">PDF, JPG, PNG (Max 5MB per file)</span>
+                </label>
+
+                {identityProofDocs.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {identityProofDocs.map((file, index) => (
+                      <div key={index} className="flex items-center justify-between bg-indigo-50 rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                          <span className="text-sm text-gray-700 truncate">{file.name}</span>
+                          <span className="text-xs text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIdentityProofDocs(prev => prev.filter((_, i) => i !== index))}
+                          className="text-red-500 hover:text-red-700 ml-2"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-500 mt-2">
+                  Both documents are required for verification and payout processing. Your information is securely stored.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-blue-600 text-white py-3 rounded-xl"
+              >
+                {!profile ? 'Create Profile' : 'Update Profile'}
+              </button>
             </form>
           </div>
         </div>
@@ -1357,75 +1418,172 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         </div>
       )}
 
-      {/* KYC Pending Approval Screen */}
+      {/* KYC Pending / Rejected Screen */}
       {profile && kycStatus && kycStatus !== "APPROVED" && (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-          <div className="max-w-md w-full">
+          <div className="max-w-lg w-full">
             <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
               {/* Status Icon */}
               <div className="mb-6 flex justify-center">
-                <div className="bg-blue-100 rounded-full p-4">
-                  <Clock className="w-12 h-12 text-blue-600" />
+                <div className={`rounded-full p-4 ${kycStatus === 'REJECTED' ? 'bg-red-100' : 'bg-blue-100'}`}>
+                  {kycStatus === 'REJECTED' ? (
+                    <XCircle className="w-12 h-12 text-red-600" />
+                  ) : (
+                    <Clock className="w-12 h-12 text-blue-600" />
+                  )}
                 </div>
               </div>
 
               {/* Title */}
               <h1 className="text-3xl font-bold text-gray-900 mb-4">
-                Account Under Review
+                {kycStatus === 'REJECTED' ? 'Documents Rejected' : 'Account Under Review'}
               </h1>
 
               {/* Message */}
-              <p className="text-gray-600 mb-6">
-                Thank you for signing up! Your account will be reviewed and approved within <span className="font-semibold text-blue-600">24 to 48 hours</span>.
-              </p>
+              {kycStatus === 'REJECTED' ? (
+                <p className="text-gray-600 mb-6">
+                  Some of your documents have been rejected. Please review the details below and re-upload the corrected documents.
+                </p>
+              ) : (
+                <p className="text-gray-600 mb-6">
+                  Thank you for signing up! Your account will be reviewed and approved within <span className="font-semibold text-blue-600">24 to 48 hours</span>.
+                </p>
+              )}
 
-              {/* Timeline */}
-              <div className="bg-gray-50 rounded-lg p-6 mb-8 text-left">
-                <h3 className="font-semibold text-gray-900 mb-4">Approval Timeline:</h3>
-                <div className="space-y-4">
-                  <div className="flex items-start">
-                    <div className="flex-shrink-0">
-                      <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100">
-                        <Check className="w-5 h-5 text-blue-600" />
-                      </div>
-                    </div>
-                    <div className="ml-3">
-                      <p className="font-medium text-gray-900">KYC Information Submitted</p>
-                      <p className="text-sm text-gray-600 mt-1">Your profile has been submitted</p>
-                    </div>
+              {/* Document Status List */}
+              {profile?.kyc_documents && profile.kyc_documents.length > 0 && (
+                <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
+                  <h3 className="font-semibold text-gray-900 mb-3">Your Documents:</h3>
+                  <div className="space-y-3">
+                    {profile.kyc_documents.map((doc: any, idx: number) => {
+                      const docTypeLabel = doc.type === 'identity_proof' ? '🪪 Identity Proof' :
+                        doc.type === 'certificate' ? '📜 Certificate' : '📄 Document';
+                      return (
+                        <div key={doc.id || idx} className={`rounded-lg p-3 border ${doc.status === 'REJECTED' ? 'bg-red-50 border-red-200' :
+                            doc.status === 'APPROVED' ? 'bg-green-50 border-green-200' :
+                              'bg-yellow-50 border-yellow-200'
+                          }`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium text-gray-900 text-sm">{docTypeLabel}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${doc.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                                doc.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                                  'bg-yellow-100 text-yellow-800'
+                              }`}>
+                              {doc.status || 'PENDING'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 truncate">{doc.name}</p>
+
+                          {/* Rejection Reason */}
+                          {doc.status === 'REJECTED' && doc.rejection_reason && (
+                            <div className="mt-2 bg-red-100 rounded px-3 py-2">
+                              <p className="text-xs font-medium text-red-800">Reason: {doc.rejection_reason}</p>
+                            </div>
+                          )}
+
+                          {/* Re-upload button for rejected docs */}
+                          {doc.status === 'REJECTED' && (
+                            <div className="mt-2">
+                              {reuploadingDocId === doc.id ? (
+                                <div className="flex items-center gap-2 text-xs text-blue-600">
+                                  <Loader className="w-3 h-3 animate-spin" /> Uploading...
+                                </div>
+                              ) : (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                                  <Upload className="w-3 h-3" />
+                                  Re-upload this document
+                                  <input
+                                    type="file"
+                                    accept="image/*,.pdf"
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      try {
+                                        setReuploadingDocId(doc.id);
+                                        await consultantsApi.reuploadDocument(doc.id, file);
+                                        addToast('Document re-uploaded! It will be reviewed again.', 'success');
+                                        fetchProfile();
+                                      } catch (err: any) {
+                                        addToast(err.response?.data?.error || 'Failed to re-upload', 'error');
+                                      } finally {
+                                        setReuploadingDocId(null);
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="flex items-start">
-                    <div className="flex-shrink-0">
-                      <div className="flex items-center justify-center h-8 w-8 rounded-full bg-yellow-100">
-                        <Clock className="w-5 h-5 text-yellow-600" />
+                </div>
+              )}
+
+              {/* Timeline (only for non-rejected) */}
+              {kycStatus !== 'REJECTED' && (
+                <div className="bg-gray-50 rounded-lg p-6 mb-8 text-left">
+                  <h3 className="font-semibold text-gray-900 mb-4">Approval Timeline:</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-start">
+                      <div className="flex-shrink-0">
+                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100">
+                          <Check className="w-5 h-5 text-blue-600" />
+                        </div>
+                      </div>
+                      <div className="ml-3">
+                        <p className="font-medium text-gray-900">Documents Submitted</p>
+                        <p className="text-sm text-gray-600 mt-1">Your profile and documents have been submitted</p>
                       </div>
                     </div>
-                    <div className="ml-3">
-                      <p className="font-medium text-gray-900">Verification in Progress</p>
-                      <p className="text-sm text-gray-600 mt-1">We're verifying your details</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start">
-                    <div className="flex-shrink-0">
-                      <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gray-100">
-                        <Check className="w-5 h-5 text-gray-400" />
+                    <div className="flex items-start">
+                      <div className="flex-shrink-0">
+                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-yellow-100">
+                          <Clock className="w-5 h-5 text-yellow-600" />
+                        </div>
+                      </div>
+                      <div className="ml-3">
+                        <p className="font-medium text-gray-900">Verification in Progress</p>
+                        <p className="text-sm text-gray-600 mt-1">Admin is reviewing your documents</p>
                       </div>
                     </div>
-                    <div className="ml-3">
-                      <p className="font-medium text-gray-900">Account Approved</p>
-                      <p className="text-sm text-gray-600 mt-1">Get full access to your dashboard</p>
+                    <div className="flex items-start">
+                      <div className="flex-shrink-0">
+                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gray-100">
+                          <Check className="w-5 h-5 text-gray-400" />
+                        </div>
+                      </div>
+                      <div className="ml-3">
+                        <p className="font-medium text-gray-900">Account Approved</p>
+                        <p className="text-sm text-gray-600 mt-1">Get full access to your dashboard</p>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Next Steps */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8 text-left">
-                <h3 className="font-semibold text-blue-900 mb-2">What's Next?</h3>
-                <ul className="text-sm text-blue-800 space-y-2">
-                  <li>• We'll review your KYC information</li>
-                  <li>• You'll receive an email with your approval status</li>
-                  <li>• Once approved, you can access your full dashboard</li>
+              {/* What's Next */}
+              <div className={`${kycStatus === 'REJECTED' ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-4 mb-8 text-left`}>
+                <h3 className={`font-semibold ${kycStatus === 'REJECTED' ? 'text-red-900' : 'text-blue-900'} mb-2`}>
+                  {kycStatus === 'REJECTED' ? 'What to do:' : "What's Next?"}
+                </h3>
+                <ul className={`text-sm ${kycStatus === 'REJECTED' ? 'text-red-800' : 'text-blue-800'} space-y-2`}>
+                  {kycStatus === 'REJECTED' ? (
+                    <>
+                      <li>• Review the rejection reasons for each document above</li>
+                      <li>• Click "Re-upload" next to each rejected document</li>
+                      <li>• Upload corrected versions of your documents</li>
+                      <li>• Your documents will be reviewed again within 24-48 hours</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>• We'll review your submitted documents</li>
+                      <li>• You'll receive an email with your approval status</li>
+                      <li>• Once approved, you can access your full dashboard</li>
+                    </>
+                  )}
                 </ul>
               </div>
 
@@ -1448,10 +1606,11 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
               {/* Status Badge */}
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <p className="text-sm text-gray-600">
-                  Status: <span className="font-semibold text-gray-900">
-                    {kycStatus === "PENDING" ? "Pending Submission" : 
-                     kycStatus === "SUBMITTED" ? "Under Review" : 
-                     "Processing"}
+                  Status: <span className={`font-semibold ${kycStatus === 'REJECTED' ? 'text-red-600' : 'text-gray-900'}`}>
+                    {kycStatus === "PENDING" ? "Pending Submission" :
+                      kycStatus === "SUBMITTED" ? "Under Review" :
+                        kycStatus === "REJECTED" ? "Documents Rejected — Re-upload Required" :
+                          "Processing"}
                   </span>
                 </p>
               </div>
@@ -1471,764 +1630,759 @@ const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       {!loading && (!kycStatus || kycStatus === "APPROVED") && (
         <div className="max-w-7xl mx-auto space-y-8">
 
-        {/* Platform Fee Notification */}
-        {showRegistrationFee && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center justify-between">
-            <div className="flex items-center">
-              <AlertCircle className="w-5 h-5 text-yellow-600 mr-3" />
-              <div>
-                <p className="font-medium text-yellow-900">Platform Fee Applied</p>
-                <p className="text-sm text-yellow-800">
-                  Current plan: {currentPlanName} • Platform fee: {effectivePlatformFeePercent}%
-                </p>
+          {/* Platform Fee Notification */}
+          {showRegistrationFee && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center justify-between">
+              <div className="flex items-center">
+                <AlertCircle className="w-5 h-5 text-yellow-600 mr-3" />
+                <div>
+                  <p className="font-medium text-yellow-900">Platform Fee Applied</p>
+                  <p className="text-sm text-yellow-800">
+                    Current plan: {currentPlanName} • Platform fee: {effectivePlatformFeePercent}%
+                  </p>
+                </div>
               </div>
+              <button
+                onClick={() => setShowRegistrationFee(false)}
+                className="text-yellow-600 hover:text-yellow-800"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
             </div>
-            <button
-              onClick={() => setShowRegistrationFee(false)}
-              className="text-yellow-600 hover:text-yellow-800"
+          )}
+
+          {/* Live Session Banner */}
+          {liveSession && (
+            <div
+              onClick={() => navigate('/consultant/messages', { state: { bookingId: liveSession.id } })}
+              className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 flex items-center justify-between cursor-pointer hover:from-green-600 hover:to-emerald-700 transition-all transform hover:scale-[1.02] shadow-lg"
             >
-              <XCircle className="w-5 h-5" />
-            </button>
-          </div>
-        )}
-
-        {/* Live Session Banner */}
-        {liveSession && (
-          <div 
-            onClick={() => navigate('/consultant/messages', { state: { bookingId: liveSession.id } })}
-            className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 flex items-center justify-between cursor-pointer hover:from-green-600 hover:to-emerald-700 transition-all transform hover:scale-[1.02] shadow-lg"
-          >
-            <div className="flex items-center">
-              <div className="bg-white/20 rounded-full p-2 mr-3 animate-pulse">
-                <Video className="w-6 h-6 text-white" />
+              <div className="flex items-center">
+                <div className="bg-white/20 rounded-full p-2 mr-3 animate-pulse">
+                  <Video className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="font-bold text-white text-lg flex items-center">
+                    🔴 Live Session Active
+                    <span className="ml-2 text-xs bg-white/30 px-2 py-1 rounded-full">NOW</span>
+                  </p>
+                  <p className="text-sm text-white/90">
+                    Session with {liveSession.user?.name || 'Client'} • {liveSession.time_slot} • Click to join chat
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="font-bold text-white text-lg flex items-center">
-                  🔴 Live Session Active
-                  <span className="ml-2 text-xs bg-white/30 px-2 py-1 rounded-full">NOW</span>
-                </p>
-                <p className="text-sm text-white/90">
-                  Session with {liveSession.user?.name || 'Client'} • {liveSession.time_slot} • Click to join chat
-                </p>
-              </div>
+              <ArrowRight className="w-6 h-6 text-white" />
             </div>
-            <ArrowRight className="w-6 h-6 text-white" />
-          </div>
-        )}
+          )}
 
-        {/* Subscription Expiry Warning Banner */}
-        {expiryWarning && (
-          <div 
-            onClick={() => navigate('/consultant/plans')}
-            className={`rounded-xl p-4 flex items-center justify-between cursor-pointer transition-all transform hover:scale-[1.02] shadow-lg ${
-              expiryWarning.severity === 'critical' 
-                ? 'bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700' 
+          {/* Subscription Expiry Warning Banner */}
+          {expiryWarning && (
+            <div
+              onClick={() => navigate('/consultant/plans')}
+              className={`rounded-xl p-4 flex items-center justify-between cursor-pointer transition-all transform hover:scale-[1.02] shadow-lg ${expiryWarning.severity === 'critical'
+                ? 'bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700'
                 : 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600'
-            }`}
-          >
-            <div className="flex items-center">
-              <div className="bg-white/20 rounded-full p-2 mr-3">
-                <AlertCircle className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="font-bold text-white text-lg flex items-center">
-                  ⚠️ Subscription Expiring Soon
-                  <span className="ml-2 text-xs bg-white/30 px-2 py-1 rounded-full">
-                    {expiryWarning.daysLeft} DAY{expiryWarning.daysLeft > 1 ? 'S' : ''} LEFT
-                  </span>
-                </p>
-                <p className="text-sm text-white/90">
-                  {expiryWarning.message} • Click to renew and keep your premium benefits
-                </p>
-              </div>
-            </div>
-            <ArrowRight className="w-6 h-6 text-white" />
-          </div>
-        )}
-
-        {/* 4.1 Welcome Section */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 text-white">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-3xl font-bold mb-4">
-                {getGreeting()}, {profile?.name || user?.name || "Expert"}!
-              </h2>
-              
-              <div className="flex items-center space-x-4 mb-4 flex-wrap gap-2">
-                <div className="flex items-center">
-                  {profile?.is_verified ? (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      Verified
+                }`}
+            >
+              <div className="flex items-center">
+                <div className="bg-white/20 rounded-full p-2 mr-3">
+                  <AlertCircle className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="font-bold text-white text-lg flex items-center">
+                    ⚠️ Subscription Expiring Soon
+                    <span className="ml-2 text-xs bg-white/30 px-2 py-1 rounded-full">
+                      {expiryWarning.daysLeft} DAY{expiryWarning.daysLeft > 1 ? 'S' : ''} LEFT
                     </span>
-                  ) : (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                      <AlertCircle className="w-3 h-3 mr-1" />
-                      Pending
+                  </p>
+                  <p className="text-sm text-white/90">
+                    {expiryWarning.message} • Click to renew and keep your premium benefits
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="w-6 h-6 text-white" />
+            </div>
+          )}
+
+          {/* 4.1 Welcome Section */}
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 text-white">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-3xl font-bold mb-4">
+                  {getGreeting()}, {profile?.name || user?.name || "Expert"}!
+                </h2>
+
+                <div className="flex items-center space-x-4 mb-4 flex-wrap gap-2">
+                  <div className="flex items-center">
+                    {profile?.is_verified ? (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Verified
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        <AlertCircle className="w-3 h-3 mr-1" />
+                        Pending
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Plan Badge */}
+                  {profile?.currentPlan && (
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${profile.currentPlan === 'Elite' ? 'bg-purple-100 text-purple-800' :
+                      profile.currentPlan === 'Premium' ? 'bg-blue-100 text-blue-800' :
+                        profile.currentPlan === 'Professional' ? 'bg-indigo-100 text-indigo-800' :
+                          'bg-gray-100 text-gray-800'
+                      }`}>
+                      <Crown className="w-3 h-3 mr-1" />
+                      {profile.currentPlan} Plan
                     </span>
                   )}
                 </div>
-                
-                {/* Plan Badge */}
-                {profile?.currentPlan && (
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                    profile.currentPlan === 'Elite' ? 'bg-purple-100 text-purple-800' :
-                    profile.currentPlan === 'Premium' ? 'bg-blue-100 text-blue-800' :
-                    profile.currentPlan === 'Professional' ? 'bg-indigo-100 text-indigo-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    <Crown className="w-3 h-3 mr-1" />
-                    {profile.currentPlan} Plan
-                  </span>
-                )}
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-blue-100 text-sm">Profile Completion</p>
+                    <p className="text-2xl font-bold">{calculateProfileCompletion()}%</p>
+                  </div>
+                  <div>
+                    <p className="text-blue-100 text-sm">Domain</p>
+                    <p className="text-xl font-semibold">{profile?.domain}</p>
+                  </div>
+                  <div>
+                    <p className="text-blue-100 text-sm">Hourly Rate</p>
+                    <p className="text-xl font-semibold">₹{profile?.hourly_price || "--"}/hr</p>
+                  </div>
+                  <div>
+                    <p className="text-blue-100 text-sm">Experience</p>
+                    <p className="text-xl font-semibold">{profile?.years_experience || "0"} years</p>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-blue-100 text-sm">Profile Completion</p>
-                  <p className="text-2xl font-bold">{calculateProfileCompletion()}%</p>
+              {profile?.profile_pic && (
+                <img
+                  src={profile.profile_pic}
+                  alt="Profile"
+                  className="w-24 h-24 rounded-full border-4 border-white/20 object-cover"
+                />
+              )}
+            </div>
+          </div>
+
+
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* 4.2 Upcoming Sessions */}
+            <div className="lg:col-span-2">
+              <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold flex items-center">
+                    <Calendar className="w-5 h-5 mr-2 text-blue-600" />
+                    Upcoming Sessions
+                  </h3>
+                  <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                    View All
+                  </button>
                 </div>
-                <div>
-                  <p className="text-blue-100 text-sm">Domain</p>
-                  <p className="text-xl font-semibold">{profile?.domain}</p>
-                </div>
-                <div>
-                  <p className="text-blue-100 text-sm">Hourly Rate</p>
-                  <p className="text-xl font-semibold">₹{profile?.hourly_price || "--"}/hr</p>
-                </div>
-                <div>
-                  <p className="text-blue-100 text-sm">Experience</p>
-                  <p className="text-xl font-semibold">{profile?.years_experience || "0"} years</p>
+
+                <div className="space-y-4">
+                  {upcomingSessions.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                      <p>No upcoming sessions</p>
+                    </div>
+                  ) : (
+                    upcomingSessions.map((session) => (
+                      <div key={session.id} className="border border-blue-100 rounded-xl p-4 bg-gradient-to-r from-white to-blue-50/40 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center mb-2">
+                              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                                <Users className="w-5 h-5 text-blue-600" />
+                              </div>
+                              <div>
+                                <h4 className="font-semibold">{session.user?.name || session.user?.email || 'Client'}</h4>
+                                <p className="text-sm text-gray-600">{session.domain || 'Consultation'}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center text-sm text-gray-600 ml-13">
+                              <Clock className="w-4 h-4 mr-1" />
+                              {session.date ? new Date(session.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Date not set'} at {session.time_slot || 'Time not set'}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${session.status === 'confirmed'
+                              ? 'bg-green-100 text-green-800'
+                              : session.status === 'pending'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-gray-100 text-gray-800'
+                              }`}>
+                              {session.status || 'Unknown'}
+                            </span>
+
+                            {session.status === 'confirmed' ? (
+                              <button
+                                onClick={() => handleSessionAction(session.id, 'join')}
+                                className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                title="Join Session"
+                              >
+                                <Video className="w-4 h-4" />
+                              </button>
+                            ) : session.status === 'pending' ? (
+                              <div className="flex space-x-2">
+                                <button
+                                  onClick={() => handleSessionAction(session.id, 'accept')}
+                                  className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                                  title="Accept Session"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleSessionAction(session.id, 'reject')}
+                                  className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                                  title="Reject Session"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
-            
-            {profile?.profile_pic && (
-              <img
-                src={profile.profile_pic}
-                alt="Profile"
-                className="w-24 h-24 rounded-full border-4 border-white/20 object-cover"
-              />
-            )}
+
+            {/* 4.3 Today's Availability */}
+            <div>
+              <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="text-xl font-bold flex items-center">
+                      <Calendar className="w-5 h-5 mr-2 text-green-600" />
+                      Today's Availability
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/consultant/slots')}
+                    className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    title="Manage Availability"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {availability ? (
+                  <div className="space-y-4">
+                    {(() => {
+                      // Use todaySlots to only show slots for today's specific date
+                      const todaySlots = availability.todaySlots || [];
+                      const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+
+                      if (todaySlots.length > 0) {
+                        // Calculate time range from today's slots
+                        const times = todaySlots.map((slot: any) => slot.available_time).sort();
+                        const startTime = times[0];
+                        const endTime = `${(parseInt(times[times.length - 1].split(':')[0]) + 1).toString().padStart(2, '0')}:00`;
+                        const timeRange = `${startTime} - ${endTime}`;
+
+                        return (
+                          <>
+                            {/* Today's Schedule Card */}
+                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+                              <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-14 h-14 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 text-white flex items-center justify-center font-bold text-lg">
+                                    {today.substring(0, 3)}
+                                  </div>
+                                  <div>
+                                    <p className="text-lg font-bold text-gray-800">{today}</p>
+                                    <p className="text-sm text-gray-600">Available Today</p>
+                                  </div>
+                                </div>
+                                <span className="bg-green-500 text-white text-xs font-bold px-4 py-2 rounded-full flex items-center gap-2">
+                                  <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                                  Active
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4 mt-4">
+                                <div className="bg-white rounded-lg p-4 text-center border border-blue-100">
+                                  <p className="text-3xl font-bold text-blue-600">{todaySlots.length}</p>
+                                  <p className="text-xs text-gray-600 mt-1">Hours Available</p>
+                                </div>
+                                <div className="bg-white rounded-lg p-4 text-center border border-blue-100">
+                                  <p className="text-lg font-bold text-green-600">{timeRange}</p>
+                                  <p className="text-xs text-gray-600 mt-1">Time Range</p>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      } else {
+                        return (
+                          <div className="bg-yellow-50 rounded-xl p-6 border border-yellow-200 text-center">
+                            <AlertCircle className="w-12 h-12 mx-auto mb-3 text-yellow-600" />
+                            <p className="text-sm font-medium text-yellow-900">No availability set for today ({today})</p>
+                            <p className="text-xs text-yellow-800 mt-2">Add your available time slots to start accepting bookings</p>
+                            <button
+                              onClick={() => navigate('/consultant/slots')}
+                              className="mt-4 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                            >
+                              Set Today's Schedule
+                            </button>
+                          </div>
+                        );
+                      }
+                    })()}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Clock className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                    <p className="text-gray-500 font-medium">Loading availability...</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
 
- 
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* 4.2 Upcoming Sessions */}
-          <div className="lg:col-span-2">
+
+          {/* Current Subscription Section */}
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 text-white">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold mb-2">Current Subscription</h2>
+                {profile?.currentPlan && profile.currentPlan !== 'Free' ? (
+                  <>
+                    <p className="text-4xl font-bold mb-2">{profile.currentPlan}</p>
+                    <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full inline-block mb-4">
+                      <span className="font-semibold">Status: {profile.subscriptionStatus || 'Active'}</span>
+                    </div>
+                    {profile.subscriptionEndDate && (
+                      <p className="text-sm opacity-90">
+                        Expires: {new Date(profile.subscriptionEndDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-4xl font-bold mb-2">Free Plan</p>
+                    <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full inline-block">
+                      <span className="font-semibold">Limited Features</span>
+                    </div>
+                    <p className="text-sm opacity-90 mt-4">
+                      Upgrade to unlock premium features
+                    </p>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => navigate('/consultant/plans')}
+                className="bg-white text-blue-600 px-6 py-3 rounded-xl font-semibold hover:bg-blue-50 transition-colors flex items-center gap-2"
+              >
+                {profile?.currentPlan && profile.currentPlan !== 'Free' ? 'Upgrade Plan' : 'View Plans'}
+                <ArrowRight size={18} />
+              </button>
+            </div>
+          </div>
+
+          {/* Subscription Usage Section */}
+          <div className="bg-white rounded-3xl p-8 shadow-lg mb-8">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">Subscription Usage</h2>
+
+            <div className="grid md:grid-cols-3 gap-6">
+              {/* Monthly Chat Messages */}
+              <div className="bg-blue-50 rounded-xl p-6 flex flex-col justify-between">
+                <div>
+                  <p className="text-lg font-semibold text-blue-800 mb-2">Monthly Chat Messages</p>
+                  <p className="text-3xl font-bold text-blue-600">{usage?.chat_messages_used || 0} <span className="text-base font-medium text-gray-500">Used</span></p>
+                  <p className="text-sm text-gray-500 mt-1">{usage?.chat_limit || 5} Total</p>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-2 mt-4">
+                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((usage?.chat_messages_used || 0) / (usage?.chat_limit || 5) * 100, 100)}%` }}></div>
+                </div>
+              </div>
+
+              {/* Bookings Made */}
+              <div className="bg-purple-50 rounded-xl p-6 flex flex-col justify-between">
+                <div>
+                  <p className="text-lg font-semibold text-purple-800 mb-2">Bookings Made</p>
+                  <p className="text-3xl font-bold text-purple-600">{usage?.bookings_made || 0} <span className="text-base font-medium text-gray-500">Used</span></p>
+                  <p className="text-sm text-gray-500 mt-1">No limit</p>
+                </div>
+                <div className="w-full bg-purple-200 rounded-full h-2 mt-4">
+                  <div className="bg-purple-600 h-2 rounded-full" style={{ width: '100%' }}></div>
+                </div>
+              </div>
+
+              {/* Days Remaining */}
+              <div className="bg-green-50 rounded-xl p-6 flex flex-col justify-between">
+                <div>
+                  <p className="text-lg font-semibold text-green-800 mb-2">Days Remaining</p>
+                  <p className="text-3xl font-bold text-green-600">{usage?.days_remaining || 0} <span className="text-base font-medium text-gray-500">Days</span></p>
+                  <p className="text-sm text-gray-500 mt-1">{usage?.days_remaining > 0 ? 'Until renewal' : 'Expired'}</p>
+                </div>
+                <div className="w-full bg-green-200 rounded-full h-2 mt-4">
+                  <div className="bg-green-600 h-2 rounded-full" style={{ width: `${Math.max((usage?.days_remaining || 0) / 30 * 100, 0)}%` }}></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* 4.4 Earnings Summary */}
             <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold flex items-center">
-                  <Calendar className="w-5 h-5 mr-2 text-blue-600" />
-                  Upcoming Sessions
+                  <IndianRupee className="w-5 h-5 mr-2 text-green-600" />
+                  Earnings Summary
                 </h3>
                 <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                  View All
+                  View Transactions
                 </button>
               </div>
-              
-              <div className="space-y-4">
-                {upcomingSessions.length === 0 ? (
+
+              {earnings ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="text-center bg-green-50 border border-green-100 rounded-xl p-4">
+                    <p className="text-sm text-gray-600 mb-1">Total Earnings</p>
+                    <p className="text-2xl font-bold text-green-600">₹{(earnings.totalEarnings || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="text-center bg-blue-50 border border-blue-100 rounded-xl p-4">
+                    <p className="text-sm text-gray-600 mb-1">Monthly Earnings</p>
+                    <p className="text-2xl font-bold text-blue-600">₹{(earnings.monthlyEarnings || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="text-center bg-amber-50 border border-amber-100 rounded-xl p-4">
+                    <p className="text-sm text-gray-600 mb-1">Pending Payout</p>
+                    <p className="text-2xl font-bold text-yellow-600">₹{(earnings.pendingPayout || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="text-center bg-purple-50 border border-purple-100 rounded-xl p-4">
+                    <p className="text-sm text-gray-600 mb-1">Withdrawable</p>
+                    <p className="text-2xl font-bold text-purple-600">₹{(earnings.withdrawableBalance || 0).toLocaleString()}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <IndianRupee className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>No earnings data available</p>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3 mt-6">
+                <button
+                  onClick={handleWithdraw}
+                  disabled={!earnings || earnings.withdrawableBalance <= 0}
+                  className="w-full sm:flex-1 bg-gradient-to-r from-blue-600 to-cyan-500 text-white py-3 rounded-xl font-semibold hover:from-blue-700 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Withdraw
+                </button>
+                <button
+                  onClick={() => navigate('/earnings')}
+                  className="w-full sm:flex-1 border border-blue-200 text-blue-700 py-3 rounded-xl font-semibold hover:bg-blue-50"
+                >
+                  View Detailed Report
+                </button>
+              </div>
+            </div>
+
+            {/* 4.5 Reviews & Ratings */}
+            <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold flex items-center">
+                  <Star className="w-5 h-5 mr-2 text-yellow-500" />
+                  Reviews & Ratings
+                </h3>
+                <button
+                  onClick={() => navigate('/consultant/reviews')}
+                  className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
+                >
+                  View All →
+                </button>
+              </div>
+
+              {reviews ? (
+                <div className="space-y-6">
+                  {/* Average Rating Display */}
+                  <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-2xl p-6 border border-amber-200">
+                    <div className="flex items-center justify-center mb-3">
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => {
+                          const avgRating = reviews.averageRating || 0;
+                          return (
+                            <Star
+                              key={star}
+                              className={`w-8 h-8 transition-all ${star <= Math.round(avgRating)
+                                ? 'text-amber-500 fill-amber-500 scale-110'
+                                : 'text-gray-300 fill-gray-300'
+                                }`}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <span className="text-4xl font-bold text-amber-600">{(reviews.averageRating || 0).toFixed(1)}</span>
+                      <span className="text-lg text-amber-700 ml-1">/5</span>
+                    </div>
+                    <p className="text-center text-sm text-amber-700 mt-2 font-medium">
+                      Based on {reviews.totalReviews || 0} {reviews.totalReviews === 1 ? 'review' : 'reviews'}
+                    </p>
+                  </div>
+
+                  {/* Recent Reviews */}
+                  {reviews.recentReviews && reviews.recentReviews.length > 0 ? (
+                    <div>
+                      <p className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-indigo-600" />
+                        Recent Reviews
+                      </p>
+                      <div className="space-y-3">
+                        {reviews.recentReviews.map((review: any, index: number) => {
+                          const rating = review.rating || 0;
+                          const ratingColor =
+                            rating >= 4 ? 'from-emerald-500 to-green-600' :
+                              rating >= 3 ? 'from-blue-500 to-indigo-600' :
+                                rating >= 2 ? 'from-amber-500 to-orange-600' :
+                                  'from-red-500 to-rose-600';
+
+                          return (
+                            <div
+                              key={index}
+                              className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-4 border border-gray-200 hover:shadow-md transition-all duration-300 hover:scale-[1.01]"
+                            >
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex items-center gap-3">
+                                  <div className={`bg-gradient-to-br ${ratingColor} w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-md`}>
+                                    {review.client ? review.client.charAt(0).toUpperCase() : 'A'}
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold text-gray-800">{review.client || 'Anonymous'}</span>
+                                    {review.date && (
+                                      <p className="text-xs text-gray-500">{new Date(review.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-lg">
+                                  {[1, 2, 3, 4, 5].map((star) => (
+                                    <span
+                                      key={star}
+                                      className={`text-base transition-all ${star <= rating ? 'text-amber-500 scale-110' : 'text-gray-300'
+                                        }`}
+                                    >
+                                      ★
+                                    </span>
+                                  ))}
+                                  <span className="text-xs font-bold text-amber-700 ml-1">{rating}/5</span>
+                                </div>
+                              </div>
+                              {review.comment && review.comment.trim() !== '' ? (
+                                <p className="text-sm text-gray-700 leading-relaxed bg-white p-3 rounded-lg border border-gray-100">
+                                  "{review.comment}"
+                                </p>
+                              ) : (
+                                <p className="text-sm text-gray-400 italic">No comment provided</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl py-8 text-center border border-gray-200">
+                      <Star className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                      <p className="text-gray-600 font-medium">No recent reviews yet</p>
+                      <p className="text-sm text-gray-500 mt-1">Reviews from clients will appear here</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl py-12 text-center border border-gray-200">
+                  <Star className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <p className="text-gray-600 font-semibold text-lg">No reviews data available</p>
+                  <p className="text-sm text-gray-500 mt-2">Complete sessions to start receiving reviews</p>
+                </div>
+              )}
+            </div>
+
+            {/* 4.6 Performance Metrics */}
+            <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold flex items-center">
+                  <TrendingUp className="w-5 h-5 mr-2 text-purple-600" />
+                  Performance Metrics
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {performanceMetrics ? (
+                  <>
+                    <div className="bg-blue-50 rounded-xl p-4 text-center">
+                      <p className="text-2xl font-bold text-blue-600">{performanceMetrics.sessionsCompleted || 0}</p>
+                      <p className="text-sm text-blue-900">Sessions Completed</p>
+                    </div>
+                    <div className="bg-green-50 rounded-xl p-4 text-center">
+                      <p className="text-2xl font-bold text-green-600">{performanceMetrics.successRate || 0}%</p>
+                      <p className="text-sm text-green-900">Success Rate</p>
+                    </div>
+                    <div className="bg-purple-50 rounded-xl p-4 text-center">
+                      <p className="text-2xl font-bold text-purple-600">{performanceMetrics.rebookingRate || 0}%</p>
+                      <p className="text-sm text-purple-900">Rebooking Rate</p>
+                    </div>
+                    <div className="bg-orange-50 rounded-xl p-4 text-center">
+                      <p className="text-2xl font-bold text-orange-600">{performanceMetrics.profileViews || 0}</p>
+                      <p className="text-sm text-orange-900">Profile Views</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="bg-blue-50 rounded-xl p-4 text-center">
+                      <p className="text-2xl font-bold text-blue-600">-</p>
+                      <p className="text-sm text-blue-900">Sessions Completed</p>
+                    </div>
+                    <div className="bg-green-50 rounded-xl p-4 text-center">
+                      <p className="text-2xl font-bold text-green-600">-</p>
+                      <p className="text-sm text-green-900">Success Rate</p>
+                    </div>
+                    <div className="bg-purple-50 rounded-xl p-4 text-center">
+                      <p className="text-2xl font-bold text-purple-600">-</p>
+                      <p className="text-sm text-purple-900">Rebooking Rate</p>
+                    </div>
+                    <div className="bg-orange-50 rounded-xl p-4 text-center">
+                      <p className="text-2xl font-bold text-orange-600">-</p>
+                      <p className="text-sm text-orange-900">Profile Views</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* 4.8 Messages Preview */}
+            <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold flex items-center">
+                  <MessageSquare className="w-5 h-5 mr-2 text-indigo-600" />
+                  Messages
+                </h3>
+                <button
+                  onClick={() => navigate('/consultant/messages')}
+                  className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
+                >
+                  View All →
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {messages.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
-                    <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                    <p>No upcoming sessions</p>
+                    <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                    <p>No messages</p>
                   </div>
                 ) : (
-                  upcomingSessions.map((session) => (
-                    <div key={session.id} className="border border-blue-100 rounded-xl p-4 bg-gradient-to-r from-white to-blue-50/40 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center mb-2">
-                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
-                              <Users className="w-5 h-5 text-blue-600" />
-                            </div>
-                            <div>
-                              <h4 className="font-semibold">{session.user?.name || session.user?.email || 'Client'}</h4>
-                              <p className="text-sm text-gray-600">{session.domain || 'Consultation'}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center text-sm text-gray-600 ml-13">
-                            <Clock className="w-4 h-4 mr-1" />
-                            {session.date ? new Date(session.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Date not set'} at {session.time_slot || 'Time not set'}
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center space-x-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            session.status === 'confirmed' 
-                              ? 'bg-green-100 text-green-800'
-                              : session.status === 'pending'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {session.status || 'Unknown'}
-                          </span>
-                          
-                          {session.status === 'confirmed' ? (
-                            <button 
-                              onClick={() => handleSessionAction(session.id, 'join')}
-                              className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                              title="Join Session"
-                            >
-                              <Video className="w-4 h-4" />
-                            </button>
-                          ) : session.status === 'pending' ? (
-                            <div className="flex space-x-2">
-                              <button 
-                                onClick={() => handleSessionAction(session.id, 'accept')}
-                                className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                                title="Accept Session"
-                              >
-                                <CheckCircle className="w-4 h-4" />
-                              </button>
-                              <button 
-                                onClick={() => handleSessionAction(session.id, 'reject')}
-                                className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                                title="Reject Session"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
+                  messages.map((message, index) => (
+                    <div
+                      key={index}
+                      className="flex items-start p-3 hover:bg-blue-50/70 rounded-lg cursor-pointer transition-all duration-300 hover:shadow-md border border-transparent hover:border-blue-100"
+                      onClick={() => navigate('/consultant/messages', { state: { bookingId: message.bookingId } })}
+                    >
+                      <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
+                        <Users className="w-5 h-5 text-indigo-600" />
                       </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium">{message.client}</span>
+                          {message.unread && (
+                            <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 truncate">{message.content || 'No message'}</p>
+                        <p className="text-xs text-gray-500">{message.time ? formatTime(message.time) : 'Unknown time'}</p>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-gray-400" />
                     </div>
                   ))
                 )}
               </div>
             </div>
-          </div>
 
-          {/* 4.3 Today's Availability */}
-          <div>
-            <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
+            {/* 4.9 Notifications Section */}
+            <div id="notifications" className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 scroll-mt-24 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
               <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-xl font-bold flex items-center">
-                    <Calendar className="w-5 h-5 mr-2 text-green-600" />
-                    Today's Availability
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                  </p>
-                </div>
-                <button 
-                  onClick={() => navigate('/consultant/slots')}
-                  className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  title="Manage Availability"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
+                <h3 className="text-xl font-bold flex items-center">
+                  <Bell className="w-5 h-5 mr-2 text-blue-600" />
+                  Notifications
+                </h3>
+                <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full">
+                  {notifications.length} {notifications.length === 1 ? 'Notification' : 'Notifications'}
+                </span>
               </div>
-              
-              {availability ? (
-                <div className="space-y-4">
-                  {(() => {
-                    // Use todaySlots to only show slots for today's specific date
-                    const todaySlots = availability.todaySlots || [];
-                    const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-                    
-                    if (todaySlots.length > 0) {
-                      // Calculate time range from today's slots
-                      const times = todaySlots.map((slot: any) => slot.available_time).sort();
-                      const startTime = times[0];
-                      const endTime = `${(parseInt(times[times.length - 1].split(':')[0]) + 1).toString().padStart(2, '0')}:00`;
-                      const timeRange = `${startTime} - ${endTime}`;
-                      
-                      return (
-                        <>
-                          {/* Today's Schedule Card */}
-                          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
-                            <div className="flex items-center justify-between mb-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-14 h-14 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 text-white flex items-center justify-center font-bold text-lg">
-                                  {today.substring(0, 3)}
-                                </div>
-                                <div>
-                                  <p className="text-lg font-bold text-gray-800">{today}</p>
-                                  <p className="text-sm text-gray-600">Available Today</p>
-                                </div>
-                              </div>
-                              <span className="bg-green-500 text-white text-xs font-bold px-4 py-2 rounded-full flex items-center gap-2">
-                                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                                Active
-                              </span>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4 mt-4">
-                              <div className="bg-white rounded-lg p-4 text-center border border-blue-100">
-                                <p className="text-3xl font-bold text-blue-600">{todaySlots.length}</p>
-                                <p className="text-xs text-gray-600 mt-1">Hours Available</p>
-                              </div>
-                              <div className="bg-white rounded-lg p-4 text-center border border-blue-100">
-                                <p className="text-lg font-bold text-green-600">{timeRange}</p>
-                                <p className="text-xs text-gray-600 mt-1">Time Range</p>
-                              </div>
-                            </div>
-                          </div>
-                        </>
-                      );
-                    } else {
-                      return (
-                        <div className="bg-yellow-50 rounded-xl p-6 border border-yellow-200 text-center">
-                          <AlertCircle className="w-12 h-12 mx-auto mb-3 text-yellow-600" />
-                          <p className="text-sm font-medium text-yellow-900">No availability set for today ({today})</p>
-                          <p className="text-xs text-yellow-800 mt-2">Add your available time slots to start accepting bookings</p>
-                          <button 
-                            onClick={() => navigate('/consultant/slots')} 
-                            className="mt-4 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                          >
-                            Set Today's Schedule
-                          </button>
+
+              {notifications.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Bell className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <p className="text-lg font-medium">No new notifications</p>
+                  <p className="text-sm mt-1">You're all caught up!</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {notifications.map((notification) => {
+                    const Icon = notification.icon;
+                    const priorityColors = {
+                      high: 'from-red-500 to-rose-600',
+                      medium: 'from-blue-500 to-indigo-600',
+                      low: 'from-gray-500 to-slate-600'
+                    };
+                    const bgColors = {
+                      high: 'bg-red-50 border-red-200',
+                      medium: 'bg-blue-50 border-blue-200',
+                      low: 'bg-gray-50 border-gray-200'
+                    };
+
+                    return (
+                      <div
+                        key={notification.id}
+                        className={`flex items-start gap-4 p-4 rounded-xl border ${bgColors[notification.priority as keyof typeof bgColors] || bgColors.low} hover:shadow-md transition-all duration-300 hover:scale-[1.01] cursor-pointer group`}
+                      >
+                        <div className={`bg-gradient-to-br ${priorityColors[notification.priority as keyof typeof priorityColors] || priorityColors.low} w-12 h-12 rounded-full flex items-center justify-center shadow-md flex-shrink-0 group-hover:scale-110 transition-transform`}>
+                          <Icon className="w-6 h-6 text-white" />
                         </div>
-                      );
-                    }
-                  })()}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Clock className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                  <p className="text-gray-500 font-medium">Loading availability...</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-    
-
-        {/* Current Subscription Section */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 text-white">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-2xl font-bold mb-2">Current Subscription</h2>
-              {profile?.currentPlan && profile.currentPlan !== 'Free' ? (
-                <>
-                  <p className="text-4xl font-bold mb-2">{profile.currentPlan}</p>
-                  <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full inline-block mb-4">
-                    <span className="font-semibold">Status: {profile.subscriptionStatus || 'Active'}</span>
-                  </div>
-                  {profile.subscriptionEndDate && (
-                    <p className="text-sm opacity-90">
-                      Expires: {new Date(profile.subscriptionEndDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <>
-                  <p className="text-4xl font-bold mb-2">Free Plan</p>
-                  <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full inline-block">
-                    <span className="font-semibold">Limited Features</span>
-                  </div>
-                  <p className="text-sm opacity-90 mt-4">
-                    Upgrade to unlock premium features
-                  </p>
-                </>
-              )}
-            </div>
-            <button 
-              onClick={() => navigate('/consultant/plans')}
-              className="bg-white text-blue-600 px-6 py-3 rounded-xl font-semibold hover:bg-blue-50 transition-colors flex items-center gap-2"
-            >
-              {profile?.currentPlan && profile.currentPlan !== 'Free' ? 'Upgrade Plan' : 'View Plans'}
-              <ArrowRight size={18} />
-            </button>
-          </div>
-        </div>
-
-        {/* Subscription Usage Section */}
-        <div className="bg-white rounded-3xl p-8 shadow-lg mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6">Subscription Usage</h2>
-          
-          <div className="grid md:grid-cols-3 gap-6">
-            {/* Monthly Chat Messages */}
-            <div className="bg-blue-50 rounded-xl p-6 flex flex-col justify-between">
-              <div>
-                <p className="text-lg font-semibold text-blue-800 mb-2">Monthly Chat Messages</p>
-                <p className="text-3xl font-bold text-blue-600">{usage?.chat_messages_used || 0} <span className="text-base font-medium text-gray-500">Used</span></p>
-                <p className="text-sm text-gray-500 mt-1">{usage?.chat_limit || 5} Total</p>
-              </div>
-              <div className="w-full bg-blue-200 rounded-full h-2 mt-4">
-                <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((usage?.chat_messages_used || 0) / (usage?.chat_limit || 5) * 100, 100)}%` }}></div>
-              </div>
-            </div>
-            
-            {/* Bookings Made */}
-            <div className="bg-purple-50 rounded-xl p-6 flex flex-col justify-between">
-              <div>
-                <p className="text-lg font-semibold text-purple-800 mb-2">Bookings Made</p>
-                <p className="text-3xl font-bold text-purple-600">{usage?.bookings_made || 0} <span className="text-base font-medium text-gray-500">Used</span></p>
-                <p className="text-sm text-gray-500 mt-1">No limit</p>
-              </div>
-              <div className="w-full bg-purple-200 rounded-full h-2 mt-4">
-                <div className="bg-purple-600 h-2 rounded-full" style={{ width: '100%' }}></div>
-              </div>
-            </div>
-            
-            {/* Days Remaining */}
-            <div className="bg-green-50 rounded-xl p-6 flex flex-col justify-between">
-              <div>
-                <p className="text-lg font-semibold text-green-800 mb-2">Days Remaining</p>
-                <p className="text-3xl font-bold text-green-600">{usage?.days_remaining || 0} <span className="text-base font-medium text-gray-500">Days</span></p>
-                <p className="text-sm text-gray-500 mt-1">{usage?.days_remaining > 0 ? 'Until renewal' : 'Expired'}</p>
-              </div>
-              <div className="w-full bg-green-200 rounded-full h-2 mt-4">
-                <div className="bg-green-600 h-2 rounded-full" style={{ width: `${Math.max((usage?.days_remaining || 0) / 30 * 100, 0)}%` }}></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* 4.4 Earnings Summary */}
-          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold flex items-center">
-                <IndianRupee className="w-5 h-5 mr-2 text-green-600" />
-                Earnings Summary
-              </h3>
-              <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                View Transactions
-              </button>
-            </div>
-            
-            {earnings ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="text-center bg-green-50 border border-green-100 rounded-xl p-4">
-                  <p className="text-sm text-gray-600 mb-1">Total Earnings</p>
-                  <p className="text-2xl font-bold text-green-600">₹{(earnings.totalEarnings || 0).toLocaleString()}</p>
-                </div>
-                <div className="text-center bg-blue-50 border border-blue-100 rounded-xl p-4">
-                  <p className="text-sm text-gray-600 mb-1">Monthly Earnings</p>
-                  <p className="text-2xl font-bold text-blue-600">₹{(earnings.monthlyEarnings || 0).toLocaleString()}</p>
-                </div>
-                <div className="text-center bg-amber-50 border border-amber-100 rounded-xl p-4">
-                  <p className="text-sm text-gray-600 mb-1">Pending Payout</p>
-                  <p className="text-2xl font-bold text-yellow-600">₹{(earnings.pendingPayout || 0).toLocaleString()}</p>
-                </div>
-                <div className="text-center bg-purple-50 border border-purple-100 rounded-xl p-4">
-                  <p className="text-sm text-gray-600 mb-1">Withdrawable</p>
-                  <p className="text-2xl font-bold text-purple-600">₹{(earnings.withdrawableBalance || 0).toLocaleString()}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <IndianRupee className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p>No earnings data available</p>
-              </div>
-            )}
-            
-            <div className="flex flex-col sm:flex-row gap-3 mt-6">
-              <button 
-                onClick={handleWithdraw}
-                disabled={!earnings || earnings.withdrawableBalance <= 0}
-                className="w-full sm:flex-1 bg-gradient-to-r from-blue-600 to-cyan-500 text-white py-3 rounded-xl font-semibold hover:from-blue-700 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Withdraw
-              </button>
-              <button 
-                onClick={() => navigate('/earnings')}
-                className="w-full sm:flex-1 border border-blue-200 text-blue-700 py-3 rounded-xl font-semibold hover:bg-blue-50"
-              >
-                View Detailed Report
-              </button>
-            </div>
-          </div>
-
-          {/* 4.5 Reviews & Ratings */}
-          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold flex items-center">
-                <Star className="w-5 h-5 mr-2 text-yellow-500" />
-                Reviews & Ratings
-              </h3>
-              <button 
-                onClick={() => navigate('/consultant/reviews')}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-              >
-                View All →
-              </button>
-            </div>
-            
-            {reviews ? (
-              <div className="space-y-6">
-                {/* Average Rating Display */}
-                <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-2xl p-6 border border-amber-200">
-                  <div className="flex items-center justify-center mb-3">
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => {
-                        const avgRating = reviews.averageRating || 0;
-                        return (
-                          <Star
-                            key={star}
-                            className={`w-8 h-8 transition-all ${
-                              star <= Math.round(avgRating)
-                                ? 'text-amber-500 fill-amber-500 scale-110'
-                                : 'text-gray-300 fill-gray-300'
-                            }`}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <span className="text-4xl font-bold text-amber-600">{(reviews.averageRating || 0).toFixed(1)}</span>
-                    <span className="text-lg text-amber-700 ml-1">/5</span>
-                  </div>
-                  <p className="text-center text-sm text-amber-700 mt-2 font-medium">
-                    Based on {reviews.totalReviews || 0} {reviews.totalReviews === 1 ? 'review' : 'reviews'}
-                  </p>
-                </div>
-                
-                {/* Recent Reviews */}
-                {reviews.recentReviews && reviews.recentReviews.length > 0 ? (
-                  <div>
-                    <p className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-indigo-600" />
-                      Recent Reviews
-                    </p>
-                    <div className="space-y-3">
-                      {reviews.recentReviews.map((review: any, index: number) => {
-                        const rating = review.rating || 0;
-                        const ratingColor = 
-                          rating >= 4 ? 'from-emerald-500 to-green-600' :
-                          rating >= 3 ? 'from-blue-500 to-indigo-600' :
-                          rating >= 2 ? 'from-amber-500 to-orange-600' :
-                          'from-red-500 to-rose-600';
-                        
-                        return (
-                          <div 
-                            key={index} 
-                            className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-4 border border-gray-200 hover:shadow-md transition-all duration-300 hover:scale-[1.01]"
-                          >
-                            <div className="flex items-start justify-between mb-3">
-                              <div className="flex items-center gap-3">
-                                <div className={`bg-gradient-to-br ${ratingColor} w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-md`}>
-                                  {review.client ? review.client.charAt(0).toUpperCase() : 'A'}
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-gray-800">{review.client || 'Anonymous'}</span>
-                                  {review.date && (
-                                    <p className="text-xs text-gray-500">{new Date(review.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-lg">
-                                {[1, 2, 3, 4, 5].map((star) => (
-                                  <span
-                                    key={star}
-                                    className={`text-base transition-all ${
-                                      star <= rating ? 'text-amber-500 scale-110' : 'text-gray-300'
-                                    }`}
-                                  >
-                                    ★
-                                  </span>
-                                ))}
-                                <span className="text-xs font-bold text-amber-700 ml-1">{rating}/5</span>
-                              </div>
-                            </div>
-                            {review.comment && review.comment.trim() !== '' ? (
-                              <p className="text-sm text-gray-700 leading-relaxed bg-white p-3 rounded-lg border border-gray-100">
-                                "{review.comment}"
-                              </p>
-                            ) : (
-                              <p className="text-sm text-gray-400 italic">No comment provided</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <h4 className="font-bold text-gray-900 truncate">{notification.title}</h4>
+                            {notification.priority === 'high' && (
+                              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase flex-shrink-0">New</span>
                             )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl py-8 text-center border border-gray-200">
-                    <Star className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                    <p className="text-gray-600 font-medium">No recent reviews yet</p>
-                    <p className="text-sm text-gray-500 mt-1">Reviews from clients will appear here</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl py-12 text-center border border-gray-200">
-                <Star className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <p className="text-gray-600 font-semibold text-lg">No reviews data available</p>
-                <p className="text-sm text-gray-500 mt-2">Complete sessions to start receiving reviews</p>
-              </div>
-            )}
-          </div>
-
-          {/* 4.6 Performance Metrics */}
-          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold flex items-center">
-                <TrendingUp className="w-5 h-5 mr-2 text-purple-600" />
-                Performance Metrics
-              </h3>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              {performanceMetrics ? (
-                <>
-                  <div className="bg-blue-50 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-blue-600">{performanceMetrics.sessionsCompleted || 0}</p>
-                    <p className="text-sm text-blue-900">Sessions Completed</p>
-                  </div>
-                  <div className="bg-green-50 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-green-600">{performanceMetrics.successRate || 0}%</p>
-                    <p className="text-sm text-green-900">Success Rate</p>
-                  </div>
-                  <div className="bg-purple-50 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-purple-600">{performanceMetrics.rebookingRate || 0}%</p>
-                    <p className="text-sm text-purple-900">Rebooking Rate</p>
-                  </div>
-                  <div className="bg-orange-50 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-orange-600">{performanceMetrics.profileViews || 0}</p>
-                    <p className="text-sm text-orange-900">Profile Views</p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="bg-blue-50 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-blue-600">-</p>
-                    <p className="text-sm text-blue-900">Sessions Completed</p>
-                  </div>
-                  <div className="bg-green-50 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-green-600">-</p>
-                    <p className="text-sm text-green-900">Success Rate</p>
-                  </div>
-                  <div className="bg-purple-50 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-purple-600">-</p>
-                    <p className="text-sm text-purple-900">Rebooking Rate</p>
-                  </div>
-                  <div className="bg-orange-50 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-orange-600">-</p>
-                    <p className="text-sm text-orange-900">Profile Views</p>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* 4.8 Messages Preview */}
-          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold flex items-center">
-                <MessageSquare className="w-5 h-5 mr-2 text-indigo-600" />
-                Messages
-              </h3>
-              <button 
-                onClick={() => navigate('/consultant/messages')}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-              >
-                View All →
-              </button>
-            </div>
-            
-            <div className="space-y-3">
-              {messages.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                  <p>No messages</p>
-                </div>
-              ) : (
-                messages.map((message, index) => (
-                  <div 
-                    key={index} 
-                    className="flex items-start p-3 hover:bg-blue-50/70 rounded-lg cursor-pointer transition-all duration-300 hover:shadow-md border border-transparent hover:border-blue-100"
-                    onClick={() => navigate('/consultant/messages', { state: { bookingId: message.bookingId } })}
-                  >
-                    <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
-                      <Users className="w-5 h-5 text-indigo-600" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium">{message.client}</span>
-                        {message.unread && (
-                          <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-600 truncate">{message.content || 'No message'}</p>
-                      <p className="text-xs text-gray-500">{message.time ? formatTime(message.time) : 'Unknown time'}</p>
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-gray-400" />
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* 4.9 Notifications Section */}
-          <div id="notifications" className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-md border border-blue-100 p-6 scroll-mt-24 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold flex items-center">
-                <Bell className="w-5 h-5 mr-2 text-blue-600" />
-                Notifications
-              </h3>
-              <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full">
-                {notifications.length} {notifications.length === 1 ? 'Notification' : 'Notifications'}
-              </span>
-            </div>
-            
-            {notifications.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <Bell className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">No new notifications</p>
-                <p className="text-sm mt-1">You're all caught up!</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {notifications.map((notification) => {
-                  const Icon = notification.icon;
-                  const priorityColors = {
-                    high: 'from-red-500 to-rose-600',
-                    medium: 'from-blue-500 to-indigo-600',
-                    low: 'from-gray-500 to-slate-600'
-                  };
-                  const bgColors = {
-                    high: 'bg-red-50 border-red-200',
-                    medium: 'bg-blue-50 border-blue-200',
-                    low: 'bg-gray-50 border-gray-200'
-                  };
-                  
-                  return (
-                    <div 
-                      key={notification.id} 
-                      className={`flex items-start gap-4 p-4 rounded-xl border ${bgColors[notification.priority as keyof typeof bgColors] || bgColors.low} hover:shadow-md transition-all duration-300 hover:scale-[1.01] cursor-pointer group`}
-                    >
-                      <div className={`bg-gradient-to-br ${priorityColors[notification.priority as keyof typeof priorityColors] || priorityColors.low} w-12 h-12 rounded-full flex items-center justify-center shadow-md flex-shrink-0 group-hover:scale-110 transition-transform`}>
-                        <Icon className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <h4 className="font-bold text-gray-900 truncate">{notification.title}</h4>
-                          {notification.priority === 'high' && (
-                            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase flex-shrink-0">New</span>
-                          )}
+                          <p className="text-sm text-gray-700 mb-2 line-clamp-2">{notification.message}</p>
+                          <p className="text-xs text-gray-500 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {new Date(notification.time).toLocaleDateString('en-IN', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric'
+                            })} {new Date(notification.time).toLocaleTimeString('en-IN', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </p>
                         </div>
-                        <p className="text-sm text-gray-700 mb-2 line-clamp-2">{notification.message}</p>
-                        <p className="text-xs text-gray-500 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {new Date(notification.time).toLocaleDateString('en-IN', { 
-                            day: '2-digit',
-                            month: 'short', 
-                            year: 'numeric'
-                          })} {new Date(notification.time).toLocaleTimeString('en-IN', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
+                        <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-gray-600 group-hover:translate-x-1 transition-all flex-shrink-0" />
                       </div>
-                      <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-gray-600 group-hover:translate-x-1 transition-all flex-shrink-0" />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
         </div>
       )}

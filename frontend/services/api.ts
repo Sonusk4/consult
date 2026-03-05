@@ -367,6 +367,15 @@ export const consultants = {
     const response = await api.delete(`/consultant/kyc-documents/${documentId}`);
     return response.data;
   },
+  reuploadDocument: async (docId: number | string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("docId", String(docId));
+    const response = await api.put("/consultant/reupload-document", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  },
 };
 /* ========================================================= */
 /* ========================= USERS ========================== */

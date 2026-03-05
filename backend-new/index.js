@@ -3996,23 +3996,23 @@ app.post("/auth/reset-password", async (req, res) => {
 
 app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
 
-  const { 
+  const {
 
     name,
 
     full_name,
 
-    type, 
+    type,
 
-    domain, 
+    domain,
 
-    bio, 
+    bio,
 
-    languages, 
+    languages,
 
-    hourly_price, 
+    hourly_price,
 
-    linkedin, 
+    linkedin,
 
     other_social,
 
@@ -4116,9 +4116,9 @@ app.post("/consultant/register", verifyFirebaseToken, async (req, res) => {
 
     if (missingFields.length > 0) {
 
-      return res.status(400).json({ 
+      return res.status(400).json({
 
-        error: `All fields are mandatory. Missing: ${missingFields.join(', ')}` 
+        error: `All fields are mandatory. Missing: ${missingFields.join(', ')}`
 
       });
 
@@ -6898,22 +6898,17 @@ app.post(
 
 
 
-      // Format documents for storage
-
+      // Format documents for storage with type and status
+      const baseId = Date.now();
       const documents = uploadResults.map((result, index) => ({
-
-        id: index + 1,
-
+        id: baseId + index,
         name: req.files[index].originalname,
-
         url: result.secure_url,
-
         public_id: result.public_id,
-
         uploaded_at: new Date().toISOString(),
-
-        type: req.body.documentType || 'document'
-
+        type: req.body.documentType || 'document',
+        status: 'PENDING',
+        rejection_reason: null
       }));
 
 
@@ -7868,6 +7863,8 @@ app.get("/wallet", verifyFirebaseToken, async (req, res) => {
 
       balance: wallet.balance,
 
+      bonus_balance: wallet.bonus_balance || 0,
+
       user_id: user.id,
 
     });
@@ -8160,7 +8157,7 @@ function showPaymentModal(title, message, type) {
 
   `;
 
-  
+
 
   // Create modal content
 
@@ -8188,7 +8185,7 @@ function showPaymentModal(title, message, type) {
 
   `;
 
-  
+
 
   // Set icon based on type
 
@@ -8216,7 +8213,7 @@ function showPaymentModal(title, message, type) {
 
   };
 
-  
+
 
   modalContent.innerHTML = `
 
@@ -8264,11 +8261,11 @@ function showPaymentModal(title, message, type) {
 
   `;
 
-  
+
 
   // Close modal function
 
-  window.closeModal = function() {
+  window.closeModal = function () {
 
     document.body.removeChild(modalOverlay);
 
@@ -8276,7 +8273,7 @@ function showPaymentModal(title, message, type) {
 
   };
 
-  
+
 
   // Add modal to page
 
@@ -8674,11 +8671,11 @@ app.post("/payment/verify", async (req, res) => {
 
     const crypto = require("crypto");
 
-    
+
 
     const keySecret = process.env.RAZORPAY_KEY_SECRET || "";
 
-    
+
 
     console.log("🔐 FULL Payment Verification Debug:", {
 
@@ -8734,7 +8731,7 @@ app.post("/payment/verify", async (req, res) => {
 
       });
 
-      return res.status(400).json({ 
+      return res.status(400).json({
 
         error: "Invalid payment signature",
 
@@ -10356,11 +10353,11 @@ app.get("/bookings", verifyFirebaseToken, async (req, res) => {
 
           user: {
 
-            select: { 
+            select: {
 
               id: true,
 
-              email: true, 
+              email: true,
 
               name: true,
 
@@ -10376,11 +10373,11 @@ app.get("/bookings", verifyFirebaseToken, async (req, res) => {
 
               user: {
 
-                select: { 
+                select: {
 
                   id: true,
 
-                  email: true, 
+                  email: true,
 
                   name: true,
 
@@ -10416,11 +10413,11 @@ app.get("/bookings", verifyFirebaseToken, async (req, res) => {
 
           user: {
 
-            select: { 
+            select: {
 
               id: true,
 
-              email: true, 
+              email: true,
 
               name: true,
 
@@ -10436,11 +10433,11 @@ app.get("/bookings", verifyFirebaseToken, async (req, res) => {
 
               user: {
 
-                select: { 
+                select: {
 
                   id: true,
 
-                  email: true, 
+                  email: true,
 
                   name: true,
 
@@ -10598,7 +10595,39 @@ app.get("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
 
 
 
-    res.status(200).json(messages);
+    // Build response: messages + optional inbound chat stats for consultants
+    const response = { messages };
+
+    // If the requester is a consultant, include their inbound chat stats
+    if (isConsultant && booking.consultant) {
+      const consultant = booking.consultant;
+      const plan = consultant.currentPlan || consultant.subscription_plan || "Free";
+      let baseLimit = 5;
+      if (plan === "Professional") baseLimit = 20;
+      else if (plan === "Premium") baseLimit = 50;
+      else if (plan === "Elite") baseLimit = 999999;
+
+      const purchased = consultant.purchased_chat_credits || 0;
+      const totalLimit = baseLimit + purchased;
+      let used = consultant.chat_messages_used || 0;
+
+      // Reset if older than 30 days
+      const lastReset = consultant.last_limit_reset || new Date();
+      if ((new Date() - new Date(lastReset)) > 30 * 24 * 60 * 60 * 1000) {
+        used = 0;
+      }
+
+      response.inboundChatStats = {
+        used,
+        limit: totalLimit,
+        baseLimit,
+        purchased,
+        remaining: Math.max(0, totalLimit - used),
+        plan,
+      };
+    }
+
+    res.status(200).json(response);
 
   } catch (error) {
 
@@ -10704,156 +10733,81 @@ app.post("/bookings/:id/messages", verifyFirebaseToken, async (req, res) => {
 
 
 
-    // Enforce Monthly Chat Limits for Clients based on Subscription Plan
-
+    // Enforce Monthly Chat Limits for Clients based on Subscription Plan (OUTBOUND)
+    // Also track INBOUND messages for the target consultant
     if (isClient) {
-
       const profile = await prisma.userProfile.findUnique({ where: { userId: sender.id } });
-
       const plan = profile?.subscription_plan || "Free";
-
       let baseLimit = 5;
-
       if (plan === "Starter") baseLimit = 20;
-
       else if (plan === "Growth" || plan === "Premium") baseLimit = 50;
-
       else if (plan === "Enterprise") baseLimit = 100;
 
-
-
       totalLimit = baseLimit + (profile?.purchased_chat_credits || 0);
-
-
-
       used = profile?.chat_messages_used || 0;
-
       let lastReset = profile?.last_limit_reset || new Date();
 
-
-
       // Reset monthly usage if older than 30 days
-
       if ((new Date() - new Date(lastReset)) > 30 * 24 * 60 * 60 * 1000) {
-
         used = 0;
-
         lastReset = new Date();
-
       }
-
-
 
       if (used >= totalLimit) {
-
         return res.status(403).json({
-
           error: `Chat limit reached. Your current limit is ${totalLimit} messages (${baseLimit} from ${plan} plan + ${profile?.purchased_chat_credits || 0} purchased). Please upgrade or buy more credits to continue.`
-
         });
-
       }
 
+      // Check consultant's INBOUND limit before allowing the message
+      if (booking.consultant) {
+        const targetConsultant = await prisma.consultant.findUnique({ where: { id: booking.consultant.id } });
+        if (targetConsultant) {
+          const cPlan = targetConsultant.currentPlan || targetConsultant.subscription_plan || "Free";
+          let cBaseLimit = 5;
+          if (cPlan === "Professional") cBaseLimit = 20;
+          else if (cPlan === "Premium") cBaseLimit = 50;
+          else if (cPlan === "Elite") cBaseLimit = 999999;
 
+          const cTotalLimit = cBaseLimit + (targetConsultant.purchased_chat_credits || 0);
+          let cUsed = targetConsultant.chat_messages_used || 0;
+          let cLastReset = targetConsultant.last_limit_reset || new Date();
+
+          if ((new Date() - new Date(cLastReset)) > 30 * 24 * 60 * 60 * 1000) {
+            cUsed = 0;
+            cLastReset = new Date();
+          }
+
+          if (cUsed >= cTotalLimit) {
+            return res.status(403).json({
+              error: `The consultant's inbound chat limit has been reached. They need to upgrade their plan or purchase more credits.`
+            });
+          }
+
+          // Increment consultant's INBOUND message counter
+          await prisma.consultant.update({
+            where: { id: targetConsultant.id },
+            data: { chat_messages_used: cUsed + 1, last_limit_reset: cLastReset }
+          });
+        }
+      }
 
       await prisma.userProfile.update({
-
         where: { userId: sender.id },
-
         data: { chat_messages_used: used + 1, last_limit_reset: lastReset }
-
       });
-
-      
 
       // Calculate remaining messages after this send
-
       const remainingMessages = totalLimit - (used + 1);
-
       lowMessageWarning = remainingMessages <= 5 && remainingMessages > 0;
-
     }
 
-
-
-    // Enforce Monthly Chat Limits for CONSULTANTS based on Subscription Plan
-
+    // CONSULTANTS: Unlimited outbound messages (no limit check on sending)
+    // Their chat_messages_used tracks INBOUND messages (incremented when clients send to them)
     if (isConsultant) {
-
-      const consultant = await prisma.consultant.findFirst({ 
-
-        where: { userId: sender.id },
-
-        include: { user: true }
-
-      });
-
-      
-
-      if (consultant) {
-
-        const plan = consultant.currentPlan || consultant.subscription_plan || "Free";
-
-        let baseLimit = 5;
-
-        if (plan === "Professional") baseLimit = 20;
-
-        else if (plan === "Premium") baseLimit = 50;
-
-        else if (plan === "Elite") baseLimit = 999999; // Unlimited
-
-
-
-        totalLimit = baseLimit + (consultant.purchased_chat_credits || 0);
-
-        used = consultant.chat_messages_used || 0;
-
-        let lastReset = consultant.last_limit_reset || new Date();
-
-
-
-        // Reset monthly usage if older than 30 days
-
-        if ((new Date() - new Date(lastReset)) > 30 * 24 * 60 * 60 * 1000) {
-
-          used = 0;
-
-          lastReset = new Date();
-
-        }
-
-
-
-        if (used >= totalLimit) {
-
-          return res.status(403).json({
-
-            error: `Chat limit reached. Your current limit is ${totalLimit} messages (${baseLimit} from ${plan} plan + ${consultant.purchased_chat_credits || 0} purchased). Please upgrade or buy more credits to continue.`
-
-          });
-
-        }
-
-
-
-        await prisma.consultant.update({
-
-          where: { id: consultant.id },
-
-          data: { chat_messages_used: used + 1, last_limit_reset: lastReset }
-
-        });
-
-        
-
-        // Calculate remaining messages after this send
-
-        const remainingMessages = totalLimit - (used + 1);
-
-        lowMessageWarning = remainingMessages <= 5 && remainingMessages > 0;
-
-      }
-
+      // No limit enforcement for consultant outbound — they can reply freely
+      // Just log for debugging
+      console.log(`💬 Consultant outbound message (no limit) in booking ${bookingId}`);
     }
 
 
@@ -11506,87 +11460,48 @@ io.on("connection", (socket) => {
 
 
 
-      // ==== User Subscription Chat Limit Check ====
-
-      // Throttle for both Users and Consultants based on their plans
-
+      // ==== User Subscription Chat Limit Check (OUTBOUND) ====
+      // Also check consultant's INBOUND limit when a user sends
       if (user.role === "USER" && booking.userId === user.id) {
-
         const userProfile = await prisma.userProfile.findUnique({ where: { userId: user.id } });
-
         const plan = userProfile?.subscription_plan || "Free";
 
-
-
         let baseLimit = 5;
-
         if (plan === "Starter") baseLimit = 20;
-
         else if (plan === "Growth" || plan === "Premium") baseLimit = 50;
-
         else if (plan === "Enterprise") baseLimit = 100;
-
-
 
         const totalLimit = baseLimit + (userProfile?.purchased_chat_credits || 0);
 
-
-
         if (userProfile && userProfile.chat_messages_used >= totalLimit) {
-
           return socket.emit("chat-error", {
-
             message: `Monthly chat limit of ${totalLimit} messages reached. Please upgrade or buy more credits to continue.`,
-
           });
-
         }
 
-      } else if (user.role === 'CONSULTANT') {
+        // Check consultant's INBOUND limit
+        if (booking.consultantId) {
+          const targetConsultant = await prisma.consultant.findUnique({ where: { id: booking.consultantId } });
+          if (targetConsultant) {
+            const cPlan = targetConsultant.currentPlan || targetConsultant.subscription_plan || "Free";
+            let cBaseLimit = 5;
+            if (cPlan === "Professional") cBaseLimit = 20;
+            else if (cPlan === "Premium") cBaseLimit = 50;
+            else if (cPlan === "Elite") cBaseLimit = 999999;
 
-        // ==== Consultant Subscription Chat Limit Check ====
+            const cTotalLimit = cBaseLimit + (targetConsultant.purchased_chat_credits || 0);
 
-        const consultant = await prisma.consultant.findFirst({
-
-          where: { userId: user.id }
-
-        });
-
-        
-
-        if (consultant) {
-
-          const plan = consultant.currentPlan || consultant.subscription_plan || "Free";
-
-          let baseLimit = 5;
-
-          if (plan === "Professional") baseLimit = 20;
-
-          else if (plan === "Premium") baseLimit = 50;
-
-          else if (plan === "Elite") baseLimit = 999999; // Unlimited
-
-
-
-          const totalLimit = baseLimit + (consultant.purchased_chat_credits || 0);
-
-
-
-          if (consultant.chat_messages_used >= totalLimit) {
-
-            return socket.emit("chat-error", {
-
-              message: `Monthly chat limit of ${totalLimit} messages reached. Please upgrade or buy more credits to continue.`,
-
-            });
-
+            if (targetConsultant.chat_messages_used >= cTotalLimit) {
+              return socket.emit("chat-error", {
+                message: `The consultant's inbound chat limit has been reached. They need to upgrade their plan or purchase more credits.`,
+              });
+            }
           }
-
         }
-
       }
+      // CONSULTANTS: Unlimited outbound — no limit check needed
 
-      
+
 
       // 3️⃣ Save message with user info
 
@@ -11606,39 +11521,23 @@ io.on("connection", (socket) => {
 
 
 
-      // Increment monthly chat usage for both Users and Consultants
-
+      // Increment monthly chat usage: User outbound + Consultant INBOUND
       if (user.role === "USER" && booking.userId === user.id) {
-
+        // Increment user's outbound counter
         await prisma.userProfile.update({
-
           where: { userId: user.id },
-
           data: { chat_messages_used: { increment: 1 } }
-
         });
 
-      } else if (user.role === "CONSULTANT") {
-
-        const consultant = await prisma.consultant.findFirst({
-
-          where: { userId: user.id }
-
-        });
-
-        if (consultant) {
-
+        // Increment target consultant's INBOUND counter
+        if (booking.consultantId) {
           await prisma.consultant.update({
-
-            where: { id: consultant.id },
-
+            where: { id: booking.consultantId },
             data: { chat_messages_used: { increment: 1 } }
-
           });
-
         }
-
       }
+      // CONSULTANT outbound: No counter increment (unlimited outbound)
 
 
 
@@ -11724,7 +11623,7 @@ io.on("connection", (socket) => {
 
     };
 
-    
+
 
     console.log("📤 Emitting video-call-started to booking_" + bookingId, payload);
 
@@ -14312,7 +14211,7 @@ app.get("/admin/consultants/pending", verifyAdminToken, async (req, res) => {
 
     const consultantList = await prisma.consultant.findMany({
 
-      where: { kyc_status: { in: ["SUBMITTED", "PENDING"] } },
+      where: { kyc_status: { in: ["SUBMITTED", "PENDING", "REJECTED"] } },
 
       include: {
 
@@ -14369,6 +14268,8 @@ app.get("/admin/consultants/pending", verifyAdminToken, async (req, res) => {
         user: c.user,
 
         documents: docs,
+
+        kyc_documents: c.kyc_documents || [],
 
       };
 
@@ -14473,108 +14374,322 @@ app.put("/admin/consultants/:id/commission", verifyAdminToken, async (req, res) 
 /**
 
  * PUT /admin/consultants/:id/verify
-
- * Approve consultant KYC — set is_verified=true, kyc_status=APPROVED
-
+ * Approve consultant profile — requires ALL documents to be APPROVED first
  */
-
 app.put("/admin/consultants/:id/verify", verifyAdminToken, async (req, res) => {
-
   const consultantId = parseInt(req.params.id);
-
   try {
-
-    const consultant = await prisma.consultant.findUnique({ where: { id: consultantId } });
-
+    const consultant = await prisma.consultant.findUnique({
+      where: { id: consultantId },
+      include: { user: { select: { name: true, email: true } } },
+    });
     if (!consultant) return res.status(404).json({ error: "Consultant not found" });
 
+    const docs = consultant.kyc_documents || [];
 
-
-    // Mark all docs as APPROVED
-
-    const updatedDocs = (consultant.kyc_documents || []).map((doc) => ({ ...doc, status: "APPROVED" }));
-
-
+    // Check that all documents are approved
+    const pendingDocs = docs.filter(d => d.status !== 'APPROVED');
+    if (docs.length === 0) {
+      return res.status(400).json({ error: "No documents uploaded. Cannot approve without documents." });
+    }
+    if (pendingDocs.length > 0) {
+      return res.status(400).json({
+        error: `Cannot approve profile: ${pendingDocs.length} document(s) are not yet approved. Please review and approve all documents first.`,
+        pendingDocuments: pendingDocs.map(d => ({ type: d.type, name: d.name, status: d.status }))
+      });
+    }
 
     const updated = await prisma.consultant.update({
-
       where: { id: consultantId },
-
-      data: { is_verified: true, kyc_status: "APPROVED", kyc_documents: updatedDocs },
-
+      data: { is_verified: true, kyc_status: "APPROVED" },
       include: { user: { select: { name: true, email: true } } },
-
     });
 
-
+    // Send approval email
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: updated.user.email,
+        subject: "ConsultaPro - Your Account Has Been Approved! 🎉",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #10b981, #3b82f6); padding: 30px; border-radius: 16px; text-align: center; color: white;">
+              <h1 style="margin: 0;">✅ Account Approved!</h1>
+              <p style="margin: 10px 0 0;">Congratulations, ${updated.user.name}!</p>
+            </div>
+            <div style="padding: 20px; background: #f9fafb; border-radius: 0 0 16px 16px;">
+              <p>Your consultant account has been verified and approved. You now have full access to:</p>
+              <ul>
+                <li>Accept bookings from clients</li>
+                <li>Manage your availability</li>
+                <li>Conduct consultations via chat and video</li>
+                <li>Receive payouts for your sessions</li>
+              </ul>
+              <p>Log in to your dashboard to get started!</p>
+            </div>
+          </div>
+        `,
+      });
+    } catch (emailErr) {
+      console.error("Failed to send approval email:", emailErr.message);
+    }
 
     console.log(`✅ Consultant ${consultantId} verified by admin ${req.admin.email}`);
-
     res.json({ message: "Consultant verified successfully", consultant: updated });
-
   } catch (err) {
-
     console.error("Admin verify consultant error:", err.message);
-
     res.status(500).json({ error: "Failed to verify consultant" });
-
   }
-
 });
 
 
 
 /**
-
  * PUT /admin/consultants/:id/reject
-
- * Reject consultant KYC
-
+ * Reject consultant profile with reason + send rejection email
  */
-
 app.put("/admin/consultants/:id/reject", verifyAdminToken, async (req, res) => {
-
   const consultantId = parseInt(req.params.id);
-
   const { rejectionReason } = req.body;
-
   try {
-
-    const consultant = await prisma.consultant.findUnique({ where: { id: consultantId } });
-
+    const consultant = await prisma.consultant.findUnique({
+      where: { id: consultantId },
+      include: { user: { select: { name: true, email: true } } },
+    });
     if (!consultant) return res.status(404).json({ error: "Consultant not found" });
 
-
-
     const updatedDocs = (consultant.kyc_documents || []).map((doc) => ({
-
       ...doc, status: "REJECTED", rejection_reason: rejectionReason,
-
     }));
 
-
-
     const updated = await prisma.consultant.update({
-
       where: { id: consultantId },
-
       data: { is_verified: false, kyc_status: "REJECTED", kyc_documents: updatedDocs },
-
     });
 
-
+    // Send rejection email
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: consultant.user.email,
+        subject: "ConsultaPro - Document Verification Update",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #ef4444, #f97316); padding: 30px; border-radius: 16px; text-align: center; color: white;">
+              <h1 style="margin: 0;">⚠️ Documents Rejected</h1>
+              <p style="margin: 10px 0 0;">Action required, ${consultant.user.name}</p>
+            </div>
+            <div style="padding: 20px; background: #f9fafb; border-radius: 0 0 16px 16px;">
+              <p>Unfortunately, your submitted documents have been rejected during our review.</p>
+              <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <p style="font-weight: bold; color: #991b1b; margin: 0 0 8px;">Rejection Reason:</p>
+                <p style="color: #7f1d1d; margin: 0;">${rejectionReason || 'No specific reason provided'}</p>
+              </div>
+              <p><strong>What to do next:</strong></p>
+              <ol>
+                <li>Log in to your consultant dashboard</li>
+                <li>Review the rejection reason above</li>
+                <li>Re-upload the corrected documents</li>
+                <li>Your documents will be reviewed again</li>
+              </ol>
+              <p style="color: #6b7280; font-size: 14px;">If you have questions, please contact our support team.</p>
+            </div>
+          </div>
+        `,
+      });
+      console.log(`📧 Rejection email sent to ${consultant.user.email}`);
+    } catch (emailErr) {
+      console.error("Failed to send rejection email:", emailErr.message);
+    }
 
     res.json({ message: "Consultant KYC rejected", consultant: updated });
-
   } catch (err) {
-
     console.error("Admin reject consultant error:", err.message);
-
     res.status(500).json({ error: "Failed to reject consultant" });
-
   }
-
 });
+
+
+/**
+ * PUT /admin/consultants/:id/approve-document
+ * Approve a specific document within the consultant's kyc_documents
+ */
+app.put("/admin/consultants/:id/approve-document", verifyAdminToken, async (req, res) => {
+  const consultantId = parseInt(req.params.id);
+  const { docId } = req.body;
+  try {
+    const consultant = await prisma.consultant.findUnique({ where: { id: consultantId } });
+    if (!consultant) return res.status(404).json({ error: "Consultant not found" });
+
+    const docs = consultant.kyc_documents || [];
+    const docIndex = docs.findIndex(d => d.id === docId || d.id === parseInt(docId));
+    if (docIndex === -1) return res.status(404).json({ error: "Document not found" });
+
+    docs[docIndex] = { ...docs[docIndex], status: 'APPROVED', rejection_reason: null };
+
+    await prisma.consultant.update({
+      where: { id: consultantId },
+      data: { kyc_documents: docs },
+    });
+
+    console.log(`✅ Document ${docId} approved for consultant ${consultantId} by admin ${req.admin.email}`);
+    res.json({ message: "Document approved", document: docs[docIndex], allDocuments: docs });
+  } catch (err) {
+    console.error("Admin approve document error:", err.message);
+    res.status(500).json({ error: "Failed to approve document" });
+  }
+});
+
+
+/**
+ * PUT /admin/consultants/:id/reject-document
+ * Reject a specific document with a reason + send email notification
+ */
+app.put("/admin/consultants/:id/reject-document", verifyAdminToken, async (req, res) => {
+  const consultantId = parseInt(req.params.id);
+  const { docId, rejectionReason } = req.body;
+  if (!rejectionReason?.trim()) {
+    return res.status(400).json({ error: "Rejection reason is required" });
+  }
+  try {
+    const consultant = await prisma.consultant.findUnique({
+      where: { id: consultantId },
+      include: { user: { select: { name: true, email: true } } },
+    });
+    if (!consultant) return res.status(404).json({ error: "Consultant not found" });
+
+    const docs = consultant.kyc_documents || [];
+    const docIndex = docs.findIndex(d => d.id === docId || d.id === parseInt(docId));
+    if (docIndex === -1) return res.status(404).json({ error: "Document not found" });
+
+    const rejectedDoc = docs[docIndex];
+    docs[docIndex] = { ...rejectedDoc, status: 'REJECTED', rejection_reason: rejectionReason };
+
+    // Set kyc_status to REJECTED if any doc is rejected
+    await prisma.consultant.update({
+      where: { id: consultantId },
+      data: { kyc_documents: docs, kyc_status: 'REJECTED', is_verified: false },
+    });
+
+    // Send rejection email for this specific document
+    const docTypeLabel = rejectedDoc.type === 'identity_proof' ? 'Identity Proof' :
+      rejectedDoc.type === 'certificate' ? 'Certificate Document' : 'Document';
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: consultant.user.email,
+        subject: `ConsultaPro - Your ${docTypeLabel} Was Rejected`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #ef4444, #f97316); padding: 30px; border-radius: 16px; text-align: center; color: white;">
+              <h1 style="margin: 0;">📄 Document Rejected</h1>
+              <p style="margin: 10px 0 0;">Dear ${consultant.user.name},</p>
+            </div>
+            <div style="padding: 20px; background: #f9fafb; border-radius: 0 0 16px 16px;">
+              <p>Your <strong>${docTypeLabel}</strong> (${rejectedDoc.name}) has been rejected during our review.</p>
+              <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <p style="font-weight: bold; color: #991b1b; margin: 0 0 8px;">📋 Rejection Reason:</p>
+                <p style="color: #7f1d1d; margin: 0;">${rejectionReason}</p>
+              </div>
+              <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <p style="font-weight: bold; color: #1e40af; margin: 0 0 8px;">What to do:</p>
+                <ol style="color: #1e3a5f; margin: 0; padding-left: 20px;">
+                  <li>Log in to your consultant dashboard</li>
+                  <li>Go to the document verification section</li>
+                  <li>Re-upload a corrected version of your ${docTypeLabel}</li>
+                  <li>Your document will be reviewed again within 24-48 hours</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        `,
+      });
+      console.log(`📧 Document rejection email sent to ${consultant.user.email} for doc: ${rejectedDoc.name}`);
+    } catch (emailErr) {
+      console.error("Failed to send document rejection email:", emailErr.message);
+    }
+
+    console.log(`❌ Document ${docId} rejected for consultant ${consultantId} by admin ${req.admin.email}`);
+    res.json({ message: "Document rejected", document: docs[docIndex], allDocuments: docs });
+  } catch (err) {
+    console.error("Admin reject document error:", err.message);
+    res.status(500).json({ error: "Failed to reject document" });
+  }
+});
+
+
+/**
+ * PUT /consultant/reupload-document
+ * Consultant re-uploads a rejected document (replaces it and resets to PENDING)
+ */
+app.put(
+  "/consultant/reupload-document",
+  verifyFirebaseToken,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const { docId } = req.body;
+      if (!req.file) return res.status(400).json({ error: "No file provided" });
+      if (!docId) return res.status(400).json({ error: "Document ID (docId) is required" });
+
+      const consultant = await prisma.consultant.findFirst({ where: { userId: req.user.id } });
+      if (!consultant) return res.status(404).json({ error: "Consultant not found" });
+
+      const docs = consultant.kyc_documents || [];
+      const docIndex = docs.findIndex(d => d.id === parseInt(docId) || d.id === docId);
+      if (docIndex === -1) return res.status(404).json({ error: "Document not found" });
+
+      // Upload new file to Cloudinary
+      cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "dhtfjzu6l",
+        api_key: process.env.CLOUDINARY_API_KEY || "336399692592491",
+        api_secret: process.env.CLOUDINARY_API_SECRET || "28_kUZNQg2G5iTuT9JxVzx66qYU"
+      });
+
+      const uploadResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          { folder: "consultancy-platform/kyc-documents", resource_type: "auto" },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        uploadStream.end(req.file.buffer);
+      });
+
+      // Update the document in the array
+      docs[docIndex] = {
+        ...docs[docIndex],
+        name: req.file.originalname,
+        url: uploadResult.secure_url,
+        public_id: uploadResult.public_id,
+        uploaded_at: new Date().toISOString(),
+        status: 'PENDING',
+        rejection_reason: null,
+      };
+
+      // Check if all docs are now PENDING or APPROVED (no REJECTED left)
+      const hasRejected = docs.some(d => d.status === 'REJECTED');
+      const newKycStatus = hasRejected ? 'REJECTED' : 'SUBMITTED';
+
+      await prisma.consultant.update({
+        where: { id: consultant.id },
+        data: { kyc_documents: docs, kyc_status: newKycStatus },
+      });
+
+      console.log(`🔄 Consultant ${consultant.id} re-uploaded document ${docId}`);
+      res.json({
+        message: "Document re-uploaded successfully. It will be reviewed again.",
+        document: docs[docIndex],
+        allDocuments: docs,
+        kyc_status: newKycStatus,
+      });
+    } catch (error) {
+      console.error("Reupload document error:", error);
+      res.status(500).json({ error: "Failed to re-upload document" });
+    }
+  }
+);
 
 
 
@@ -15570,6 +15685,130 @@ app.get("/admin/transactions/bookings", verifyAdminToken, async (req, res) => {
 
 
 
+/**
+ * GET /admin/subscriptions
+ * List all subscription records for admin monitoring
+ */
+app.get("/admin/subscriptions", verifyAdminToken, async (req, res) => {
+  try {
+    const { status, planName, limit = 200, offset = 0 } = req.query;
+    const where = {};
+    if (status) where.status = status;
+    if (planName) where.planName = planName;
+
+    const [subs, total] = await Promise.all([
+      prisma.subscription.findMany({
+        where,
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: parseInt(limit),
+        skip: parseInt(offset),
+      }),
+      prisma.subscription.count({ where }),
+    ]);
+
+    // Also get aggregate stats
+    const [totalRevenue, activeSubs, expiredSubs] = await Promise.all([
+      prisma.subscription.aggregate({ _sum: { price: true } }),
+      prisma.subscription.count({ where: { status: "ACTIVE" } }),
+      prisma.subscription.count({ where: { status: "EXPIRED" } }),
+    ]);
+
+    res.json({
+      subscriptions: subs.map(s => ({
+        id: s.id,
+        userId: s.userId,
+        userName: s.user?.name || s.user?.email || "Unknown",
+        userEmail: s.user?.email || "",
+        userRole: s.user?.role || "USER",
+        planName: s.planName,
+        price: s.price,
+        features: s.features,
+        startDate: s.startDate,
+        endDate: s.endDate,
+        status: s.status,
+        paymentId: s.paymentId,
+        createdAt: s.createdAt,
+      })),
+      total,
+      stats: {
+        totalRevenue: totalRevenue._sum.price || 0,
+        activeSubs,
+        expiredSubs,
+        totalSubs: total,
+      },
+    });
+  } catch (err) {
+    console.error("Admin subscriptions error:", err.message);
+    res.status(500).json({ error: "Failed to fetch subscriptions" });
+  }
+});
+
+
+/**
+ * GET /admin/payouts
+ * List all consultant payout records for admin monitoring
+ */
+app.get("/admin/payouts", verifyAdminToken, async (req, res) => {
+  try {
+    const { status, limit = 200, offset = 0 } = req.query;
+    const where = {};
+    if (status) where.status = status;
+
+    const [payouts, total] = await Promise.all([
+      prisma.consultantPayout.findMany({
+        where,
+        include: {
+          consultant: {
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+            },
+          },
+        },
+        orderBy: { created_at: "desc" },
+        take: parseInt(limit),
+        skip: parseInt(offset),
+      }),
+      prisma.consultantPayout.count({ where }),
+    ]);
+
+    // Aggregate stats
+    const [totalPaid, totalPending] = await Promise.all([
+      prisma.consultantPayout.aggregate({ where: { status: "PAID" }, _sum: { amount: true }, _count: { id: true } }),
+      prisma.consultantPayout.aggregate({ where: { status: "PENDING" }, _sum: { amount: true }, _count: { id: true } }),
+    ]);
+
+    res.json({
+      payouts: payouts.map(p => ({
+        id: p.id,
+        consultantId: p.consultantId,
+        consultantName: p.consultant?.user?.name || p.consultant?.user?.email || "Unknown",
+        consultantEmail: p.consultant?.user?.email || "",
+        consultantDomain: p.consultant?.domain || "N/A",
+        amount: p.amount,
+        status: p.status,
+        paid_at: p.paid_at,
+        notes: p.notes,
+        created_at: p.created_at,
+      })),
+      total,
+      stats: {
+        totalPaidAmount: totalPaid._sum.amount || 0,
+        totalPaidCount: totalPaid._count.id || 0,
+        totalPendingAmount: totalPending._sum.amount || 0,
+        totalPendingCount: totalPending._count.id || 0,
+      },
+    });
+  } catch (err) {
+    console.error("Admin payouts error:", err.message);
+    res.status(500).json({ error: "Failed to fetch payouts" });
+  }
+});
+
+
+
 /* ============================================================ */
 
 
@@ -15917,6 +16156,41 @@ app.get("/admin/consultants-list/:id", verifyAdminToken, async (req, res) => {
   }
 
 });
+
+
+/**
+ * PUT /admin/payouts/:id/mark-paid
+ * Update an existing PENDING payout to PAID status
+ */
+app.put("/admin/payouts/:id/mark-paid", verifyAdminToken, async (req, res) => {
+  const payoutId = parseInt(req.params.id);
+  const { notes } = req.body;
+
+  try {
+    const payout = await prisma.consultantPayout.findUnique({
+      where: { id: payoutId },
+      include: { consultant: { include: { user: true } } },
+    });
+
+    if (!payout) return res.status(404).json({ error: "Payout not found" });
+    if (payout.status === "PAID") return res.status(400).json({ error: "Payout is already marked as paid" });
+
+    const updatedPayout = await prisma.consultantPayout.update({
+      where: { id: payoutId },
+      data: {
+        status: "PAID",
+        paid_at: new Date(),
+        notes: notes || payout.notes,
+      },
+    });
+
+    res.json(updatedPayout);
+  } catch (err) {
+    console.error("Mark payout paid error:", err.message);
+    res.status(500).json({ error: "Failed to mark payout as paid" });
+  }
+});
+
 
 
 
@@ -17000,7 +17274,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
     });
 
-    
+
 
     if (!user && req.user.id) {
 
@@ -17012,7 +17286,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
     }
 
-    
+
 
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -17042,7 +17316,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
       console.log('📊 Fetching consultant usage metrics');
 
-      
+
 
       const consultant = await prisma.consultant.findUnique({
 
@@ -17050,7 +17324,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
       });
 
-      
+
 
       if (!consultant) {
 
@@ -17060,17 +17334,17 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
       }
 
-      
+
 
       // Check if consultant has active subscription
 
-      const hasActiveSubscription = consultant.subscriptionEndDate && 
+      const hasActiveSubscription = consultant.subscriptionEndDate &&
 
         new Date() < new Date(consultant.subscriptionEndDate) &&
 
         consultant.currentPlan && consultant.currentPlan !== 'Free';
 
-      
+
 
       if (!hasActiveSubscription) {
 
@@ -17102,7 +17376,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
         let chatLimit = 5;
 
-        
+
 
         // Get chat limit from plan features or use default
 
@@ -17124,13 +17398,13 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
         }
 
-        
+
 
         // Add any purchased chat credits
 
         chatLimit += (consultant.purchased_chat_credits || 0);
 
-        
+
 
         // Calculate days remaining
 
@@ -17146,7 +17420,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
         );
 
-        
+
 
         // Fetch consultant bookings count
 
@@ -17156,13 +17430,13 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
         });
 
-        
+
 
         // Use chat_messages_used from consultant table (tracked when messages are sent)
 
         const chatMessagesUsed = consultant.chat_messages_used || 0;
 
-        
+
 
         // Get wallet bonus balance
 
@@ -17172,7 +17446,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
         });
 
-        
+
 
         usageData = {
 
@@ -17190,7 +17464,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
         };
 
-        
+
 
         console.log('📊 Consultant usage data:', usageData);
 
@@ -17204,7 +17478,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
       if (!profile) return res.json({});
 
-      
+
 
       const plan = profile.subscription_plan || "Free";
 
@@ -17216,7 +17490,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
       else if (plan === "Enterprise") chatLimit = 100;
 
-      
+
 
       // Add any separate credits bought via Razorpay
 
@@ -17232,7 +17506,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
       });
 
-      
+
 
       // Calculate days remaining
 
@@ -17248,7 +17522,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
       }
 
-      
+
 
       usageData = {
 
@@ -17266,7 +17540,7 @@ app.get("/metrics/subscription-usage", verifyFirebaseToken, async (req, res) => 
 
       };
 
-      
+
 
       console.log('📊 User usage data:', usageData);
 
@@ -17292,11 +17566,11 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
     console.log('🚀 SUBSCRIPTION VERIFICATION STARTED');
 
-    
+
 
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planName, userType } = req.body;
 
-    
+
 
     console.log('🔥 Subscription Verification Request:', {
 
@@ -17332,7 +17606,7 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
     });
 
-    
+
 
     if (!user && req.user.id) {
 
@@ -17344,7 +17618,7 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
     }
 
-    
+
 
     console.log('👤 Found user:', { id: user?.id, role: user?.role, firebase_uid: user?.firebase_uid });
 
@@ -17386,85 +17660,61 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
     const planConfig = {
 
-      'Basic': {
+      'Starter': {
 
         duration: 1, // months
 
-        price: 299,
+        price: 199,
 
         features: {
 
-          chatMessages: 10,
+          chatMessages: 20,
 
-          videoCalls: 5,
+          videoCalls: 10,
 
           prioritySupport: false,
 
-          profileVisibility: "Standard"
+          profileVisibility: "Standard",
+
+          maxConsultantsChat: 10,
+
+          bookingDurationMins: 60,
+
+          bookingDiscount: 10,
+
+          walletBonus: 2,
+
+          loyaltyPoints: 1
 
         }
 
       },
 
-      'Professional': {
+      'Growth': {
 
         duration: 1,
 
-        price: 599,
-
-        features: {
-
-          chatMessages: 25,
-
-          videoCalls: 15,
-
-          prioritySupport: true,
-
-          profileVisibility: "Featured"
-
-        }
-
-      },
-
-      'Premium': {
-
-        duration: 1,
-
-        price: 799,
-
-        features: {
-
-          chatMessages: 40,
-
-          videoCalls: 25,
-
-          prioritySupport: true,
-
-          profileVisibility: "Premium"
-
-        }
-
-      },
-
-      'Elite': {
-
-        duration: 1,
-
-        price: 999,
+        price: 499,
 
         features: {
 
           chatMessages: 50,
 
-          videoCalls: 30,
+          videoCalls: 25,
 
           prioritySupport: true,
 
-          profileVisibility: "Premium",
+          profileVisibility: "Featured",
 
-          analytics: true,
+          maxConsultantsChat: 25,
 
-          customBranding: true
+          bookingDurationMins: 60,
+
+          bookingDiscount: 15,
+
+          walletBonus: 5,
+
+          loyaltyPoints: 3
 
         }
 
@@ -17478,13 +17728,23 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
         features: {
 
-          chatMessages: 50,
+          chatMessages: 100,
 
-          videoCalls: 30,
+          videoCalls: 50,
 
           prioritySupport: true,
 
           profileVisibility: "Premium",
+
+          maxConsultantsChat: 50,
+
+          bookingDurationMins: 120,
+
+          bookingDiscount: 50,
+
+          walletBonus: 10,
+
+          loyaltyPoints: 7,
 
           analytics: true,
 
@@ -17536,7 +17796,7 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
       });
 
-      
+
 
       try {
 
@@ -17548,7 +17808,7 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
         });
 
-        
+
 
         if (!consultant) {
 
@@ -17558,7 +17818,7 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
         }
 
-        
+
 
         // Update Consultant record with subscription details (in one call)
 
@@ -17592,7 +17852,7 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
         });
 
-        
+
 
         console.log('✅ Consultant subscription updated successfully');
 
@@ -17608,7 +17868,7 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
         });
 
-        
+
 
       } catch (updateError) {
 
@@ -17626,11 +17886,11 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
         });
 
-        return res.status(500).json({ 
+        return res.status(500).json({
 
           error: "Failed to update consultant subscription",
 
-          details: updateError.message 
+          details: updateError.message
 
         });
 
@@ -17650,7 +17910,7 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
       });
 
-      
+
 
       // Update UserProfile record
 
@@ -17688,21 +17948,21 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
         });
 
-        
+
 
         console.log('✅ User profile updated successfully');
 
-        
+
 
       } catch (updateError) {
 
         console.error('❌ Failed to update user profile:', updateError);
 
-        return res.status(500).json({ 
+        return res.status(500).json({
 
           error: "Failed to update user subscription",
 
-          details: updateError.message 
+          details: updateError.message
 
         });
 
@@ -17802,9 +18062,9 @@ app.post("/subscription/verify-payment", verifyFirebaseToken, async (req, res) =
 
 
 
-    res.json({ 
+    res.json({
 
-      success: true, 
+      success: true,
 
       message: `Subscription updated successfully for ${user.role}`,
 
@@ -17840,7 +18100,7 @@ app.post("/api/subscriptions/purchase", verifyFirebaseToken, async (req, res) =>
 
     const { planName, price, features, duration, paymentId } = req.body;
 
-    
+
 
     if (!planName || !price || !duration) {
 
@@ -17858,7 +18118,7 @@ app.post("/api/subscriptions/purchase", verifyFirebaseToken, async (req, res) =>
 
     });
 
-    
+
 
     if (!user && req.user.id) {
 
@@ -17870,7 +18130,7 @@ app.post("/api/subscriptions/purchase", verifyFirebaseToken, async (req, res) =>
 
     }
 
-    
+
 
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -17890,11 +18150,11 @@ app.post("/api/subscriptions/purchase", verifyFirebaseToken, async (req, res) =>
 
     await prisma.subscription.updateMany({
 
-      where: { 
+      where: {
 
-        userId: user.id, 
+        userId: user.id,
 
-        status: "ACTIVE" 
+        status: "ACTIVE"
 
       },
 
@@ -18014,7 +18274,7 @@ app.get("/api/subscriptions/user/:userId", verifyFirebaseToken, async (req, res)
 
     const { userId } = req.params;
 
-    
+
 
     // Find user
 
@@ -18024,7 +18284,7 @@ app.get("/api/subscriptions/user/:userId", verifyFirebaseToken, async (req, res)
 
     });
 
-    
+
 
     if (!user && req.user.id) {
 
@@ -18036,7 +18296,7 @@ app.get("/api/subscriptions/user/:userId", verifyFirebaseToken, async (req, res)
 
     }
 
-    
+
 
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -18056,11 +18316,11 @@ app.get("/api/subscriptions/user/:userId", verifyFirebaseToken, async (req, res)
 
     const subscription = await prisma.subscription.findFirst({
 
-      where: { 
+      where: {
 
-        userId: user.id, 
+        userId: user.id,
 
-        status: "ACTIVE" 
+        status: "ACTIVE"
 
       },
 
@@ -18072,11 +18332,11 @@ app.get("/api/subscriptions/user/:userId", verifyFirebaseToken, async (req, res)
 
     if (!subscription) {
 
-      return res.json({ 
+      return res.json({
 
         message: "No active subscription",
 
-        subscription: null 
+        subscription: null
 
       });
 
@@ -18108,11 +18368,11 @@ app.get("/api/subscriptions/user/:userId", verifyFirebaseToken, async (req, res)
 
         where: { userId: user.id },
 
-        data: { 
+        data: {
 
           subscription_plan: "Free",
 
-          subscription_expiry: null 
+          subscription_expiry: null
 
         }
 
@@ -18120,11 +18380,11 @@ app.get("/api/subscriptions/user/:userId", verifyFirebaseToken, async (req, res)
 
 
 
-      return res.json({ 
+      return res.json({
 
         message: "Subscription expired",
 
-        subscription: null 
+        subscription: null
 
       });
 
@@ -18266,7 +18526,7 @@ app.post("/api/subscriptions/cancel", verifyFirebaseToken, async (req, res) => {
 
     });
 
-    
+
 
     if (!user && req.user.id) {
 
@@ -18278,7 +18538,7 @@ app.post("/api/subscriptions/cancel", verifyFirebaseToken, async (req, res) => {
 
     }
 
-    
+
 
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -18288,11 +18548,11 @@ app.post("/api/subscriptions/cancel", verifyFirebaseToken, async (req, res) => {
 
     const subscription = await prisma.subscription.updateMany({
 
-      where: { 
+      where: {
 
-        userId: user.id, 
+        userId: user.id,
 
-        status: "ACTIVE" 
+        status: "ACTIVE"
 
       },
 
@@ -18308,11 +18568,11 @@ app.post("/api/subscriptions/cancel", verifyFirebaseToken, async (req, res) => {
 
       where: { userId: user.id },
 
-      data: { 
+      data: {
 
         subscription_plan: "Free",
 
-        subscription_expiry: null 
+        subscription_expiry: null
 
       }
 
@@ -18410,7 +18670,7 @@ app.post("/payment/chat-credits/verify", verifyFirebaseToken, async (req, res) =
 
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, packName } = req.body;
 
-    
+
 
     let user = await prisma.user.findFirst({ where: { firebase_uid: req.user.firebase_uid } });
 
@@ -18486,7 +18746,7 @@ app.post("/payment/chat-credits/verify", verifyFirebaseToken, async (req, res) =
 
       });
 
-      
+
 
       if (consultant) {
 
@@ -18610,9 +18870,9 @@ app.post("/payment/chat-credits/verify", verifyFirebaseToken, async (req, res) =
 
     console.log('✅ Chat credits purchase completed successfully');
 
-    res.json({ 
+    res.json({
 
-      message: "Chat credits added successfully", 
+      message: "Chat credits added successfully",
 
       messagesAdded: messagesToAdd,
 
@@ -18914,6 +19174,8 @@ app.get("/subscription/status", verifyFirebaseToken, async (req, res) => {
 
           currentPlan: consultant.currentPlan || "Free",
 
+          plan_name: consultant.currentPlan || "Free",
+
           status: consultant.subscriptionStatus,
 
           startDate: consultant.subscriptionStartDate,
@@ -18948,7 +19210,87 @@ app.get("/subscription/status", verifyFirebaseToken, async (req, res) => {
 
           currentPlan: consultant.currentPlan || "Free",
 
+          plan_name: consultant.currentPlan || "Free",
+
           status: consultant.subscriptionStatus || "None",
+
+          startDate: null,
+
+          endDate: null,
+
+          daysLeft: null,
+
+        };
+
+      }
+
+    } else if (user.role === "USER") {
+
+      // Fetch user's subscription from UserProfile
+
+      const profile = await prisma.userProfile.findUnique({
+
+        where: { userId: user.id },
+
+      });
+
+
+
+      if (profile && profile.subscription_plan && profile.subscription_plan !== "Free") {
+
+        const now = new Date();
+
+        const endDate = profile.subscription_expiry ? new Date(profile.subscription_expiry) : null;
+
+        const daysLeft = endDate ? Math.ceil((endDate - now) / (1000 * 60 * 60 * 24)) : null;
+
+        const isActive = endDate ? endDate > now : false;
+
+
+
+        subscriptionData = {
+
+          currentPlan: profile.subscription_plan,
+
+          plan_name: profile.subscription_plan,
+
+          status: isActive ? "Active" : "Expired",
+
+          startDate: null,
+
+          endDate: profile.subscription_expiry,
+
+          daysLeft: daysLeft,
+
+        };
+
+
+
+        // Show warning if expiring within 3 days
+
+        if (isActive && daysLeft !== null && daysLeft <= 3 && daysLeft > 0) {
+
+          expiryWarning = {
+
+            daysLeft: daysLeft,
+
+            message: `Your ${profile.subscription_plan} plan expires in ${daysLeft} day${daysLeft > 1 ? 's' : ''}!`,
+
+            severity: daysLeft === 1 ? "critical" : "warning",
+
+          };
+
+        }
+
+      } else {
+
+        subscriptionData = {
+
+          currentPlan: "Free",
+
+          plan_name: "Free",
+
+          status: "None",
 
           startDate: null,
 

@@ -267,6 +267,7 @@ const MessagesPage: React.FC = () => {
   const [activeCallBooking, setActiveCallBooking] = useState<any>(null);
   const [now, setNow] = useState(new Date());
   const [showWarning, setShowWarning] = useState(false);
+  const [inboundChatStats, setInboundChatStats] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Is current user a consultant?
@@ -278,8 +279,8 @@ const MessagesPage: React.FC = () => {
     const checkProfile = async () => {
       try {
         const profileData = await consultantsApi.getProfile();
-        const isIncomplete = !profileData || !profileData.name || !profileData.domain || 
-                            !profileData.hourly_price || !profileData.bio || !profileData.languages;
+        const isIncomplete = !profileData || !profileData.name || !profileData.domain ||
+          !profileData.hourly_price || !profileData.bio || !profileData.languages;
         if (isIncomplete) {
           navigate('/consultant/dashboard', { replace: true });
         }
@@ -300,7 +301,7 @@ const MessagesPage: React.FC = () => {
   const sessionStatus = selectedBooking ? getSessionStatus(selectedBooking, now) : "unknown";
   const slotWindow = selectedBooking ? getSlotWindow(selectedBooking) : null;
   const canSendMessage = isConnected;
-  const canStartVideo = isConsultant && sessionStatus === "active" && isConnected;
+  const canStartVideo = isConsultant && isConnected;
 
   // Scroll to bottom
   useEffect(() => {
@@ -365,7 +366,15 @@ const MessagesPage: React.FC = () => {
     const fetchMessages = async () => {
       try {
         const res = await api.get(`/bookings/${selectedBooking.id}/messages`);
-        setMessages(res.data);
+        // Handle new response shape: { messages, inboundChatStats } or plain array
+        if (Array.isArray(res.data)) {
+          setMessages(res.data);
+        } else {
+          setMessages(res.data.messages || []);
+          if (res.data.inboundChatStats) {
+            setInboundChatStats(res.data.inboundChatStats);
+          }
+        }
       } catch (err) {
         console.error("Failed to fetch messages:", err);
       }
@@ -450,8 +459,7 @@ const MessagesPage: React.FC = () => {
   /* ── Start Video Call (consultant only, session active) ── */
   const startVideoCall = () => {
     if (!selectedBooking || !socket || !currentUser) return;
-    if (!isConsultant) return; // guard: should not be visible, but protect anyway
-    if (sessionStatus !== "active") { setShowWarning(true); return; }
+    if (!isConsultant) return; // guard: only consultant can initiate
     setActiveCallBooking(selectedBooking);
     setIsCalling(true);
     socket.emit("start-video-call", { bookingId: selectedBooking.id, callerId: currentUser.id });
@@ -589,14 +597,14 @@ const MessagesPage: React.FC = () => {
                   <button
                     onClick={startVideoCall}
                     disabled={!canStartVideo}
-                    title={!canStartVideo ? (sessionStatus === "before" ? "Video unlocks when session starts" : "Session ended") : "Start video call"}
+                    title={!canStartVideo ? "Connecting..." : "Start video call"}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${canStartVideo
                       ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-md shadow-emerald-100"
                       : "bg-gray-100 text-gray-400 cursor-not-allowed"
                       }`}
                   >
                     <Video size={16} />
-                    {sessionStatus === "active" ? "Start Call" : sessionStatus === "before" ? "Locked" : "Ended"}
+                    Start Call
                   </button>
                 )}
 
@@ -688,39 +696,57 @@ const MessagesPage: React.FC = () => {
 
             {/* Message Input */}
             {selectedBooking && (
-              <div className="p-5 border-t flex items-center gap-3 bg-white">
-                <button className="p-3 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition">
-                  <Paperclip size={18} />
-                </button>
-                <div className="flex-1 relative">
-                  <input
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                    placeholder={
-                      !isConnected ? "Connecting…" : "Type your message…"
-                    }
-                    className={`w-full rounded-2xl px-5 py-3.5 text-sm outline-none transition-all
-                      ${isConnected
-                        ? "bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-blue-500"
-                        : "bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed"
+              <div className="border-t bg-white">
+                {/* Inbound Chat Stats Badge — visible only for consultants */}
+                {isConsultant && inboundChatStats && (
+                  <div className="px-5 pt-3 pb-0 flex items-center justify-end">
+                    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border ${inboundChatStats.remaining <= 0
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : inboundChatStats.used / inboundChatStats.limit >= 0.8
+                        ? 'bg-amber-50 border-amber-200 text-amber-700'
+                        : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      }`}>
+                      <span>📨 Inbound: {inboundChatStats.used}/{inboundChatStats.limit}</span>
+                      {inboundChatStats.purchased > 0 && (
+                        <span className="text-[10px] opacity-75">(+{inboundChatStats.purchased} bonus)</span>
+                      )}
+                      <span className="text-[10px] opacity-60">• {inboundChatStats.remaining} left</span>
+                    </div>
+                  </div>
+                )}
+                <div className="p-5 pt-3 flex items-center gap-3">
+                  <button className="p-3 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition">
+                    <Paperclip size={18} />
+                  </button>
+                  <div className="flex-1 relative">
+                    <input
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                      placeholder={
+                        !isConnected ? "Connecting…" : "Type your message…"
+                      }
+                      className={`w-full rounded-2xl px-5 py-3.5 text-sm outline-none transition-all
+                        ${isConnected
+                          ? "bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-blue-500"
+                          : "bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed"
+                        }`}
+                    />
+                  </div>
+                  <button
+                    onClick={sendMessage}
+                    disabled={!newMessage.trim()}
+                    className={`p-4 rounded-2xl shadow transition-all
+                      ${newMessage.trim()
+                        ? isConnected
+                          ? "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-100"
+                          : "bg-amber-500 text-white hover:bg-amber-600"
+                        : "bg-gray-200 text-gray-400 cursor-not-allowed"
                       }`}
-                  />
-                  {/* Removed Lock overlay for chat */}
+                  >
+                    <Send size={18} />
+                  </button>
                 </div>
-                <button
-                  onClick={sendMessage}
-                  disabled={!newMessage.trim()}
-                  className={`p-4 rounded-2xl shadow transition-all
-                    ${newMessage.trim()
-                      ? isConnected
-                        ? "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-100"
-                        : "bg-amber-500 text-white hover:bg-amber-600"
-                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    }`}
-                >
-                  <Send size={18} />
-                </button>
               </div>
             )}
           </div>
@@ -743,9 +769,9 @@ const MessagesPage: React.FC = () => {
           bookingId={activeCallBooking.id}
           userId={currentUser.id}
           socket={socket}
-          onClose={() => { 
-            setIsCalling(false); 
-            setActiveCallBooking(null); 
+          onClose={() => {
+            setIsCalling(false);
+            setActiveCallBooking(null);
           }}
           startAgora={isCalling}
           userRole={currentUser.role}
@@ -773,7 +799,7 @@ const MessagesPage: React.FC = () => {
           </div>
         </div>
       )}
-      
+
       <UserPopupModal
         open={popup.open}
         title={popup.title}

@@ -184,6 +184,14 @@ export const consultants = {
     const response = await api.get("/admin/consultants/pending");
     return response.data;
   },
+  approveDocument: async (consultantId: number, docId: number) => {
+    const response = await api.put(`/admin/consultants/${consultantId}/approve-document`, { docId });
+    return response.data;
+  },
+  rejectDocument: async (consultantId: number, docId: number, rejectionReason: string) => {
+    const response = await api.put(`/admin/consultants/${consultantId}/reject-document`, { docId, rejectionReason });
+    return response.data;
+  },
 };
 
 /* ================= ENTERPRISES ================= */
@@ -285,6 +293,43 @@ export const transactions = {
     const response = await api.get(
       `/admin/transactions/bookings${query.toString() ? `?${query.toString()}` : ""}`
     );
+    return response.data;
+  },
+
+  getSubscriptions: async (params?: {
+    status?: string;
+    planName?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.append("status", params.status);
+    if (params?.planName) query.append("planName", params.planName);
+    if (params?.limit) query.append("limit", String(params.limit));
+    if (params?.offset) query.append("offset", String(params.offset));
+    const response = await api.get(
+      `/admin/subscriptions${query.toString() ? `?${query.toString()}` : ""}`
+    );
+    return response.data;
+  },
+
+  getPayouts: async (params?: {
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.append("status", params.status);
+    if (params?.limit) query.append("limit", String(params.limit));
+    if (params?.offset) query.append("offset", String(params.offset));
+    const response = await api.get(
+      `/admin/payouts${query.toString() ? `?${query.toString()}` : ""}`
+    );
+    return response.data;
+  },
+
+  markPayoutPaid: async (payoutId: number, notes?: string) => {
+    const response = await api.put(`/admin/payouts/${payoutId}/mark-paid`, { notes });
     return response.data;
   },
 };

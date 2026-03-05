@@ -33,8 +33,9 @@ export default function UserSubscriptionPlans() {
     const fetchCurrentSubscription = async () => {
       try {
         const response = await subscriptions.getSubscriptionStatus();
-        setCurrentSubscription(response);
-        console.log('📋 Current subscription:', response);
+        // response is { subscriptionData, expiryWarning } - extract subscriptionData
+        setCurrentSubscription(response?.subscriptionData || null);
+        console.log('📋 Current subscription:', response?.subscriptionData);
       } catch (error) {
         console.log('No active subscription');
       }
@@ -44,14 +45,14 @@ export default function UserSubscriptionPlans() {
 
   const handleSubscribe = async () => {
     if (!selectedPlan) return;
-    
+
     // Prevent subscription for Free plan
     if (selectedPlan.name === 'Free') {
       showPaymentInfo('Free Plan', 'You are already on the Free plan. No payment required!');
       setSelectedPlan(null);
       return;
     }
-    
+
     setLoading(true);
     try {
       const res = await loadRazorpayScript();
@@ -92,6 +93,11 @@ export default function UserSubscriptionPlans() {
             showPaymentSuccess('Payment Successful!', `You are now on the ${selectedPlan.name} plan! An email receipt has been sent.`);
             console.log('Payment success popup called');
             setSelectedPlan(null);
+            // Refresh subscription status to update the banner
+            try {
+              const subRes = await subscriptions.getSubscriptionStatus();
+              setCurrentSubscription(subRes?.subscriptionData || null);
+            } catch (e) { /* ignore */ }
           } catch (err: any) {
             showPaymentError('Verification Failed', err.message);
           } finally {
@@ -311,10 +317,10 @@ export default function UserSubscriptionPlans() {
               </div>
               <div className="text-right">
                 <div className="text-5xl font-bold mb-2">
-                  {currentSubscription.plan_name === 'Free' || !currentSubscription.plan_name ? '0%' : 
+                  {currentSubscription.plan_name === 'Free' || !currentSubscription.plan_name ? '0%' :
                     currentSubscription.plan_name === 'Starter' ? '10%' :
-                    currentSubscription.plan_name === 'Professional' ? '15%' :
-                    currentSubscription.plan_name === 'Premium' ? '20%' : '25%'} OFF
+                      currentSubscription.plan_name === 'Professional' ? '15%' :
+                        currentSubscription.plan_name === 'Premium' ? '20%' : '25%'} OFF
                 </div>
                 <p className="text-blue-100 font-semibold">On All Bookings</p>
               </div>
@@ -346,8 +352,8 @@ export default function UserSubscriptionPlans() {
                     <span className="bg-blue-600 text-white px-6 py-1.5 rounded-full 
                  text-sm font-bold whitespace-nowrap tracking-wide 
                  min-w-[140px] text-center">
-                  MOST POPULAR
-                </span>
+                      MOST POPULAR
+                    </span>
                   </div>
                 )}
 
@@ -383,18 +389,18 @@ export default function UserSubscriptionPlans() {
         <div className="text-center mb-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Wallet Recharge Bonus Structure</h2>
           <p className="text-lg text-gray-600">Get bonus credits when you recharge your wallet</p>
-          
+
           {/* Subscription Tier Bonus Info */}
           <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 inline-block border border-blue-100 max-w-2xl">
             <p className="text-sm text-gray-700">
               <span className="font-semibold text-blue-700">💡 Tip:</span> Your bonus percentage increases with your subscription plan!
             </p>
             <div className="mt-4 grid grid-cols-5 gap-2 text-xs">
-              <div className="bg-white rounded p-2 font-semibold">Free<br/>2%</div>
-              <div className="bg-white rounded p-2 font-semibold text-blue-700">Starter<br/>2%+</div>
-              <div className="bg-white rounded p-2 font-semibold text-green-700">Growth<br/>5%</div>
-              <div className="bg-white rounded p-2 font-semibold text-purple-700">Premium<br/>7%</div>
-              <div className="bg-white rounded p-2 font-semibold text-yellow-700">Enterprise<br/>10%</div>
+              <div className="bg-white rounded p-2 font-semibold">Free<br />2%</div>
+              <div className="bg-white rounded p-2 font-semibold text-blue-700">Starter<br />2%+</div>
+              <div className="bg-white rounded p-2 font-semibold text-green-700">Growth<br />5%</div>
+              <div className="bg-white rounded p-2 font-semibold text-purple-700">Premium<br />7%</div>
+              <div className="bg-white rounded p-2 font-semibold text-yellow-700">Enterprise<br />10%</div>
             </div>
           </div>
         </div>
@@ -641,88 +647,88 @@ export default function UserSubscriptionPlans() {
       </div>
 
       {/* ========= MODAL VIEW ========= */}
-     {/* ========= MODAL VIEW (REDUCED HEIGHT) ========= */}
-{selectedPlan && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/40 backdrop-blur-sm">
-    <div className="relative w-full max-w-2xl rounded-2xl bg-white/90 backdrop-blur-xl shadow-[0_4px_30px_rgba(0,0,0,0.12)] border border-white/30 overflow-hidden">
+      {/* ========= MODAL VIEW (REDUCED HEIGHT) ========= */}
+      {selectedPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/40 backdrop-blur-sm">
+          <div className="relative w-full max-w-2xl rounded-2xl bg-white/90 backdrop-blur-xl shadow-[0_4px_30px_rgba(0,0,0,0.12)] border border-white/30 overflow-hidden">
 
-      {/* Close Button */}
-      <button
-        onClick={() => setSelectedPlan(null)}
-        className="absolute top-3 right-3 text-gray-600 hover:text-gray-900 bg-white/70 p-1.5 rounded-full shadow-sm"
-      >
-        <X size={18} />
-      </button>
-
-      {/* Header */}
-      <div className="text-center pt-8 pb-5 px-6 bg-gradient-to-b from-gray-50 to-white border-b border-gray-100">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-white/70 rounded-xl shadow-inner mb-3">
-          {selectedPlan.icon}
-        </div>
-
-        <h2 className="text-3xl font-bold text-gray-900 mb-1">
-          {selectedPlan.name}
-        </h2>
-
-        <p className="text-sm text-gray-600">{selectedPlan.description}</p>
-
-        <div className="mt-2 text-4xl font-extrabold text-gray-900">
-          {selectedPlan.price}
-        </div>
-
-        <p className="text-gray-500 text-xs -mt-1">per month</p>
-      </div>
-
-      {/* Features */}
-      <div className="px-6 py-6 space-y-4">
-        <h3 className="text-lg font-semibold text-gray-900">
-          Features & Benefits
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {selectedPlan.features.map((feature: any, idx: number) => (
-            <div
-              key={idx}
-              className="flex gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 hover:shadow-sm transition"
+            {/* Close Button */}
+            <button
+              onClick={() => setSelectedPlan(null)}
+              className="absolute top-3 right-3 text-gray-600 hover:text-gray-900 bg-white/70 p-1.5 rounded-full shadow-sm"
             >
-              <Check className="text-green-600 mt-0.5" size={16} />
-              <div>
-                <p className="font-medium text-gray-900 text-sm">{feature.text}</p>
-                <p className="text-gray-600 text-xs">{feature.value}</p>
+              <X size={18} />
+            </button>
+
+            {/* Header */}
+            <div className="text-center pt-8 pb-5 px-6 bg-gradient-to-b from-gray-50 to-white border-b border-gray-100">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-white/70 rounded-xl shadow-inner mb-3">
+                {selectedPlan.icon}
+              </div>
+
+              <h2 className="text-3xl font-bold text-gray-900 mb-1">
+                {selectedPlan.name}
+              </h2>
+
+              <p className="text-sm text-gray-600">{selectedPlan.description}</p>
+
+              <div className="mt-2 text-4xl font-extrabold text-gray-900">
+                {selectedPlan.price}
+              </div>
+
+              <p className="text-gray-500 text-xs -mt-1">per month</p>
+            </div>
+
+            {/* Features */}
+            <div className="px-6 py-6 space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Features & Benefits
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {selectedPlan.features.map((feature: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className="flex gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 hover:shadow-sm transition"
+                  >
+                    <Check className="text-green-600 mt-0.5" size={16} />
+                    <div>
+                      <p className="font-medium text-gray-900 text-sm">{feature.text}</p>
+                      <p className="text-gray-600 text-xs">{feature.value}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
+
+            {/* Footer */}
+            <div className="px-6 py-4 flex justify-center gap-3 border-t border-gray-100 bg-white/70">
+
+              <button
+                onClick={() => setSelectedPlan(null)}
+                className="px-5 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition text-sm font-medium"
+              >
+                Close
+              </button>
+
+              {selectedPlan.name !== 'Free' && (
+                <button
+                  disabled={loading}
+                  onClick={handleSubscribe}
+                  className="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition text-sm font-semibold shadow-md disabled:opacity-50"
+                >
+                  {loading
+                    ? "Processing..."
+                    : selectedPlan.name === "Enterprise"
+                      ? "Contact Sales"
+                      : `Choose ${selectedPlan.name}`}
+                </button>
+              )}
+
+            </div>
+          </div>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="px-6 py-4 flex justify-center gap-3 border-t border-gray-100 bg-white/70">
-
-        <button
-          onClick={() => setSelectedPlan(null)}
-          className="px-5 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition text-sm font-medium"
-        >
-          Close
-        </button>
-
-        {selectedPlan.name !== 'Free' && (
-          <button
-            disabled={loading}
-            onClick={handleSubscribe}
-            className="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition text-sm font-semibold shadow-md disabled:opacity-50"
-          >
-            {loading
-              ? "Processing..."
-              : selectedPlan.name === "Enterprise"
-              ? "Contact Sales"
-              : `Choose ${selectedPlan.name}`}
-          </button>
-        )}
-
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       {/* PaymentPopupModal */}
       <PaymentPopupModal
