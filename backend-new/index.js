@@ -96,7 +96,7 @@ app.use(
 
   cors({
 
-    origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
+    origin: true,
 
     methods: ["GET", "POST", "PUT", "DELETE"],
 
@@ -124,7 +124,7 @@ const io = new Server(server, {
 
   cors: {
 
-    origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
+    origin: true,
 
     methods: ["GET", "POST"],
 
@@ -916,7 +916,7 @@ const onlineConsultants = new Map();
 
 const corsOptions = {
 
-  origin: ["http://localhost:3000", "http://localhost:3001"],
+  origin: true,
 
   methods: ["GET", "POST", "PUT", "DELETE"],
 
