@@ -464,8 +464,8 @@ const UserDashboard: React.FC = () => {
             </div>
           </div>
         </div>
-      </div >
-    </Layout >
+      </div>
+    </Layout>
   );
 };
 export default UserDashboard;

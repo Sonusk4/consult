@@ -209,6 +209,11 @@ export const SIDEBAR_LINKS = {
       path: "/consultant/reviews",
     },
     {
+      label: "Profile",
+      icon: <User size={20} />,
+      path: "/consultant/profile",
+    },
+    {
       label: "Support",
       icon: <HelpCircle size={20} />,
       path: "/consultant/support",
