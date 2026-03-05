@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { consultants as consultantsApi } from "../services/api";
+import { consultants as consultantsApi } from "../services/api.js";
 
 /**
  * Hook to check consultant KYC approval status
