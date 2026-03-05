@@ -1,23 +1,19 @@
 import { useState, useEffect } from 'react';
-import { bookings as bookingsApi } from '../services/api';
+import { bookings } from '../services/api.js';
 import { Booking } from '../types';
 
 export const useUserSessions = () => {
   const [sessions, setSessions] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchSessions = async () => {
-      setLoading(true);
       try {
-        const data = await bookingsApi.getAll();
+        const data = await bookings.getAll();
         setSessions(data || []);
-        setError(null);
-      } catch (err: any) {
-        const errorMsg = err?.response?.data?.error || err?.message || 'Failed to fetch sessions';
-        setError(errorMsg);
-        setSessions([]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch sessions');
       } finally {
         setLoading(false);
       }

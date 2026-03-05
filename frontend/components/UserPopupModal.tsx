@@ -1,12 +1,14 @@
 import React from 'react';
 import { X, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import '../styles/UserPopupModal.css';
+import { useNavigate } from "react-router-dom";
 
 interface UserPopupModalProps {
   open: boolean;
   title: string;
   message: string;
   icon: 'success' | 'error' | 'info';
+  showBuyCredits?: boolean;   // NEW
   onClose: () => void;
 }
 
@@ -15,26 +17,31 @@ const UserPopupModal: React.FC<UserPopupModalProps> = ({
   title,
   message,
   icon,
+  showBuyCredits = false,     // NEW
   onClose
 }) => {
+  const navigate = useNavigate();
+
   if (!open) return null;
 
   const getIcon = () => {
     switch (icon) {
-      case 'success':
-        return <CheckCircle className="w-6 h-6 text-green-500" />;
-      case 'error':
-        return <AlertCircle className="w-6 h-6 text-red-500" />;
-      case 'info':
-        return <Info className="w-6 h-6 text-blue-500" />;
-      default:
-        return <Info className="w-6 h-6 text-blue-500" />;
+      case 'success': return <CheckCircle className="w-6 h-6 text-green-500" />;
+      case 'error'  : return <AlertCircle className="w-6 h-6 text-red-500" />;
+      case 'info'   : return <Info className="w-6 h-6 text-blue-500" />;
+      default       : return <Info className="w-6 h-6 text-blue-500" />;
     }
+  };
+
+  const handleBuyCredits = () => {
+    onClose();
+    navigate("/user/subscription-plans");
   };
 
   return (
     <div className="modal-overlay">
       <div className="modal-content animate-slideUp">
+
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center gap-3">
@@ -55,14 +62,27 @@ const UserPopupModal: React.FC<UserPopupModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-6 pt-0">
+        <div className="p-6 pt-0 flex gap-3">
+
+          {/* OK Button */}
           <button
             onClick={onClose}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-xl transition-colors shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-xl transition-colors shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
           >
             OK
           </button>
+
+          {/* Buy Credits Button (only if enabled) */}
+          {showBuyCredits && (
+            <button
+              onClick={handleBuyCredits}
+              className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-3 px-4 rounded-xl transition-colors shadow hover:shadow-md"
+            >
+              Buy Credits
+            </button>
+          )}
         </div>
+
       </div>
     </div>
   );

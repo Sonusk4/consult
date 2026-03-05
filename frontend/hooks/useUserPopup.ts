@@ -5,6 +5,7 @@ interface PopupState {
   title: string;
   message: string;
   icon: 'success' | 'error' | 'info';
+  showBuyCredits: boolean;   // ⭐ ADD THIS
 }
 
 export const useUserPopup = () => {
@@ -12,15 +13,23 @@ export const useUserPopup = () => {
     open: false,
     title: '',
     message: '',
-    icon: 'info'
+    icon: 'info',
+    showBuyCredits: false   // ⭐ DEFAULT
   });
 
-  const showPopup = (title: string, message: string, icon: 'success' | 'error' | 'info' = 'info') => {
+  // ⭐ Modified to support buyCredits flag
+  const showPopup = (
+    title: string,
+    message: string,
+    icon: 'success' | 'error' | 'info' = 'info',
+    showBuyCredits: boolean = false
+  ) => {
     setPopup({
       open: true,
       title,
       message,
-      icon
+      icon,
+      showBuyCredits
     });
   };
 
@@ -32,8 +41,12 @@ export const useUserPopup = () => {
     showPopup(title, message, 'success');
   };
 
-  const showError = (title: string, message: string) => {
-    showPopup(title, message, 'error');
+  const showError = (
+    title: string,
+    message: string,
+    showBuyCredits: boolean = false     // ⭐ allow passing buyCredits
+  ) => {
+    showPopup(title, message, 'error', showBuyCredits);
   };
 
   const showInfo = (title: string, message: string) => {

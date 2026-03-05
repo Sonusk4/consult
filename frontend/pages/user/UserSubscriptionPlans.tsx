@@ -90,6 +90,7 @@ export default function UserSubscriptionPlans() {
               userType: "USER",
             });
             showPaymentSuccess('Payment Successful!', `You are now on the ${selectedPlan.name} plan! An email receipt has been sent.`);
+            console.log('Payment success popup called');
             setSelectedPlan(null);
           } catch (err: any) {
             showPaymentError('Verification Failed', err.message);
@@ -192,7 +193,7 @@ export default function UserSubscriptionPlans() {
         { text: 'Total Chat Messages / Month', value: '5', available: true },
         { text: 'Bookings / Month', value: 'Unlimited', available: true },
         { text: 'Booking Duration Access', value: 'Up to 30 mins', available: true },
-        { text: 'Platform Fee Discount', value: '0%', available: true },
+        { text: 'Booking on Discount', value: '0%', available: true },
         { text: 'Wallet Bonus on Recharge', value: 'Nil', available: true },
         { text: 'Loyalty Points', value: 'No', available: true },
         { text: 'Free Reschedule', value: 'No', available: true },
@@ -211,7 +212,7 @@ export default function UserSubscriptionPlans() {
         { text: 'Total Chat Messages / Month', value: '20', available: true },
         { text: 'Bookings / Month', value: 'Unlimited', available: true },
         { text: 'Booking Duration Access', value: 'Up to 60 mins', available: true },
-        { text: 'Platform Fee Discount', value: '10%', available: true },
+        { text: 'Discount on Booking', value: '10%', available: true },
         { text: 'Wallet Bonus on Recharge', value: '2% (cap ₹200)', available: true },
         { text: 'Loyalty Points', value: '1%', available: true },
         { text: 'Free Reschedule', value: '1 per month', available: true },
@@ -230,7 +231,7 @@ export default function UserSubscriptionPlans() {
         { text: 'Total Chat Messages / Month', value: '50', available: true },
         { text: 'Bookings / Month', value: 'Unlimited', available: true },
         { text: 'Booking Duration Access', value: 'Up to 60 mins', available: true },
-        { text: 'Platform Fee Discount', value: '15%', available: true },
+        { text: 'Discount on Booking', value: '15%', available: true },
         { text: 'Wallet Bonus on Recharge', value: '5% (cap ₹500)', available: true },
         { text: 'Loyalty Points', value: '3%', available: true },
         { text: 'Free Reschedule', value: '2 per month', available: true },
@@ -249,7 +250,7 @@ export default function UserSubscriptionPlans() {
         { text: 'Total Chat Messages / Month', value: '100', available: true },
         { text: 'Bookings / Month', value: 'Unlimited', available: true },
         { text: 'Booking Duration Access', value: 'Up to 120 mins', available: true },
-        { text: 'Platform Fee Discount', value: '50%', available: true },
+        { text: 'Discount on Booking', value: '50%', available: true },
         { text: 'Wallet Bonus on Recharge', value: '10% (cap ₹1500)', available: true },
         { text: 'Loyalty Points', value: '7%', available: true },
         { text: 'Free Reschedule', value: '5 per month', available: true },
@@ -642,29 +643,20 @@ export default function UserSubscriptionPlans() {
       {/* ========= MODAL VIEW ========= */}
      {/* ========= MODAL VIEW (REDUCED HEIGHT) ========= */}
 {selectedPlan && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-3 
-                  bg-black/40 backdrop-blur-sm">
-
-    <div className="relative w-full max-w-2xl rounded-2xl 
-                    bg-white/90 backdrop-blur-xl 
-                    shadow-[0_4px_30px_rgba(0,0,0,0.12)]
-                    border border-white/30 overflow-hidden">
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/40 backdrop-blur-sm">
+    <div className="relative w-full max-w-2xl rounded-2xl bg-white/90 backdrop-blur-xl shadow-[0_4px_30px_rgba(0,0,0,0.12)] border border-white/30 overflow-hidden">
 
       {/* Close Button */}
       <button
         onClick={() => setSelectedPlan(null)}
-        className="absolute top-3 right-3 text-gray-600 hover:text-gray-900 
-                   bg-white/70 p-1.5 rounded-full shadow-sm"
+        className="absolute top-3 right-3 text-gray-600 hover:text-gray-900 bg-white/70 p-1.5 rounded-full shadow-sm"
       >
         <X size={18} />
       </button>
 
       {/* Header */}
-      <div className="text-center pt-8 pb-5 px-6 bg-gradient-to-b 
-                      from-gray-50 to-white border-b border-gray-100">
-
-        <div className="inline-flex items-center justify-center 
-                        w-16 h-16 bg-white/70 rounded-xl shadow-inner mb-3">
+      <div className="text-center pt-8 pb-5 px-6 bg-gradient-to-b from-gray-50 to-white border-b border-gray-100">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-white/70 rounded-xl shadow-inner mb-3">
           {selectedPlan.icon}
         </div>
 
@@ -691,8 +683,7 @@ export default function UserSubscriptionPlans() {
           {selectedPlan.features.map((feature: any, idx: number) => (
             <div
               key={idx}
-              className="flex gap-3 p-3 bg-gray-50 rounded-xl 
-                         border border-gray-100 hover:shadow-sm transition"
+              className="flex gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 hover:shadow-sm transition"
             >
               <Check className="text-green-600 mt-0.5" size={16} />
               <div>
@@ -705,13 +696,11 @@ export default function UserSubscriptionPlans() {
       </div>
 
       {/* Footer */}
-      <div className="px-6 py-4 flex justify-center gap-3 
-                      border-t border-gray-100 bg-white/70">
+      <div className="px-6 py-4 flex justify-center gap-3 border-t border-gray-100 bg-white/70">
 
         <button
           onClick={() => setSelectedPlan(null)}
-          className="px-5 py-2 rounded-lg bg-gray-100 text-gray-700 
-                     hover:bg-gray-200 transition text-sm font-medium"
+          className="px-5 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition text-sm font-medium"
         >
           Close
         </button>
@@ -720,9 +709,7 @@ export default function UserSubscriptionPlans() {
           <button
             disabled={loading}
             onClick={handleSubscribe}
-            className="px-6 py-2 rounded-lg bg-blue-600 text-white 
-                       hover:bg-blue-700 transition text-sm font-semibold 
-                       shadow-md disabled:opacity-50"
+            className="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition text-sm font-semibold shadow-md disabled:opacity-50"
           >
             {loading
               ? "Processing..."
@@ -745,7 +732,6 @@ export default function UserSubscriptionPlans() {
         icon={popup.icon}
         onClose={hidePaymentPopup}
       />
-
     </Layout>
   );
 }

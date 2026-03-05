@@ -7,16 +7,15 @@ import { Search, Loader, Star, X } from 'lucide-react';
 import '../../styles/UserPopupModal.css';
 
 const weekdays = [
-  'Monday','Tuesday','Wednesday','Thursday',
-  'Friday','Saturday','Sunday'
+  "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"
 ];
 
 const SearchConsultantPage: React.FC = () => {
   const navigate = useNavigate();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [consultantsData, setConsultantsData] = useState<Consultant[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   // Filter states
   const [showFilters, setShowFilters] = useState(false);
@@ -70,14 +69,13 @@ const SearchConsultantPage: React.FC = () => {
       setAvailabilityMap(availMap);
       setConsultantsData(normalized);
     } catch (err) {
-      setError('Failed to load consultants.');
+      setError("Failed to load consultants.");
     } finally {
       setLoading(false);
     }
   };
 
-  /* ---------------- Dynamic Filters ---------------- */
-
+  /* ------------ DYNAMIC DOMAIN LIST ------------ */
   const domains = useMemo(() => {
     const result = [...new Set(consultantsData.map(c => c.domain).filter(Boolean))].sort();
     console.log('Dynamic domains:', result);
@@ -133,8 +131,7 @@ const SearchConsultantPage: React.FC = () => {
 
   /* ---------------- Filtering Logic ---------------- */
 
-  const filteredConsultants = consultantsData.filter(c => {
-
+  const filteredConsultants = consultantsData.filter((c) => {
     const matchesQuery =
       !query ||
       c.user?.name?.toLowerCase().includes(query.toLowerCase()) ||
@@ -182,6 +179,7 @@ const SearchConsultantPage: React.FC = () => {
     return matches;
   });
 
+  /* ------------ CLEAR FILTERS ------------ */
   const clearFilters = () => {
     setSelectedDomains([]);
     setSelectedLanguages([]);
@@ -446,6 +444,6 @@ const SearchConsultantPage: React.FC = () => {
       </div>
     </Layout>
   );
-};
+}
 
 export default SearchConsultantPage;

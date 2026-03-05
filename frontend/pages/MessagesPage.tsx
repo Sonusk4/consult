@@ -403,8 +403,8 @@ const MessagesPage: React.FC = () => {
       }
     };
 
-    const handleChatBlocked = (data: any) => showError('Chat Limit Reached', data.message);
-    const handleChatError = (data: any) => { console.error("Chat error:", data); showError('Chat Error', data.message); };
+    const handleChatBlocked = (data: any) => showError('Chat Limit Reached', data.message, true);
+    const handleChatError = (data: any) => { console.error("Chat error:", data); showError('Chat Error', data.message, true); };
 
     socket.on("receive-message", handleReceiveMessage);
     socket.on("video-call-started", handleIncomingCall);
@@ -779,6 +779,7 @@ const MessagesPage: React.FC = () => {
         title={popup.title}
         message={popup.message}
         icon={popup.icon}
+        showBuyCredits={popup.showBuyCredits}
         onClose={hidePopup}
       />
     </>

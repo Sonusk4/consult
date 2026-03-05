@@ -24,12 +24,8 @@ model User {
   wallet       Wallet?
   transactions Transaction[]
   paymentOrders PaymentOrder[]
-<<<<<<< HEAD
   reviews      Review[]
-=======
   supportTickets SupportTicket[]
-
->>>>>>> manasa
 }
 
 model Consultant {
@@ -48,11 +44,8 @@ model Consultant {
   availability  Availability[]
   bookings      Booking[]
   slots         Slot[]
-<<<<<<< HEAD
   reviews       Review[]
   supportTickets SupportTicket[]
-=======
->>>>>>> manasa
 }
 
 model Availability {
@@ -67,7 +60,6 @@ model Availability {
 }
 
 model Booking {
-<<<<<<< HEAD
   id             Int        @id @default(autoincrement())
   user           User       @relation(fields: [userId], references: [id])
   userId         Int
@@ -87,26 +79,6 @@ model Booking {
   messages       Message[]
   payment        Payment?
   review         Review?
-=======
-  id            Int        @id @default(autoincrement())
-  user          User       @relation(fields: [userId], references: [id])
-  userId        Int
-  consultant    Consultant @relation(fields: [consultantId], references: [id])
-  consultantId  Int
-  date          DateTime
-  time_slot     String     // [cite: 17]
-  status        String     @default("CONFIRMED") // "CONFIRMED", "COMPLETED", "CANCELLED"
-  is_paid       Boolean    @default(false) // 
-  call_completed Boolean    @default(false) // Track if call is completed
-  call_duration  Int?       // Call duration in minutes
-  consultant_fee Float?     // Fee charged by consultant
-  commission_fee Float?     // Platform commission (10%)
-  net_earning   Float?     // Amount transferred to consultant (90%)
-  created_at    DateTime   @default(now())
-  completed_at  DateTime?  // When call was completed
-  messages      Message[]
-  payment       Payment?
->>>>>>> manasa
 }
 
 model Message {
@@ -135,42 +107,10 @@ model Wallet {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   balance    Float    @default(0) // Current wallet balance in INR
   created_at DateTime @default(now())
-<<<<<<< HEAD
-=======
-}
-
-model Wallet {
-  id         Int      @id @default(autoincrement())
-  userId     Int      @unique
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balance    Float    @default(0) // Current wallet balance in INR
-  created_at DateTime @default(now())
->>>>>>> manasa
   updated_at DateTime @updatedAt
 }
 
 model Transaction {
-<<<<<<< HEAD
-  id             Int      @id @default(autoincrement())
-  user           User     @relation(fields: [userId], references: [id])
-  userId         Int
-  type           String // "CREDIT", "DEBIT", "COMMISSION", "EARNING"
-  amount         Float
-  description    String?
-  bookingId      Int? // Reference to booking if transaction is related to a call
-  consultantId   Int? // Reference to consultant for commission/earning transactions
-  payment_method String? // "CREDIT_CARD", "WALLET", "COMMISSION"
-  status         String   @default("SUCCESS") // "SUCCESS", "FAILED", "PENDING"
-  created_at     DateTime @default(now())
-}
-
-model CreditPackage {
-  id         Int      @id @default(autoincrement())
-  amount     Float // Package amount (500, 1000, 2000, 5000)
-  bonus      Float    @default(0) // Bonus amount (e.g., 50 for 500 package)
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now())
-=======
   id              Int      @id @default(autoincrement())
   user            User     @relation(fields: [userId], references: [id])
   userId          Int
@@ -185,12 +125,11 @@ model CreditPackage {
 }
 
 model CreditPackage {
-  id          Int     @id @default(autoincrement())
-  amount      Float   // Package amount (500, 1000, 2000, 5000)
-  bonus       Float   @default(0) // Bonus amount (e.g., 50 for 500 package)
-  is_active   Boolean @default(true)
+  id          Int      @id @default(autoincrement())
+  amount      Float    // Package amount (500, 1000, 2000, 5000)
+  bonus       Float    @default(0) // Bonus amount (e.g., 50 for 500 package)
+  is_active   Boolean  @default(true)
   created_at  DateTime @default(now())
->>>>>>> manasa
 }
 
 model Slot {
@@ -201,8 +140,7 @@ model Slot {
   endTime      String
   createdAt    DateTime @default(now())
 
-<<<<<<< HEAD
-  consultant Consultant @relation(fields: [consultantId], references: [id])
+  consultant   Consultant @relation(fields: [consultantId], references: [id])
 }
 
 model Review {
@@ -220,39 +158,17 @@ model Review {
 
 model SupportTicket {
   id           Int         @id @default(autoincrement())
-
   consultant   Consultant  @relation(fields: [consultantId], references: [id], onDelete: Cascade)
   consultantId Int
-
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       Int
   subject      String
   category     String
   description  String
-
-  status       String    @default("OPEN")      // OPEN, IN_PROGRESS, CLOSED
-  priority     String    @default("MEDIUM")    // LOW, MEDIUM, HIGH
-
-  created_at   DateTime  @default(now())
-  updated_at   DateTime  @updatedAt
-=======
-  consultant   Consultant @relation(fields: [consultantId], references: [id])
-}
-
-
-model SupportTicket {
-  id          Int      @id @default(autoincrement())
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      Int
-
-  subject     String
-  category    String
-  description String
-
-  status      String   @default("OPEN") // OPEN, IN_PROGRESS, CLOSED
-  priority    String   @default("MEDIUM") // LOW, MEDIUM, HIGH
-
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
->>>>>>> manasa
+  status       String      @default("OPEN") // OPEN, IN_PROGRESS, CLOSED
+  priority     String      @default("MEDIUM") // LOW, MEDIUM, HIGH
+  created_at   DateTime    @default(now())
+  updated_at   DateTime    @updatedAt
 }
 
 model PaymentOrder {
