@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "outputDirectory": "admin/dist",
+  "outputDirectory": "dist",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
