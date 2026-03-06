@@ -339,7 +339,16 @@ const MessagesPage: React.FC = () => {
   // Socket connection
   useEffect(() => {
     if (!currentUser?.email) return;
-    const socketUrl = `http://${window.location.hostname}:5000`;
+    // Get API base URL (same logic as api.ts)
+    const getSocketUrl = () => {
+      const viteEnv = import.meta.env.VITE_API_BASE_URL;
+      if (viteEnv) return viteEnv;
+      if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+        return 'https://consult-6cwy.onrender.com';
+      }
+      return 'http://localhost:5000';
+    };
+    const socketUrl = getSocketUrl();
     const newSocket = io(socketUrl, {
       auth: { email: currentUser.email, userId: currentUser.id },
       transports: ["websocket", "polling"],
