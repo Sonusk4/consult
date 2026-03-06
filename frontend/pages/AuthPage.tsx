@@ -42,6 +42,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
   const [changedConfirmPassword, setChangedConfirmPassword] = useState("");
   const [showChangedPassword, setShowChangedPassword] = useState(false);
   const [showChangedConfirmPassword, setShowChangedConfirmPassword] = useState(false);
+  const [testingOtp, setTestingOtp] = useState<string | null>(null); // Display OTP when email fails
   
   // Consultant KYC fields
   const [domain, setDomain] = useState("");
@@ -451,12 +452,21 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       // Send OTP via API
       const response = await auth.sendOtp(emailToUse, type);
       console.log("✅ OTP send response:", response);
+      setTestingOtp(null); // Clear any previous testing OTP
       setStep("OTP");
     } catch (err: any) {
       console.error("❌ OTP send error:", err);
       const message =
         err.response?.data?.error || "Failed to send OTP. Please try again.";
-      setError(message);
+      const fallbackOtp = err.response?.data?.fallback;
+      
+      // If there's a fallback OTP, show it to user
+      if (fallbackOtp) {
+        setTestingOtp(fallbackOtp);
+        setError(`${message} - Using fallback OTP for testing`);
+      } else {
+        setError(message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -2035,6 +2045,17 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
                   <span className="text-gray-900 font-bold">{signupEmail || email}</span>
                 </p>
               </div>
+
+              {/* Display testing OTP if email failed */}
+              {testingOtp && (
+                <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
+                  <p className="text-amber-800 text-sm font-medium mb-2">🧪 Testing OTP:</p>
+                  <p className="text-amber-900 text-2xl font-bold letter-spacing-wide tracking-widest text-center">
+                    {testingOtp.replace('OTP for testing: ', '')}
+                  </p>
+                  <p className="text-amber-700 text-xs mt-2 text-center">(Email sending failed - use this OTP to continue)</p>
+                </div>
+              )}
 
               <div className="space-y-6">
                 <div className="grid grid-cols-6 gap-2">
