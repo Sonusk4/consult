@@ -362,12 +362,14 @@ app.post("/auth/me", async (req, res) => {
 
   try {
 
-    const { role, name, phone, bio, location } = req.body;
+    const { role, name, phone, bio, location, firebase_uid: requestFirebaseUid } = req.body;
 
     let userEmail = req.body.email;
 
     let user;
 
+    // Get firebase_uid from request or middleware
+    const firebaseUid = requestFirebaseUid || req.user?.firebase_uid || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
 
     // Try to get user from auth token first
@@ -482,7 +484,7 @@ app.post("/auth/me", async (req, res) => {
 
           is_verified: true,
 
-          firebase_uid: firebase_uid || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, // fallback if not provided
+          firebase_uid: firebaseUid,
 
         },
 
