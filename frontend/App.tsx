@@ -83,6 +83,17 @@ const App: React.FC = () => {
     setLoading(true);
     try {
       const userData = await auth.login(email, role, name);
+      
+      // ✅ STRICT VALIDATION: Check if userData exists and has required fields
+      if (!userData || !userData.id || !userData.email) {
+        throw new Error("Invalid user data returned from server");
+      }
+      
+      // ✅ STRICT VALIDATION: Check if user has a role
+      if (!userData.role) {
+        throw new Error("User role not found - unable to proceed");
+      }
+      
       setUser(userData);
 
       // Store user data with session timestamp
@@ -113,6 +124,15 @@ const App: React.FC = () => {
       const storedUserStr = sessionStorage.getItem("user");
       if (storedUserStr) {
         const storedSession = JSON.parse(storedUserStr);
+
+        // ✅ STRICT VALIDATION: Check if stored session has required fields
+        if (!storedSession || !storedSession.id || !storedSession.email || !storedSession.role) {
+          console.warn("⚠️ Invalid stored session - missing required fields");
+          sessionStorage.removeItem("user");
+          sessionStorage.removeItem("devToken");
+          setLoading(false);
+          return;
+        }
 
         // Check if session is still valid (not expired)
         const currentTime = Date.now();
@@ -261,7 +281,7 @@ const App: React.FC = () => {
             />  
             <Route
               path="/consultant/plans"
-              element={<ConsultantPlans />}
+              element={isConsultant ? <ConsultantPlans /> : <Navigate to="/auth" />}
             />
             <Route
               path="/consultant/profile"

@@ -211,6 +211,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
 
       console.log("Password login successful");
 
+      // ✅ STRICT VALIDATION: Check if loginRes has required data
+      if (!loginRes.user || !loginRes.user.id || !loginRes.user.email || !loginRes.user.role) {
+        throw new Error("Invalid user data from server");
+      }
+
       if (loginRes.devMode) {
         console.log("Dev mode detected - storing JWT token");
         sessionStorage.setItem("devToken", loginRes.customToken);
@@ -221,12 +226,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
         await signInWithCustomToken(firebaseAuth, loginRes.customToken);
       }
 
-      if (loginRes.user) {
-        sessionStorage.setItem("user", JSON.stringify(loginRes.user));
-      }
+      // ✅ STRICT VALIDATION: Always store user with validation
+      sessionStorage.setItem("user", JSON.stringify(loginRes.user));
 
-      const user = await login(loginRes.user?.email);
+      const user = await login(loginRes.user.email);
       console.log("User synced successfully:", user);
+
+      // ✅ STRICT VALIDATION: Check user and role before navigation
+      if (!user || !user.role) {
+        throw new Error("User role not found after login");
+      }
 
       if (user.role === "USER") {
         navigate("/user/dashboard");
@@ -237,6 +246,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       } else if (user.role === "ENTERPRISE_MEMBER") {
         navigate("/member/dashboard");
       } else {
+        console.warn("⚠️ Unknown user role:", user.role);
         navigate("/");
       }
     } catch (err: any) {
@@ -535,6 +545,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ type }) => {
       );
 
       console.log("User synced successfully:", user);
+      
+      // ✅ STRICT VALIDATION: Check user and role before navigation
+      if (!user || !user.role) {
+        throw new Error("User role not found after OTP verification");
+      }
       
       // Clear signup state if we were in signup flow
       if (isSignupFlow) {

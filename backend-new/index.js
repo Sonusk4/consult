@@ -3258,7 +3258,7 @@ app.post("/auth/login-password", async (req, res) => {
 
     if (!passwordValid) {
 
-      console.log(`❌ Invalid password for: ${email}`);
+      console.log(`❌ Invalid password for: ${normalizedEmail}`);
 
       return res
 
