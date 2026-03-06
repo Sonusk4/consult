@@ -348,7 +348,8 @@ const ConsultantDetailsPage: React.FC = () => {
     if (!bookingDate) return;
     setLoadingSlots(true);
     try {
-      const response = await fetch(`http://localhost:5000/consultants/${id}/availability?date=${bookingDate}`);
+      const apiBase = import.meta.env.VITE_API_BASE_URL || (typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? 'https://consult-6cwy.onrender.com' : 'http://localhost:5000');
+      const response = await fetch(`${apiBase}/consultants/${id}/availability?date=${bookingDate}`);
       const slots = await response.json();
       setAvailableSlots(Array.isArray(slots) ? slots : []);
       setSelectedSlot('');

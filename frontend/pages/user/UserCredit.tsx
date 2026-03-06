@@ -62,8 +62,9 @@ const UserCredit: React.FC = () => {
       }
       // Redirect to backend payment page
       // Backend will handle Razorpay and redirect back after payment
+const apiBase = import.meta.env.VITE_API_BASE_URL || (typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? 'https://consult-6cwy.onrender.com' : 'http://localhost:5000');
 window.open(
-  `http://localhost:5000/payment-page?order_id=${orderResponse.data.order_id}&amount=${packPrice}&credits=${packAmount}`,
+  `${apiBase}/payment-page?order_id=${orderResponse.data.order_id}&amount=${packPrice}&credits=${packAmount}`,
   "_blank"
 );
     } catch (error) {

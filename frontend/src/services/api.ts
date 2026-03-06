@@ -3,8 +3,21 @@ import { auth as firebaseAuth } from "./firebase";
 
 // Create axios instance with base URL
 // Since we have set up proxy in vite.config.ts, we can just use '/' as base
+const getBaseURL = () => {
+  // Use environment variable if available
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  // For production (Vercel), use Render backend
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+    return 'https://consult-6cwy.onrender.com';
+  }
+  // For local development, use localhost
+  return 'http://localhost:5000';
+};
+
 const api = axios.create({
-  baseURL: "http://localhost:5000",
+  baseURL: getBaseURL(),
   headers: {
     "Content-Type": "application/json",
   },
