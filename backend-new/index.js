@@ -364,7 +364,8 @@ app.post("/auth/me", async (req, res) => {
 
     const { role, name, phone, bio, location, firebase_uid: requestFirebaseUid } = req.body;
 
-    let userEmail = req.body.email;
+    // Normalize email to lowercase for case-insensitive comparison
+    let userEmail = req.body.email?.toLowerCase().trim();
 
     let user;
 
@@ -376,7 +377,7 @@ app.post("/auth/me", async (req, res) => {
 
     if (req.user?.email) {
 
-      userEmail = req.user.email;
+      userEmail = req.user.email.toLowerCase().trim();
 
     }
 
@@ -2042,9 +2043,10 @@ app.post("/auth/send-otp", async (req, res) => {
 
   const { email, type } = req.body;
 
+  // Normalize email to lowercase for case-insensitive comparison
+  const normalizedEmail = email?.toLowerCase().trim();
 
-
-  if (!email) {
+  if (!normalizedEmail) {
 
     return res.status(400).json({ error: "Email is required" });
 
@@ -2058,7 +2060,7 @@ app.post("/auth/send-otp", async (req, res) => {
 
     const existingUser = await prisma.user.findUnique({
 
-      where: { email },
+      where: { email: normalizedEmail },
 
     });
 
@@ -2312,9 +2314,10 @@ app.post("/auth/verify-otp", async (req, res) => {
 
   const { email, otp } = req.body;
 
+  // Normalize email to lowercase for case-insensitive comparison
+  const normalizedEmail = email?.toLowerCase().trim();
 
-
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
 
 
@@ -2688,9 +2691,10 @@ app.post("/auth/signup", async (req, res) => {
 
   const { email, password, fullName, phone, role } = req.body;
 
+  // Normalize email to lowercase for case-insensitive comparison
+  const normalizedEmail = email?.toLowerCase().trim();
 
-
-  if (!email || !password || !fullName || !phone) {
+  if (!normalizedEmail || !password || !fullName || !phone) {
 
     return res.status(400).json({
 
@@ -2704,13 +2708,13 @@ app.post("/auth/signup", async (req, res) => {
 
   try {
 
-    console.log(`📝 Signup attempt: ${email}`);
+    console.log(`📝 Signup attempt: ${normalizedEmail}`);
 
 
 
-    // Check if user already exists
+    // Check if user already exists (case-insensitive)
 
-    let existingUser = await prisma.user.findUnique({ where: { email } });
+    let existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
 
 
@@ -2746,7 +2750,7 @@ app.post("/auth/signup", async (req, res) => {
 
       data: {
 
-        email,
+        email: normalizedEmail,
 
         name: fullName,
 
@@ -3189,9 +3193,10 @@ app.post("/auth/login-password", async (req, res) => {
 
   const { email, password } = req.body;
 
+  // Normalize email to lowercase for case-insensitive comparison
+  const normalizedEmail = email?.toLowerCase().trim();
 
-
-  if (!email || !password) {
+  if (!normalizedEmail || !password) {
 
     return res
 
@@ -3205,15 +3210,15 @@ app.post("/auth/login-password", async (req, res) => {
 
   try {
 
-    console.log(`🔐 Password login attempt: ${email}`);
+    console.log(`🔐 Password login attempt: ${normalizedEmail}`);
 
 
 
-    // Find user by email
+    // Find user by email (case-insensitive)
 
     const user = await prisma.user.findUnique({
 
-      where: { email },
+      where: { email: normalizedEmail },
 
       include: {
 
@@ -3227,7 +3232,7 @@ app.post("/auth/login-password", async (req, res) => {
 
     if (!user) {
 
-      console.log(`❌ User not found: ${email}`);
+      console.log(`❌ User not found: ${normalizedEmail}`);
 
       return res
 
@@ -3587,9 +3592,10 @@ app.post("/auth/forgot-password", async (req, res) => {
 
   const { email } = req.body;
 
+  // Normalize email to lowercase for case-insensitive comparison
+  const normalizedEmail = email?.toLowerCase().trim();
 
-
-  if (!email) {
+  if (!normalizedEmail) {
 
     return res.status(400).json({ error: "Email is required" });
 
@@ -3599,11 +3605,11 @@ app.post("/auth/forgot-password", async (req, res) => {
 
   try {
 
-    console.log(`📧 Forgot password request: ${email}`);
+    console.log(`📧 Forgot password request: ${normalizedEmail}`);
 
 
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
 
 
@@ -3611,7 +3617,7 @@ app.post("/auth/forgot-password", async (req, res) => {
 
       // Don't reveal if user exists for security
 
-      console.log(`ℹ️ User not found: ${email}`);
+      console.log(`ℹ️ User not found: ${normalizedEmail}`);
 
       return res.status(200).json({
 
@@ -3797,9 +3803,10 @@ app.post("/auth/reset-password", async (req, res) => {
 
   const { token, newPassword, email } = req.body;
 
+  // Normalize email to lowercase for case-insensitive comparison
+  const normalizedEmail = email?.toLowerCase().trim();
 
-
-  if (!token || !newPassword || !email) {
+  if (!token || !newPassword || !normalizedEmail) {
 
     return res.status(400).json({
 
@@ -3813,7 +3820,7 @@ app.post("/auth/reset-password", async (req, res) => {
 
   try {
 
-    console.log(`🔄 Password reset attempt: ${email}`);
+    console.log(`🔄 Password reset attempt: ${normalizedEmail}`);
 
 
 
@@ -3835,7 +3842,7 @@ app.post("/auth/reset-password", async (req, res) => {
 
       where: {
 
-        email,
+        email: normalizedEmail,
 
         password_reset_token: tokenHash,
 

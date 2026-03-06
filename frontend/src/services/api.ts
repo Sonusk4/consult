@@ -50,19 +50,25 @@ api.interceptors.response.use(
 export const auth = {
   // Login or Register (Dev Flow)
   login: async (email: string, role: string, phone?: string) => {
-    const response = await api.post("/auth/me", { email, role, phone });
+    // Normalize email to lowercase for consistency
+    const normalizedEmail = email.toLowerCase().trim();
+    const response = await api.post("/auth/me", { email: normalizedEmail, role, phone });
     return response.data;
   },
 
   // Send OTP
   sendOtp: async (email: string) => {
-    const response = await api.post("/auth/send-otp", { email });
+    // Normalize email to lowercase for consistency
+    const normalizedEmail = email.toLowerCase().trim();
+    const response = await api.post("/auth/send-otp", { email: normalizedEmail });
     return response.data;
   },
 
   // Verify OTP
   verifyOtp: async (email: string, otp: string) => {
-    const response = await api.post("/auth/verify-otp", { email, otp });
+    // Normalize email to lowercase for consistency
+    const normalizedEmail = email.toLowerCase().trim();
+    const response = await api.post("/auth/verify-otp", { email: normalizedEmail, otp });
     return response.data;
   },
 };

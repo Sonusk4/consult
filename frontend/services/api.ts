@@ -3,7 +3,7 @@ import { auth as firebaseAuth } from "../src/services/firebase";
 import { UserRole } from "../types";
 /* ================= AXIOS INSTANCE ================= */
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5000",
+  baseURL: import.meta.env.VITE_API_BASE_URL || (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? "http://localhost:5000" : "https://consult-6cwy.onrender.com"),
   headers: {
     "Content-Type": "application/json",
   },
@@ -147,8 +147,10 @@ export const auth = {
     role: UserRole;
   }) => {
     try {
-      console.log(`📤 Signing up with password for ${data.email}`);
-      const response = await api.post("/auth/signup", data);
+      // Normalize email to lowercase for consistency
+      const normalizedData = { ...data, email: data.email.toLowerCase().trim() };
+      console.log(`📄 Signing up with password for ${normalizedData.email}`);
+      const response = await api.post("/auth/signup", normalizedData);
       console.log("📥 Signup response:", response.data);
       return response.data;
     } catch (error) {
@@ -158,9 +160,11 @@ export const auth = {
   },
   loginWithPassword: async (email: string, password: string) => {
     try {
-      console.log(`📤 Logging in with password for ${email}`);
+      // Normalize email to lowercase for consistency
+      const normalizedEmail = email.toLowerCase().trim();
+      console.log(`📄 Logging in with password for ${normalizedEmail}`);
       const response = await api.post("/auth/login-password", {
-        email,
+        email: normalizedEmail,
         password,
       });
       console.log("📥 Password login response:", response.data);
@@ -172,8 +176,10 @@ export const auth = {
   },
   forgotPassword: async (email: string) => {
     try {
-      console.log(`📤 Sending forgot password email to ${email}`);
-      const response = await api.post("/auth/forgot-password", { email });
+      // Normalize email to lowercase for consistency
+      const normalizedEmail = email.toLowerCase().trim();
+      console.log(`📄 Sending forgot password email to ${normalizedEmail}`);
+      const response = await api.post("/auth/forgot-password", { email: normalizedEmail });
       console.log("📥 Forgot password response:", response.data);
       return response.data;
     } catch (error) {
