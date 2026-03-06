@@ -252,23 +252,20 @@ const isEmailConfigured = process.env.EMAIL_USER && process.env.EMAIL_PASS;
 if (isEmailConfigured) {
 
   transporter = nodemailer.createTransport({
-
     host: "smtp.gmail.com",
-
     port: 587,
-
-    secure: false,
-
+    secure: false, // true for 465, false for other ports
     requireTLS: true,
-
+    pool: true, // Recommended for cloud hosts
+    debug: true, // Show SMTP traffic in logs
+    logger: true, // Log information to console
     auth: {
-
       user: process.env.EMAIL_USER,
-
       pass: process.env.EMAIL_PASS,
-
     },
-
+    tls: {
+      rejectUnauthorized: false
+    }
   });
 
   console.log("✅ Gmail Nodemailer initialized successfully");
@@ -2824,9 +2821,8 @@ app.post("/auth/signup", async (req, res) => {
       }
 
     } catch (emailErr) {
-
+      console.error("⚠️ VERY DETAILED Email Error:", emailErr);
       console.error("⚠️ Failed to send OTP email:", emailErr.message);
-
       // Continue anyway - user can request new OTP if needed
 
     }
