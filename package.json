@@ -27,6 +27,7 @@
   },
   "workspaces": [
     "frontend",
-    "backend-new"
+    "backend-new",
+    "admin"
   ]
 }
